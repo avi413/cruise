@@ -29,6 +29,9 @@ async def _proxy(method: str, url: str, request: Request):
     # Forward Authorization for service-side RBAC
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
+    # Forward tenant header for per-company databases
+    if "x-company-id" in request.headers:
+        headers["x-company-id"] = request.headers["x-company-id"]
 
     body = await request.body()
 
@@ -62,6 +65,34 @@ async def list_cruises():
             }
         )
     return {"items": items}
+
+
+@app.get("/v1/companies")
+async def list_companies():
+    """Admin portal: list cruise companies."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        companies = (await client.get(f"{SHIP_SERVICE_URL}/companies")).json()
+    return {"items": companies}
+
+
+@app.post("/v1/companies")
+async def create_company(request: Request):
+    """Admin portal: create cruise company."""
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/companies", request)
+
+
+@app.get("/v1/companies/{company_id}/fleet")
+async def list_company_fleet(company_id: str):
+    """Admin portal: list ships by company (fleet)."""
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        ships = (await client.get(f"{SHIP_SERVICE_URL}/companies/{company_id}/ships")).json()
+    return {"items": ships}
+
+
+@app.post("/v1/ships")
+async def create_ship(request: Request):
+    """Admin portal: create ship under a company."""
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships", request)
 
 
 @app.post("/v1/quote")

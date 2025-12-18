@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import uuid4
 
 import httpx
@@ -9,11 +9,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from . import events
-from .db import engine, session
-from .models import Base, Booking
+from .db import session
+from .models import Booking
 from .security import require_roles
-
-Base.metadata.create_all(engine)
+from .tenancy import get_company_id, get_tenant_engine
 
 app = FastAPI(
     title="Cabin & Booking Management Service",
@@ -81,7 +80,12 @@ def health():
 
 
 @app.post("/holds", response_model=BookingOut)
-async def create_hold(payload: HoldRequest, _principal=Depends(require_roles("guest", "agent", "staff", "admin"))):
+async def create_hold(
+    payload: HoldRequest,
+    company_id=Depends(get_company_id),
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
+):
     # Quote via pricing-service
     pricing_url = __import__("os").getenv("PRICING_SERVICE_URL", "http://localhost:8004")
     req = {
@@ -103,6 +107,7 @@ async def create_hold(payload: HoldRequest, _principal=Depends(require_roles("gu
 
     booking = Booking(
         id=str(uuid4()),
+        company_id=company_id,
         status="held",
         created_at=now,
         updated_at=now,
@@ -119,13 +124,14 @@ async def create_hold(payload: HoldRequest, _principal=Depends(require_roles("gu
         loyalty_tier=payload.loyalty_tier,
     )
 
-    with session() as s:
+    with session(tenant_engine) as s:
         s.add(booking)
         s.commit()
 
     await events.publish(
         "booking.held",
         {
+            "company_id": booking.company_id,
             "booking_id": booking.id,
             "customer_id": booking.customer_id,
             "sailing_id": booking.sailing_id,
@@ -157,8 +163,12 @@ async def create_hold(payload: HoldRequest, _principal=Depends(require_roles("gu
 
 
 @app.get("/bookings/{booking_id}", response_model=BookingOut)
-def get_booking(booking_id: str, _principal=Depends(require_roles("guest", "agent", "staff", "admin"))):
-    with session() as s:
+def get_booking(
+    booking_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
         booking = s.get(Booking, booking_id)
         if booking is None:
             raise HTTPException(status_code=404, detail="Booking not found")
@@ -192,10 +202,11 @@ class ConfirmRequest(BaseModel):
 async def confirm_booking(
     booking_id: str,
     _payload: ConfirmRequest,
+    tenant_engine=Depends(get_tenant_engine),
     _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
 ):
     now = _now()
-    with session() as s:
+    with session(tenant_engine) as s:
         booking = s.get(Booking, booking_id)
         if booking is None:
             raise HTTPException(status_code=404, detail="Booking not found")
@@ -220,6 +231,7 @@ async def confirm_booking(
     await events.publish(
         "booking.confirmed",
         {
+            "company_id": booking.company_id,
             "booking_id": booking.id,
             "customer_id": booking.customer_id,
             "sailing_id": booking.sailing_id,

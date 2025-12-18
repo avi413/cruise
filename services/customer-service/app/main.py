@@ -9,11 +9,10 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .consumer import start_consumer
-from .db import engine, session
-from .models import Base, BookingHistory, Customer
+from .db import session
+from .models import BookingHistory, Customer
 from .security import require_roles
-
-Base.metadata.create_all(engine)
+from .tenancy import get_tenant_engine
 
 app = FastAPI(
     title="Customer Management (CRM) Service",
@@ -52,7 +51,11 @@ class CustomerOut(CustomerCreate):
 
 
 @app.post("/customers", response_model=CustomerOut)
-def create_customer(payload: CustomerCreate, _principal=Depends(require_roles("agent", "staff", "admin"))):
+def create_customer(
+    payload: CustomerCreate,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("agent", "staff", "admin")),
+):
     now = _now()
     cust = Customer(
         id=str(uuid4()),
@@ -65,7 +68,7 @@ def create_customer(payload: CustomerCreate, _principal=Depends(require_roles("a
         preferences=payload.preferences,
     )
 
-    with session() as s:
+    with session(tenant_engine) as s:
         existing = s.query(Customer).filter(Customer.email == cust.email).first()
         if existing is not None:
             raise HTTPException(status_code=409, detail="Customer email already exists")
@@ -76,8 +79,12 @@ def create_customer(payload: CustomerCreate, _principal=Depends(require_roles("a
 
 
 @app.get("/customers/{customer_id}", response_model=CustomerOut)
-def get_customer(customer_id: str, _principal=Depends(require_roles("guest", "agent", "staff", "admin"))):
-    with session() as s:
+def get_customer(
+    customer_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
         cust = s.get(Customer, customer_id)
         if cust is None:
             raise HTTPException(status_code=404, detail="Customer not found")
@@ -102,8 +109,13 @@ class CustomerPatch(BaseModel):
 
 
 @app.patch("/customers/{customer_id}", response_model=CustomerOut)
-def patch_customer(customer_id: str, payload: CustomerPatch, _principal=Depends(require_roles("agent", "staff", "admin"))):
-    with session() as s:
+def patch_customer(
+    customer_id: str,
+    payload: CustomerPatch,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
         cust = s.get(Customer, customer_id)
         if cust is None:
             raise HTTPException(status_code=404, detail="Customer not found")
@@ -133,8 +145,12 @@ class BookingHistoryOut(BaseModel):
 
 
 @app.get("/customers/{customer_id}/bookings", response_model=list[BookingHistoryOut])
-def list_customer_bookings(customer_id: str, _principal=Depends(require_roles("guest", "agent", "staff", "admin"))):
-    with session() as s:
+def list_customer_bookings(
+    customer_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
         rows = (
             s.query(BookingHistory)
             .filter(BookingHistory.customer_id == customer_id)
