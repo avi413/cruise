@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -26,7 +26,18 @@ class MaintenanceRecord(BaseModel):
     severity: Literal["low", "medium", "high"] = "low"
 
 
+class CompanyCreate(BaseModel):
+    name: str
+    code: str = Field(description="Unique company code")
+
+
+class Company(CompanyCreate):
+    id: str
+    created_at: datetime
+
+
 class ShipCreate(BaseModel):
+    company_id: str = Field(description="Owning cruise company id")
     name: str
     code: str = Field(description="Unique ship code")
     operator: str | None = None
@@ -41,7 +52,8 @@ class Ship(ShipCreate):
     maintenance_records: list[MaintenanceRecord] = Field(default_factory=list)
 
 
-_DB: dict[str, Ship] = {}
+_COMPANIES: dict[str, Company] = {}
+_SHIPS: dict[str, Ship] = {}
 
 
 @app.get("/health")
@@ -49,27 +61,78 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/companies", response_model=Company)
+def create_company(payload: CompanyCreate, _principal=Depends(require_roles("staff", "admin"))):
+    if any(c.code == payload.code for c in _COMPANIES.values()):
+        raise HTTPException(status_code=409, detail="Company code already exists")
+
+    company = Company(id=str(uuid4()), created_at=datetime.utcnow(), **payload.model_dump())
+    _COMPANIES[company.id] = company
+    return company
+
+
+@app.get("/companies", response_model=list[Company])
+def list_companies():
+    return list(_COMPANIES.values())
+
+
+@app.get("/companies/{company_id}", response_model=Company)
+def get_company(company_id: str):
+    company = _COMPANIES.get(company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return company
+
+
+class CompanyPatch(BaseModel):
+    name: str | None = None
+
+
+@app.patch("/companies/{company_id}", response_model=Company)
+def patch_company(company_id: str, payload: CompanyPatch, _principal=Depends(require_roles("staff", "admin"))):
+    company = _COMPANIES.get(company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    updated = company.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
+    _COMPANIES[company_id] = updated
+    return updated
+
+
 @app.post("/ships", response_model=Ship)
 def create_ship(payload: ShipCreate, _principal=Depends(require_roles("staff", "admin"))):
-    if any(s.code == payload.code for s in _DB.values()):
+    if payload.company_id not in _COMPANIES:
+        raise HTTPException(status_code=400, detail="Unknown company_id")
+
+    if any(s.code == payload.code for s in _SHIPS.values()):
         raise HTTPException(status_code=409, detail="Ship code already exists")
     ship = Ship(
         id=str(uuid4()),
         created_at=datetime.utcnow(),
         **payload.model_dump(),
     )
-    _DB[ship.id] = ship
+    _SHIPS[ship.id] = ship
     return ship
 
 
 @app.get("/ships", response_model=list[Ship])
-def list_ships():
-    return list(_DB.values())
+def list_ships(company_id: str | None = None):
+    ships = list(_SHIPS.values())
+    if company_id is not None:
+        ships = [s for s in ships if s.company_id == company_id]
+    return ships
+
+
+@app.get("/companies/{company_id}/ships", response_model=list[Ship])
+def list_company_ships(company_id: str):
+    if company_id not in _COMPANIES:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return [s for s in _SHIPS.values() if s.company_id == company_id]
 
 
 @app.get("/ships/{ship_id}", response_model=Ship)
 def get_ship(ship_id: str):
-    ship = _DB.get(ship_id)
+    ship = _SHIPS.get(ship_id)
     if not ship:
         raise HTTPException(status_code=404, detail="Ship not found")
     return ship
@@ -88,12 +151,12 @@ def patch_ship(
     payload: ShipPatch,
     _principal=Depends(require_roles("staff", "admin")),
 ):
-    ship = _DB.get(ship_id)
+    ship = _SHIPS.get(ship_id)
     if not ship:
         raise HTTPException(status_code=404, detail="Ship not found")
 
     updated = ship.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
-    _DB[ship_id] = updated
+    _SHIPS[ship_id] = updated
     return updated
 
 
@@ -103,12 +166,12 @@ def add_amenity(
     amenity: Amenity,
     _principal=Depends(require_roles("staff", "admin")),
 ):
-    ship = _DB.get(ship_id)
+    ship = _SHIPS.get(ship_id)
     if not ship:
         raise HTTPException(status_code=404, detail="Ship not found")
 
     ship.amenities.append(amenity)
-    _DB[ship_id] = ship
+    _SHIPS[ship_id] = ship
     return ship
 
 
@@ -118,11 +181,11 @@ def add_maintenance_record(
     record: MaintenanceRecord,
     _principal=Depends(require_roles("staff", "admin")),
 ):
-    ship = _DB.get(ship_id)
+    ship = _SHIPS.get(ship_id)
     if not ship:
         raise HTTPException(status_code=404, detail="Ship not found")
 
     ship.maintenance_records.append(record)
     ship.status = "maintenance" if record.severity in ("medium", "high") else ship.status
-    _DB[ship_id] = ship
+    _SHIPS[ship_id] = ship
     return ship

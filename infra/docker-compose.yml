@@ -104,5 +104,15 @@ services:
     ports:
       - "8000:8000"
 
+  admin-portal:
+    build: ../services/admin-portal
+    environment:
+      # Used by the frontend at build/runtime (nginx serves static)
+      VITE_EDGE_API_URL: http://localhost:8000
+    depends_on:
+      - edge-api
+    ports:
+      - "3000:80"
+
 volumes:
   postgres_data:

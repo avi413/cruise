@@ -23,6 +23,7 @@ docker compose -f infra/docker-compose.yml up --build
 Services (host ports):
 
 - **Edge API**: `http://localhost:8000/docs`
+- **Admin Portal (companies/fleet UI)**: `http://localhost:3000`
 - **Ship**: `http://localhost:8001/docs`
 - **Cruise**: `http://localhost:8002/docs`
 - **Customer**: `http://localhost:8003/docs`
@@ -48,6 +49,17 @@ Use the returned token as:
 ```bash
 -H "Authorization: Bearer <token>"
 ```
+
+### Companies & fleets
+
+Ships now belong to a **Company**. Create a company first, then create ships with `company_id`.
+
+Via Edge API:
+
+- List companies: `GET /v1/companies`
+- Create company: `POST /v1/companies`
+- List fleet: `GET /v1/companies/{company_id}/fleet`
+- Create ship: `POST /v1/ships`
 
 ### Demo flow (quote → hold → confirm → notifications)
 
