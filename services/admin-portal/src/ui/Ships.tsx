@@ -82,7 +82,7 @@ export function Ships(props: { apiBase: string; token: string }) {
             <select style={styles.input} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.code})
+                  {c.name} ({c.code}) — {c.tenant_db}
                 </option>
               ))}
             </select>

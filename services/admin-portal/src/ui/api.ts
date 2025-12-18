@@ -2,6 +2,7 @@ export type Company = {
   id: string
   name: string
   code: string
+  tenant_db: string
   created_at: string
 }
 
