@@ -15,6 +15,8 @@ class Booking(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
 
+    company_id: Mapped[str] = mapped_column(String, index=True)
+
     status: Mapped[str] = mapped_column(String, index=True)  # held|confirmed|cancelled
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

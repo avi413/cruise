@@ -29,6 +29,9 @@ async def _proxy(method: str, url: str, request: Request):
     # Forward Authorization for service-side RBAC
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
+    # Forward tenant header for per-company databases
+    if "x-company-id" in request.headers:
+        headers["x-company-id"] = request.headers["x-company-id"]
 
     body = await request.body()
 

@@ -1,17 +1,23 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from .db import engine, session
+from .models import Base, Company as CompanyRow, Ship as ShipRow
 from .security import require_roles
+from .tenancy import ensure_tenant_database, tenant_db_name_from_code
 
 app = FastAPI(
     title="Ship Management Service",
     version="0.1.0",
     description="Registers and manages ships, amenities, maintenance records, and operational status.",
 )
+
+
+Base.metadata.create_all(engine)
 
 
 class Amenity(BaseModel):
@@ -34,6 +40,7 @@ class CompanyCreate(BaseModel):
 class Company(CompanyCreate):
     id: str
     created_at: datetime
+    tenant_db: str
 
 
 class ShipCreate(BaseModel):
@@ -52,8 +59,8 @@ class Ship(ShipCreate):
     maintenance_records: list[MaintenanceRecord] = Field(default_factory=list)
 
 
-_COMPANIES: dict[str, Company] = {}
-_SHIPS: dict[str, Ship] = {}
+def _now() -> datetime:
+    return datetime.now(tz=timezone.utc)
 
 
 @app.get("/health")
@@ -63,25 +70,42 @@ def health():
 
 @app.post("/companies", response_model=Company)
 def create_company(payload: CompanyCreate, _principal=Depends(require_roles("staff", "admin"))):
-    if any(c.code == payload.code for c in _COMPANIES.values()):
-        raise HTTPException(status_code=409, detail="Company code already exists")
+    tenant_db = tenant_db_name_from_code(payload.code)
+    ensure_tenant_database(tenant_db)
 
-    company = Company(id=str(uuid4()), created_at=datetime.utcnow(), **payload.model_dump())
-    _COMPANIES[company.id] = company
-    return company
+    now = _now()
+    row = CompanyRow(
+        id=str(uuid4()),
+        created_at=now,
+        name=payload.name,
+        code=payload.code,
+        tenant_db=tenant_db,
+    )
+
+    with session() as s:
+        existing = s.query(CompanyRow).filter(CompanyRow.code == payload.code).first()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Company code already exists")
+        s.add(row)
+        s.commit()
+
+    return Company(id=row.id, created_at=row.created_at, name=row.name, code=row.code, tenant_db=row.tenant_db)
 
 
 @app.get("/companies", response_model=list[Company])
 def list_companies():
-    return list(_COMPANIES.values())
+    with session() as s:
+        rows = s.query(CompanyRow).order_by(CompanyRow.created_at.desc()).all()
+    return [Company(id=r.id, created_at=r.created_at, name=r.name, code=r.code, tenant_db=r.tenant_db) for r in rows]
 
 
 @app.get("/companies/{company_id}", response_model=Company)
 def get_company(company_id: str):
-    company = _COMPANIES.get(company_id)
-    if not company:
+    with session() as s:
+        r = s.get(CompanyRow, company_id)
+    if not r:
         raise HTTPException(status_code=404, detail="Company not found")
-    return company
+    return Company(id=r.id, created_at=r.created_at, name=r.name, code=r.code, tenant_db=r.tenant_db)
 
 
 class CompanyPatch(BaseModel):
@@ -90,52 +114,110 @@ class CompanyPatch(BaseModel):
 
 @app.patch("/companies/{company_id}", response_model=Company)
 def patch_company(company_id: str, payload: CompanyPatch, _principal=Depends(require_roles("staff", "admin"))):
-    company = _COMPANIES.get(company_id)
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+    with session() as s:
+        r = s.get(CompanyRow, company_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Company not found")
 
-    updated = company.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
-    _COMPANIES[company_id] = updated
-    return updated
+        if payload.name is not None:
+            r.name = payload.name
+        s.add(r)
+        s.commit()
+
+        return Company(id=r.id, created_at=r.created_at, name=r.name, code=r.code, tenant_db=r.tenant_db)
 
 
 @app.post("/ships", response_model=Ship)
 def create_ship(payload: ShipCreate, _principal=Depends(require_roles("staff", "admin"))):
-    if payload.company_id not in _COMPANIES:
-        raise HTTPException(status_code=400, detail="Unknown company_id")
+    now = _now()
+    with session() as s:
+        company = s.get(CompanyRow, payload.company_id)
+        if company is None:
+            raise HTTPException(status_code=400, detail="Unknown company_id")
 
-    if any(s.code == payload.code for s in _SHIPS.values()):
-        raise HTTPException(status_code=409, detail="Ship code already exists")
-    ship = Ship(
-        id=str(uuid4()),
-        created_at=datetime.utcnow(),
-        **payload.model_dump(),
+        existing = s.query(ShipRow).filter(ShipRow.code == payload.code).first()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Ship code already exists")
+
+        row = ShipRow(
+            id=str(uuid4()),
+            created_at=now,
+            company_id=payload.company_id,
+            name=payload.name,
+            code=payload.code,
+            operator=payload.operator,
+            decks=payload.decks,
+            status=payload.status,
+            amenities=[],
+            maintenance_records=[],
+        )
+        s.add(row)
+        s.commit()
+
+    return Ship(
+        id=row.id,
+        created_at=row.created_at,
+        company_id=row.company_id,
+        name=row.name,
+        code=row.code,
+        operator=row.operator,
+        decks=row.decks,
+        status=row.status,
+        amenities=[Amenity(**a) for a in (row.amenities or [])],
+        maintenance_records=[MaintenanceRecord(**m) for m in (row.maintenance_records or [])],
     )
-    _SHIPS[ship.id] = ship
-    return ship
 
 
 @app.get("/ships", response_model=list[Ship])
 def list_ships(company_id: str | None = None):
-    ships = list(_SHIPS.values())
-    if company_id is not None:
-        ships = [s for s in ships if s.company_id == company_id]
-    return ships
+    with session() as s:
+        q = s.query(ShipRow)
+        if company_id is not None:
+            q = q.filter(ShipRow.company_id == company_id)
+        rows = q.order_by(ShipRow.created_at.desc()).all()
+
+    return [
+        Ship(
+            id=r.id,
+            created_at=r.created_at,
+            company_id=r.company_id,
+            name=r.name,
+            code=r.code,
+            operator=r.operator,
+            decks=r.decks,
+            status=r.status,
+            amenities=[Amenity(**a) for a in (r.amenities or [])],
+            maintenance_records=[MaintenanceRecord(**m) for m in (r.maintenance_records or [])],
+        )
+        for r in rows
+    ]
 
 
 @app.get("/companies/{company_id}/ships", response_model=list[Ship])
 def list_company_ships(company_id: str):
-    if company_id not in _COMPANIES:
-        raise HTTPException(status_code=404, detail="Company not found")
-    return [s for s in _SHIPS.values() if s.company_id == company_id]
+    # will raise if company missing
+    _ = get_company(company_id)
+    return list_ships(company_id=company_id)
 
 
 @app.get("/ships/{ship_id}", response_model=Ship)
 def get_ship(ship_id: str):
-    ship = _SHIPS.get(ship_id)
-    if not ship:
+    with session() as s:
+        r = s.get(ShipRow, ship_id)
+    if not r:
         raise HTTPException(status_code=404, detail="Ship not found")
-    return ship
+    return Ship(
+        id=r.id,
+        created_at=r.created_at,
+        company_id=r.company_id,
+        name=r.name,
+        code=r.code,
+        operator=r.operator,
+        decks=r.decks,
+        status=r.status,
+        amenities=[Amenity(**a) for a in (r.amenities or [])],
+        maintenance_records=[MaintenanceRecord(**m) for m in (r.maintenance_records or [])],
+    )
 
 
 class ShipPatch(BaseModel):
@@ -151,13 +233,24 @@ def patch_ship(
     payload: ShipPatch,
     _principal=Depends(require_roles("staff", "admin")),
 ):
-    ship = _SHIPS.get(ship_id)
-    if not ship:
-        raise HTTPException(status_code=404, detail="Ship not found")
+    with session() as s:
+        r = s.get(ShipRow, ship_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Ship not found")
 
-    updated = ship.model_copy(update={k: v for k, v in payload.model_dump().items() if v is not None})
-    _SHIPS[ship_id] = updated
-    return updated
+        if payload.name is not None:
+            r.name = payload.name
+        if payload.operator is not None:
+            r.operator = payload.operator
+        if payload.decks is not None:
+            r.decks = payload.decks
+        if payload.status is not None:
+            r.status = payload.status
+
+        s.add(r)
+        s.commit()
+
+    return get_ship(ship_id)
 
 
 @app.post("/ships/{ship_id}/amenities", response_model=Ship)
@@ -166,13 +259,18 @@ def add_amenity(
     amenity: Amenity,
     _principal=Depends(require_roles("staff", "admin")),
 ):
-    ship = _SHIPS.get(ship_id)
-    if not ship:
-        raise HTTPException(status_code=404, detail="Ship not found")
+    with session() as s:
+        r = s.get(ShipRow, ship_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Ship not found")
 
-    ship.amenities.append(amenity)
-    _SHIPS[ship_id] = ship
-    return ship
+        amenities = list(r.amenities or [])
+        amenities.append(amenity.model_dump())
+        r.amenities = amenities
+        s.add(r)
+        s.commit()
+
+    return get_ship(ship_id)
 
 
 @app.post("/ships/{ship_id}/maintenance-records", response_model=Ship)
@@ -181,11 +279,18 @@ def add_maintenance_record(
     record: MaintenanceRecord,
     _principal=Depends(require_roles("staff", "admin")),
 ):
-    ship = _SHIPS.get(ship_id)
-    if not ship:
-        raise HTTPException(status_code=404, detail="Ship not found")
+    with session() as s:
+        r = s.get(ShipRow, ship_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Ship not found")
 
-    ship.maintenance_records.append(record)
-    ship.status = "maintenance" if record.severity in ("medium", "high") else ship.status
-    _SHIPS[ship_id] = ship
-    return ship
+        records = list(r.maintenance_records or [])
+        records.append(record.model_dump())
+        r.maintenance_records = records
+        if record.severity in ("medium", "high"):
+            r.status = "maintenance"
+
+        s.add(r)
+        s.commit()
+
+    return get_ship(ship_id)

@@ -8,6 +8,7 @@ import aio_pika
 
 from .db import session
 from .models import BookingHistory
+from .tenancy import tenant_engine_for_company
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 EVENTS_EXCHANGE = os.getenv("EVENTS_EXCHANGE", "cruise.events")
@@ -37,11 +38,17 @@ async def start_consumer() -> None:
                     if etype not in {"booking.held", "booking.confirmed"}:
                         continue
 
+                    company_id = data.get("company_id")
+                    if not company_id:
+                        continue
+
                     booking_id = data.get("booking_id")
                     if not booking_id:
                         continue
 
-                    with session() as s:
+                    # Route to tenant DB by company_id (separate database per company)
+                    eng = tenant_engine_for_company(company_id)
+                    with session(eng) as s:
                         row = s.get(BookingHistory, booking_id)
                         if row is None:
                             row = BookingHistory(

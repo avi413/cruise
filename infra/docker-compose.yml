@@ -24,6 +24,8 @@ services:
     environment:
       SERVICE_NAME: ship-service
       JWT_SECRET: dev-secret-change-me
+      CONTROL_PLANE_DATABASE_URL: postgresql+psycopg://cruise:cruise@postgres:5432/cruise
+      POSTGRES_ADMIN_DSN: postgresql://cruise:cruise@postgres:5432/postgres
     ports:
       - "8001:8000"
 
@@ -40,12 +42,14 @@ services:
     environment:
       SERVICE_NAME: customer-service
       JWT_SECRET: dev-secret-change-me
-      DATABASE_URL: postgresql+psycopg://cruise:cruise@postgres:5432/cruise
+      CONTROL_PLANE_DATABASE_URL: postgresql+psycopg://cruise:cruise@postgres:5432/cruise
+      TENANT_DATABASE_URL_TEMPLATE: postgresql+psycopg://cruise:cruise@postgres:5432/{db}
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       EVENTS_EXCHANGE: cruise.events
     depends_on:
       - postgres
       - rabbitmq
+      - ship-service
     ports:
       - "8003:8000"
 
@@ -62,7 +66,8 @@ services:
     environment:
       SERVICE_NAME: booking-service
       JWT_SECRET: dev-secret-change-me
-      DATABASE_URL: postgresql+psycopg://cruise:cruise@postgres:5432/cruise
+      CONTROL_PLANE_DATABASE_URL: postgresql+psycopg://cruise:cruise@postgres:5432/cruise
+      TENANT_DATABASE_URL_TEMPLATE: postgresql+psycopg://cruise:cruise@postgres:5432/{db}
       PRICING_SERVICE_URL: http://pricing-service:8000
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       EVENTS_EXCHANGE: cruise.events
@@ -70,6 +75,7 @@ services:
       - postgres
       - rabbitmq
       - pricing-service
+      - ship-service
     ports:
       - "8005:8000"
 

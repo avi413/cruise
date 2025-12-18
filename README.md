@@ -61,6 +61,12 @@ Via Edge API:
 - List fleet: `GET /v1/companies/{company_id}/fleet`
 - Create ship: `POST /v1/ships`
 
+### Multi-tenancy (separate database per company)
+
+- Tenant-scoped services (currently **booking** and **customer/CRM**) require an `X-Company-Id` header.
+- `ship-service` is the **control plane**: it stores companies + ships and provisions a **new Postgres database** for each company (named like `tenant_<company_code>`).
+- Booking events include `company_id` so projections (CRM) land in the correct tenant database.
+
 ### Demo flow (quote → hold → confirm → notifications)
 
 1) **Create a sailing + ship** (optional, for browsing via Edge API)
