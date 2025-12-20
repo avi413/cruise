@@ -62,6 +62,35 @@ class StaffGroupMember(Base):
     group_id: Mapped[str] = mapped_column(String, ForeignKey("staff_groups.id"), index=True)
 
 
+class StaffUserPreference(Base):
+    """
+    Per-user preferences (tenant-scoped).
+
+    Intended for:
+    - agent-friendly UX defaults (language, currency)
+    - widget/dashboard layouts
+    - shortcut menus / saved searches (future)
+    """
+
+    __tablename__ = "staff_user_preferences"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_staff_user_preferences_user_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("staff_users.id"), index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    # Flexible payload so we can evolve without migrations.
+    # Example:
+    # {
+    #   "locale": "en",
+    #   "currency": "USD",
+    #   "dashboard": { "layout": [...], "widgets": {...} }
+    # }
+    preferences: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class Customer(Base):
     __tablename__ = "customers"
 

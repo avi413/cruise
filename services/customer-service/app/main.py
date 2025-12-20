@@ -16,7 +16,7 @@ from sqlalchemy import func, or_
 
 from .consumer import start_consumer
 from .db import session
-from .models import AuditLog, BookingHistory, Customer, StaffGroup, StaffGroupMember, StaffUser
+from .models import AuditLog, BookingHistory, Customer, StaffGroup, StaffGroupMember, StaffUser, StaffUserPreference
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
 
@@ -445,6 +445,82 @@ class StaffLoginIn(BaseModel):
 class PlatformLoginIn(BaseModel):
     email: str
     password: str
+
+
+def _load_or_create_user_prefs(tenant_engine, user_id: str) -> StaffUserPreference:
+    with session(tenant_engine) as s:
+        row = s.query(StaffUserPreference).filter(StaffUserPreference.user_id == user_id).first()
+        if row is not None:
+            return row
+        now = _now()
+        row = StaffUserPreference(
+            id=str(uuid4()),
+            user_id=user_id,
+            created_at=now,
+            updated_at=now,
+            preferences={
+                "locale": "en",
+                "currency": "USD",
+                "dashboard": {
+                    "layout": [],  # frontend-defined (widget grid / positions)
+                },
+            },
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        return row
+
+
+class StaffMePreferencesOut(BaseModel):
+    user_id: str
+    updated_at: datetime
+    preferences: dict
+
+
+class StaffMePreferencesPatch(BaseModel):
+    # Keep this intentionally flexible; the portal owns shape.
+    preferences: dict = Field(default_factory=dict)
+
+
+@app.get("/staff/me/preferences", response_model=StaffMePreferencesOut)
+def get_my_preferences(
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    user_id = str((principal or {}).get("sub") or "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    row = _load_or_create_user_prefs(tenant_engine, user_id)
+    return StaffMePreferencesOut(user_id=row.user_id, updated_at=row.updated_at, preferences=row.preferences or {})
+
+
+@app.patch("/staff/me/preferences", response_model=StaffMePreferencesOut)
+def patch_my_preferences(
+    payload: StaffMePreferencesPatch,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    user_id = str((principal or {}).get("sub") or "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    row = _load_or_create_user_prefs(tenant_engine, user_id)
+    with session(tenant_engine) as s:
+        row = s.get(StaffUserPreference, row.id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Preferences not found")
+
+        merged = dict(row.preferences or {})
+        # Shallow merge keeps API predictable; frontend can store nested objects under keys.
+        merged.update(dict(payload.preferences or {}))
+        row.preferences = merged
+        row.updated_at = _now()
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+
+    return StaffMePreferencesOut(user_id=row.user_id, updated_at=row.updated_at, preferences=row.preferences or {})
 
 
 class StaffGroupCreate(BaseModel):
