@@ -154,6 +154,12 @@ async def create_ship_cabin(ship_id: str, request: Request):
     return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins", request)
 
 
+@app.post("/v1/ships/{ship_id}/cabins/bulk")
+async def bulk_create_ship_cabins(ship_id: str, request: Request):
+    """Admin portal: bulk import cabins for a ship."""
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins/bulk", request)
+
+
 @app.patch("/v1/cabins/{cabin_id}")
 async def patch_ship_cabin(cabin_id: str, request: Request):
     return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request)

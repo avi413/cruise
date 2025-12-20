@@ -275,6 +275,27 @@ class CabinPatch(BaseModel):
     meta: dict | None = None
 
 
+class CabinBulkCreateItem(BaseModel):
+    cabin_no: str
+    deck: int = Field(default=0, ge=0)
+    category_id: str | None = None
+    category_code: str | None = Field(default=None, description="Optional alternative to category_id (ship-scoped)")
+    status: str = Field(default="active", description="active|inactive|maintenance")
+    accessories: list[str] = Field(default_factory=list)
+    meta: dict = Field(default_factory=dict)
+
+
+class CabinBulkCreateRequest(BaseModel):
+    items: list[CabinBulkCreateItem] = Field(min_length=1)
+    mode: Literal["skip_existing", "error_on_existing"] = "skip_existing"
+
+
+class CabinBulkCreateResult(BaseModel):
+    created: int
+    skipped: int
+    errors: list[dict]
+
+
 @app.get("/ships/{ship_id}/cabin-categories", response_model=list[CabinCategoryOut])
 def list_cabin_categories(ship_id: str):
     _ = get_ship(ship_id)
@@ -436,6 +457,80 @@ def create_cabin(
         accessories=list(row.accessories or []),
         meta=row.meta or {},
     )
+
+
+@app.post("/ships/{ship_id}/cabins/bulk", response_model=CabinBulkCreateResult)
+def bulk_create_cabins(
+    ship_id: str,
+    payload: CabinBulkCreateRequest,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    """
+    Bulk create cabins (for Excel/CSV imports).
+
+    - `mode=skip_existing`: if a cabin with the same cabin_no exists for the ship, skip it.
+    - `mode=error_on_existing`: treat existing cabin_no as an error.
+    """
+    _ = get_ship(ship_id)
+
+    # Preload category code -> id mapping for this ship (to support Excel files).
+    with session() as s:
+        cats = s.query(CabinCategory).filter(CabinCategory.ship_id == ship_id).all()
+        cat_by_code = {c.code: c.id for c in cats}
+
+        existing = s.query(Cabin.cabin_no).filter(Cabin.ship_id == ship_id).all()
+        existing_nos = {r[0] for r in existing}
+
+        created = 0
+        skipped = 0
+        errors: list[dict] = []
+
+        # Detect duplicates within upload.
+        seen: set[str] = set()
+
+        for idx, it in enumerate(payload.items):
+            cabin_no = (it.cabin_no or "").strip()
+            if not cabin_no:
+                errors.append({"index": idx, "cabin_no": it.cabin_no, "error": "cabin_no is required"})
+                continue
+            if cabin_no in seen:
+                errors.append({"index": idx, "cabin_no": cabin_no, "error": "duplicate cabin_no in upload"})
+                continue
+            seen.add(cabin_no)
+
+            if cabin_no in existing_nos:
+                if payload.mode == "error_on_existing":
+                    errors.append({"index": idx, "cabin_no": cabin_no, "error": "cabin already exists"})
+                else:
+                    skipped += 1
+                continue
+
+            category_id = it.category_id
+            if category_id is None and it.category_code:
+                code = it.category_code.strip()
+                if code:
+                    category_id = cat_by_code.get(code)
+                    if category_id is None:
+                        errors.append({"index": idx, "cabin_no": cabin_no, "error": f"unknown category_code: {code}"})
+                        continue
+
+            row = Cabin(
+                id=str(uuid4()),
+                ship_id=ship_id,
+                category_id=category_id,
+                cabin_no=cabin_no,
+                deck=int(it.deck or 0),
+                status=(it.status or "active").strip(),
+                accessories=list(it.accessories or []),
+                meta=it.meta or {},
+            )
+            s.add(row)
+            created += 1
+            existing_nos.add(cabin_no)
+
+        s.commit()
+
+    return CabinBulkCreateResult(created=created, skipped=skipped, errors=errors)
 
 
 @app.patch("/cabins/{cabin_id}", response_model=CabinOut)
