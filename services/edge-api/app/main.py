@@ -469,6 +469,26 @@ async def get_customer_bookings(customer_id: str, request: Request):
     return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/bookings", request)
 
 
+@app.get("/v1/customers/{customer_id}/passengers")
+async def list_customer_passengers(customer_id: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/passengers", request)
+
+
+@app.post("/v1/customers/{customer_id}/passengers")
+async def create_customer_passenger(customer_id: str, request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/passengers", request)
+
+
+@app.patch("/v1/passengers/{passenger_id}")
+async def patch_passenger(passenger_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/passengers/{passenger_id}", request)
+
+
+@app.delete("/v1/passengers/{passenger_id}")
+async def delete_passenger(passenger_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/passengers/{passenger_id}", request)
+
+
 @app.get("/v1/mobile/agenda")
 async def mobile_agenda(customer_id: str, sailing_id: str):
     """Mobile: very small "What's On Today" starter (stub).
