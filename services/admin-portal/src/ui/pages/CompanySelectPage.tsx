@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import { decodeJwt } from '../components/jwt'
 import { getToken, setCompany, setToken, StoredCompany } from '../components/storage'
+import { applyCompanyTheme, fetchCompanySettings } from '../components/theme'
 
 type Company = { id: string; name: string; code: string; created_at: string; tenant_db?: string }
 
@@ -18,6 +19,8 @@ export function CompanySelectPage(props: { apiBase: string }) {
   const endpoint = useMemo(() => `/v1/companies`, [])
 
   useEffect(() => {
+    // This page is the entry point; ensure we start from a neutral theme.
+    applyCompanyTheme(null)
     let cancelled = false
     setBusy(true)
     setErr(null)
@@ -39,6 +42,10 @@ export function CompanySelectPage(props: { apiBase: string }) {
   function choose(c: Company) {
     const stored: StoredCompany = { id: c.id, name: c.name, code: c.code }
     setCompany(stored)
+    // Apply tenant branding immediately; don't block navigation if it fails.
+    fetchCompanySettings(props.apiBase, c.id)
+      .then((s) => applyCompanyTheme(s))
+      .catch(() => applyCompanyTheme(null))
     const claims = decodeJwt(getToken())
     const isPlatform = Boolean(claims?.platform)
     if (!isPlatform) {
@@ -115,7 +122,7 @@ export function CompanySelectPage(props: { apiBase: string }) {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#0b1220',
+    background: 'var(--csp-shell-bg, #0b1220)',
     color: '#e6edf3',
     display: 'grid',
     placeItems: 'center',
@@ -154,8 +161,8 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     padding: '10px 12px',
     borderRadius: 10,
-    border: '1px solid rgba(56,139,253,0.55)',
-    background: 'rgba(56,139,253,0.22)',
+    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
+    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
     color: '#e6edf3',
     cursor: 'pointer',
     fontWeight: 900,

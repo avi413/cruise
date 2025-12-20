@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import { getCompany, setToken } from '../components/storage'
+import { applyCompanyTheme, fetchCompanySettings } from '../components/theme'
 
 export function LoginPage(props: { apiBase: string }) {
   const nav = useNavigate()
@@ -13,6 +14,24 @@ export function LoginPage(props: { apiBase: string }) {
   const [platformMode, setPlatformMode] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    if (platformMode || !company?.id) {
+      applyCompanyTheme(null)
+      return
+    }
+    fetchCompanySettings(props.apiBase, company.id)
+      .then((s) => {
+        if (!cancelled) applyCompanyTheme(s)
+      })
+      .catch(() => {
+        if (!cancelled) applyCompanyTheme(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.apiBase, company?.id, platformMode])
 
   async function submit() {
     setBusy(true)
@@ -42,7 +61,10 @@ export function LoginPage(props: { apiBase: string }) {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <div style={styles.title}>Sign in</div>
+        <div style={styles.title}>
+          <span style={styles.logo} aria-hidden />
+          <span>Sign in</span>
+        </div>
         <div style={styles.sub}>
           {platformMode ? 'Platform admin (all companies)' : company ? `${company.name} (${company.code})` : 'Select a company first'}
         </div>
@@ -89,7 +111,7 @@ export function LoginPage(props: { apiBase: string }) {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#0b1220',
+    background: 'var(--csp-shell-bg, #0b1220)',
     color: '#e6edf3',
     display: 'grid',
     placeItems: 'center',
@@ -103,8 +125,19 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(255,255,255,0.04)',
     padding: 18,
   },
-  title: { fontSize: 22, fontWeight: 900 },
+  title: { fontSize: 22, fontWeight: 900, display: 'flex', gap: 10, alignItems: 'center' },
   sub: { marginTop: 6, color: 'rgba(230,237,243,0.72)', fontSize: 13 },
+  logo: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundImage: 'var(--csp-logo-url)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    flex: '0 0 auto',
+  },
   form: { marginTop: 14, display: 'grid', gap: 10 },
   label: { display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' },
   input: {
@@ -117,8 +150,8 @@ const styles: Record<string, React.CSSProperties> = {
   primaryBtn: {
     padding: '10px 12px',
     borderRadius: 10,
-    border: '1px solid rgba(56,139,253,0.55)',
-    background: 'rgba(56,139,253,0.22)',
+    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
+    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
     color: '#e6edf3',
     cursor: 'pointer',
     fontWeight: 900,
