@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
+import { fetchCompanySettings } from '../components/theme'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../components/ui'
 
 type OverridesOut = {
@@ -33,6 +34,7 @@ export function PricingPage(props: { apiBase: string }) {
   const [catCode, setCatCode] = useState('CO3')
   const [catPriceType, setCatPriceType] = useState('regular')
   const [catCurrency, setCatCurrency] = useState('USD')
+  const [defaultCurrency, setDefaultCurrency] = useState('USD')
   const [catMinGuests, setCatMinGuests] = useState(2)
   // Display/edit in major currency units (e.g. 300.00 EUR), send cents to API.
   const [catPricePerPerson, setCatPricePerPerson] = useState(1200)
@@ -44,6 +46,24 @@ export function PricingPage(props: { apiBase: string }) {
 
   const companyId = company?.id || null
   const listEndpoint = useMemo(() => `/v1/pricing/overrides`, [])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!companyId) return
+    fetchCompanySettings(props.apiBase, companyId)
+      .then((s) => {
+        if (cancelled) return
+        const cur = String(s?.localization?.default_currency || 'USD').trim().toUpperCase() || 'USD'
+        setDefaultCurrency(cur)
+        setCatCurrency((prev) => (prev === 'USD' ? cur : prev))
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultCurrency('USD')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.apiBase, companyId])
 
   async function refresh() {
     setBusy(true)
@@ -128,6 +148,7 @@ export function PricingPage(props: { apiBase: string }) {
           category_code: catCode.trim().toUpperCase(),
           price_type: catPriceType.trim().toLowerCase() || 'regular',
           currency: catCurrency.trim().toUpperCase() || 'USD',
+          currency: catCurrency.trim().toUpperCase() || defaultCurrency,
           min_guests: catMinGuests,
           price_per_person: pricePerPersonCents,
           effective_start_date: catStartDate.trim() || null,

@@ -9,6 +9,13 @@ export type CompanyBranding = {
   email_from_name?: string | null
   email_from_address?: string | null
   email_templates?: Record<string, unknown>
+  // UI theme builder (stored per company).
+  ui_theme_active_id?: string | null
+  ui_themes?: Array<{
+    id?: string | null
+    name?: string | null
+    tokens?: Record<string, string | null | undefined>
+  }>
 }
 
 export type CompanyLocalization = {
@@ -57,6 +64,121 @@ export function resetThemeToDefaults() {
   root.style.removeProperty('--csp-shell-bg')
   root.style.removeProperty('--csp-logo-url')
   root.style.removeProperty('--csp-display-name')
+  // Portal UI theme tokens (optional).
+  root.style.removeProperty('--csp-shell-bg-base')
+  root.style.removeProperty('--csp-surface-bg')
+  root.style.removeProperty('--csp-surface-2-bg')
+  root.style.removeProperty('--csp-border')
+  root.style.removeProperty('--csp-border-strong')
+  root.style.removeProperty('--csp-text')
+  root.style.removeProperty('--csp-muted')
+  root.style.removeProperty('--csp-input-bg')
+  root.style.removeProperty('--csp-input-border')
+  root.style.removeProperty('--csp-chip-bg')
+}
+
+export type PortalThemeTokens = {
+  shell_bg_base: string
+  surface_bg: string
+  surface_2_bg: string
+  border: string
+  border_strong: string
+  text: string
+  muted: string
+  input_bg: string
+  input_border: string
+  chip_bg: string
+}
+
+export type PortalTheme = { id: string; name: string; builtIn: boolean; tokens: PortalThemeTokens }
+
+export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
+  {
+    id: 'dark',
+    name: 'Dark',
+    builtIn: true,
+    tokens: {
+      shell_bg_base: '#0b1220',
+      surface_bg: 'rgba(255,255,255,0.04)',
+      surface_2_bg: 'rgba(0,0,0,0.18)',
+      border: 'rgba(255,255,255,0.10)',
+      border_strong: 'rgba(255,255,255,0.12)',
+      text: '#e6edf3',
+      muted: 'rgba(230,237,243,0.70)',
+      input_bg: 'rgba(0,0,0,0.25)',
+      input_border: 'rgba(255,255,255,0.12)',
+      chip_bg: 'rgba(0,0,0,0.18)',
+    },
+  },
+  {
+    id: 'light',
+    name: 'Light',
+    builtIn: true,
+    tokens: {
+      shell_bg_base: '#f6f8fa',
+      surface_bg: 'rgba(255,255,255,0.92)',
+      surface_2_bg: 'rgba(0,0,0,0.04)',
+      border: 'rgba(27,31,36,0.14)',
+      border_strong: 'rgba(27,31,36,0.22)',
+      text: '#24292f',
+      muted: 'rgba(36,41,47,0.70)',
+      input_bg: 'rgba(255,255,255,0.95)',
+      input_border: 'rgba(27,31,36,0.22)',
+      chip_bg: 'rgba(0,0,0,0.04)',
+    },
+  },
+]
+
+function normalizeThemeId(s: unknown): string {
+  const v = String(s || '').trim()
+  return v || 'dark'
+}
+
+export function resolvePortalTheme(settings: CompanySettings | null | undefined): PortalTheme {
+  const activeId = normalizeThemeId(settings?.branding?.ui_theme_active_id || 'dark')
+  const custom = (settings?.branding?.ui_themes || [])
+    .map((t) => {
+      const id = String(t?.id || '').trim()
+      const name = String(t?.name || '').trim()
+      const tokens = (t?.tokens || {}) as Record<string, string | null | undefined>
+      if (!id || !name) return null
+      // Merge tokens over the dark defaults to stay resilient to missing fields.
+      const base = DEFAULT_PORTAL_THEMES[0].tokens
+      const merged: PortalThemeTokens = {
+        shell_bg_base: String(tokens.shell_bg_base || base.shell_bg_base),
+        surface_bg: String(tokens.surface_bg || base.surface_bg),
+        surface_2_bg: String(tokens.surface_2_bg || base.surface_2_bg),
+        border: String(tokens.border || base.border),
+        border_strong: String(tokens.border_strong || base.border_strong),
+        text: String(tokens.text || base.text),
+        muted: String(tokens.muted || base.muted),
+        input_bg: String(tokens.input_bg || base.input_bg),
+        input_border: String(tokens.input_border || base.input_border),
+        chip_bg: String(tokens.chip_bg || base.chip_bg),
+      }
+      return { id, name, builtIn: false, tokens: merged } as PortalTheme
+    })
+    .filter(Boolean) as PortalTheme[]
+
+  const all = [...DEFAULT_PORTAL_THEMES, ...custom]
+  return all.find((t) => t.id === activeId) || DEFAULT_PORTAL_THEMES[0]
+}
+
+export function applyPortalTheme(theme: PortalTheme | PortalThemeTokens | null | undefined) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  if (!theme) return
+  const tokens: PortalThemeTokens = (theme as any).tokens ? (theme as any).tokens : (theme as any)
+  root.style.setProperty('--csp-shell-bg-base', tokens.shell_bg_base)
+  root.style.setProperty('--csp-surface-bg', tokens.surface_bg)
+  root.style.setProperty('--csp-surface-2-bg', tokens.surface_2_bg)
+  root.style.setProperty('--csp-border', tokens.border)
+  root.style.setProperty('--csp-border-strong', tokens.border_strong)
+  root.style.setProperty('--csp-text', tokens.text)
+  root.style.setProperty('--csp-muted', tokens.muted)
+  root.style.setProperty('--csp-input-bg', tokens.input_bg)
+  root.style.setProperty('--csp-input-border', tokens.input_border)
+  root.style.setProperty('--csp-chip-bg', tokens.chip_bg)
 }
 
 export function applyCompanyTheme(settings: CompanySettings | null | undefined) {
@@ -65,6 +187,9 @@ export function applyCompanyTheme(settings: CompanySettings | null | undefined) 
     resetThemeToDefaults()
     return
   }
+
+  // Apply portal (shell/UI) theme first; branding can override parts (logo/bg/primary).
+  applyPortalTheme(resolvePortalTheme(settings))
 
   const branding = settings.branding || {}
   const root = document.documentElement
@@ -87,7 +212,8 @@ export function applyCompanyTheme(settings: CompanySettings | null | undefined) 
       `linear-gradient(180deg, rgba(11,18,32,0.92) 0%, rgba(11,18,32,0.92) 100%), url("${bgUrl}") center/cover fixed`,
     )
   } else {
-    root.style.setProperty('--csp-shell-bg', '#0b1220')
+    // Fallback to the portal theme's base background.
+    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #0b1220)')
   }
 
   const logoUrl = (branding.logo_url || '').trim()
