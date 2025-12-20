@@ -93,7 +93,12 @@ export function Shell(props: { apiBase: string }) {
           ) : null}
           {canSailings ? (
             <NavLink to="/app/sailings" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
-              Sailings & Itineraries
+              Sailings
+            </NavLink>
+          ) : null}
+          {canSailings ? (
+            <NavLink to="/app/itineraries" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
+              Itineraries
             </NavLink>
           ) : null}
           {canFleet ? (

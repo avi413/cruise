@@ -4,11 +4,23 @@ import { apiFetch } from '../api/client'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel } from '../components/ui'
 
 type CruiseItem = { sailing: any; ship: any }
+type Itinerary = { id: string; code?: string | null; titles?: Record<string, string> }
+
+function pickTitle(titles: Record<string, string> | undefined, preferred: string[]): string {
+  const t = titles || {}
+  for (const k of preferred) {
+    const v = t[k]
+    if (v) return v
+  }
+  const first = Object.values(t)[0]
+  return first || '—'
+}
 
 export function CruisesPage(props: { apiBase: string }) {
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [items, setItems] = useState<CruiseItem[]>([])
+  const [itinerariesById, setItinerariesById] = useState<Record<string, Itinerary>>({})
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -20,6 +32,10 @@ export function CruisesPage(props: { apiBase: string }) {
     try {
       const r = await apiFetch<{ items: CruiseItem[] }>(props.apiBase, endpoint, { auth: false, tenant: false })
       setItems(r.items || [])
+      const its = await apiFetch<Itinerary[]>(props.apiBase, `/v1/itineraries`, { auth: false, tenant: false })
+      const map: Record<string, Itinerary> = {}
+      for (const i of its || []) map[i.id] = i
+      setItinerariesById(map)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -38,10 +54,12 @@ export function CruisesPage(props: { apiBase: string }) {
     return items.filter((x) => {
       const s = x?.sailing || {}
       const ship = x?.ship || {}
+      const it = itinerariesById?.[String(s.itinerary_id || '')]
       const hay = [
         s.code,
         s.id,
         s.ship_id,
+        s.itinerary_id,
         s.start_date,
         s.end_date,
         s.embark_port_code,
@@ -49,13 +67,15 @@ export function CruisesPage(props: { apiBase: string }) {
         ship.name,
         ship.code,
         ship.id,
+        it?.code,
+        pickTitle(it?.titles as any, ['en', 'ar']),
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
       return hay.includes(needle)
     })
-  }, [items, q])
+  }, [items, itinerariesById, q])
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -90,6 +110,7 @@ export function CruisesPage(props: { apiBase: string }) {
                 <th style={tableStyles.th}>Sailing</th>
                 <th style={tableStyles.th}>Dates</th>
                 <th style={tableStyles.th}>Ports</th>
+                <th style={tableStyles.th}>Itinerary</th>
                 <th style={tableStyles.th}>Ship</th>
                 <th style={tableStyles.th}></th>
               </tr>
@@ -98,6 +119,7 @@ export function CruisesPage(props: { apiBase: string }) {
               {filtered.map((x) => {
                 const s = x?.sailing || {}
                 const ship = x?.ship || {}
+                const it = itinerariesById?.[String(s.itinerary_id || '')]
                 return (
                   <tr key={String(s.id || Math.random())}>
                     <td style={tableStyles.td}>
@@ -111,6 +133,12 @@ export function CruisesPage(props: { apiBase: string }) {
                     </td>
                     <td style={tableStyles.tdMono}>
                       {String(s.embark_port_code || '—')} → {String(s.debark_port_code || '—')}
+                    </td>
+                    <td style={tableStyles.td}>
+                      <div style={{ fontWeight: 800 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</div>
+                      <div style={tableStyles.sub}>
+                        id <Mono>{String(s.itinerary_id || '—')}</Mono>
+                      </div>
                     </td>
                     <td style={tableStyles.td}>
                       <div style={{ fontWeight: 800 }}>{ship?.name || '—'}</div>
@@ -133,7 +161,7 @@ export function CruisesPage(props: { apiBase: string }) {
               })}
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={tableStyles.empty}>
+                  <td colSpan={6} style={tableStyles.empty}>
                     {busy ? 'Loading…' : 'No results.'}
                   </td>
                 </tr>

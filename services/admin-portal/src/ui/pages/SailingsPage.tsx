@@ -13,10 +13,12 @@ type Sailing = {
   status: string
   created_at: string
   port_stops?: any[]
+  itinerary_id?: string | null
 }
 
 type PortStop = { port_code: string; port_name?: string | null; arrival: string; departure: string }
 type Ship = { id: string; name: string; code: string }
+type Itinerary = { id: string; code?: string | null; titles?: Record<string, string>; stops?: any[] }
 
 export function SailingsPage(props: { apiBase: string }) {
   const company = getCompany()
@@ -25,6 +27,7 @@ export function SailingsPage(props: { apiBase: string }) {
   const [itinerary, setItinerary] = useState<PortStop[]>([])
   const [selected, setSelected] = useState<Sailing | null>(null)
   const [ships, setShips] = useState<Ship[]>([])
+  const [itineraries, setItineraries] = useState<Itinerary[]>([])
 
   const [code, setCode] = useState('')
   const [shipId, setShipId] = useState('')
@@ -50,6 +53,10 @@ export function SailingsPage(props: { apiBase: string }) {
 
   const listEndpoint = useMemo(() => `/v1/sailings`, [])
   const itineraryEndpoint = useMemo(() => (sailingId ? `/v1/sailings/${sailingId}/itinerary` : null), [sailingId])
+  const [newFromItineraryId, setNewFromItineraryId] = useState<string>('')
+  const [newFromItineraryStart, setNewFromItineraryStart] = useState<string>('')
+  const [newFromItineraryCode, setNewFromItineraryCode] = useState<string>('')
+  const [newFromItineraryShipId, setNewFromItineraryShipId] = useState<string>('')
 
   async function refresh() {
     const r = await apiFetch<Sailing[]>(props.apiBase, listEndpoint, { auth: false, tenant: false })
@@ -68,6 +75,16 @@ export function SailingsPage(props: { apiBase: string }) {
       .then((r) => setShips(r.items || []))
       .catch(() => setShips([]))
   }, [company?.id, props.apiBase])
+
+  useEffect(() => {
+    apiFetch<Itinerary[]>(props.apiBase, `/v1/itineraries`, { auth: false, tenant: false })
+      .then((r) => {
+        setItineraries(r || [])
+        if (!newFromItineraryId && (r || []).length) setNewFromItineraryId((r || [])[0].id)
+      })
+      .catch(() => setItineraries([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.apiBase])
 
   useEffect(() => {
     if (!itineraryEndpoint) {
@@ -122,6 +139,32 @@ export function SailingsPage(props: { apiBase: string }) {
       setEndDate('')
       setEmbark('')
       setDebark('')
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createFromItinerary() {
+    if (!newFromItineraryId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/itineraries/${encodeURIComponent(newFromItineraryId)}/sailings`, {
+        method: 'POST',
+        body: {
+          code: newFromItineraryCode,
+          ship_id: newFromItineraryShipId,
+          start_date: newFromItineraryStart,
+        },
+        auth: true,
+        tenant: false,
+      })
+      setNewFromItineraryCode('')
+      setNewFromItineraryShipId('')
+      setNewFromItineraryStart('')
       await refresh()
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
@@ -185,8 +228,8 @@ export function SailingsPage(props: { apiBase: string }) {
 
   return (
     <div style={styles.wrap}>
-      <div style={styles.hTitle}>Sailings & Itineraries</div>
-      <div style={styles.hSub}>Create sailings by date, then add port stops to build the itinerary.</div>
+      <div style={styles.hTitle}>Sailings</div>
+      <div style={styles.hSub}>Create sailings by date or generate them from a reusable itinerary. (Port-stops editing still supported per sailing.)</div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
@@ -235,6 +278,53 @@ export function SailingsPage(props: { apiBase: string }) {
             </div>
             <button style={styles.primaryBtn} disabled={busy || !code.trim() || !shipId.trim() || !startDate || !endDate || !embark.trim() || !debark.trim()} onClick={() => void createSailing()}>
               {busy ? 'Saving…' : 'Create sailing'}
+            </button>
+          </div>
+        </section>
+
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Create from itinerary</div>
+          <div style={styles.form}>
+            <label style={styles.label}>
+              Itinerary
+              <select style={styles.input} value={newFromItineraryId} onChange={(e) => setNewFromItineraryId(e.target.value)}>
+                {itineraries.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {(i.code || i.id).slice(0, 16)} · {(i.titles?.en || i.titles?.ar || Object.values(i.titles || {})[0] || '—') as any}
+                  </option>
+                ))}
+                {itineraries.length === 0 ? <option value="">(no itineraries)</option> : null}
+              </select>
+            </label>
+            <label style={styles.label}>
+              Sailing code
+              <input style={styles.input} value={newFromItineraryCode} onChange={(e) => setNewFromItineraryCode(e.target.value)} placeholder="S-2026-07-01-A" />
+            </label>
+            <label style={styles.label}>
+              Ship id
+              {ships.length ? (
+                <select style={styles.input} value={newFromItineraryShipId} onChange={(e) => setNewFromItineraryShipId(e.target.value)}>
+                  <option value="">(select)</option>
+                  {ships.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input style={styles.input} value={newFromItineraryShipId} onChange={(e) => setNewFromItineraryShipId(e.target.value)} placeholder="(from Fleet)" />
+              )}
+            </label>
+            <label style={styles.label}>
+              Start date
+              <input style={styles.input} value={newFromItineraryStart} onChange={(e) => setNewFromItineraryStart(e.target.value)} type="date" />
+            </label>
+            <button
+              style={styles.primaryBtn}
+              disabled={busy || !newFromItineraryId || !newFromItineraryCode.trim() || !newFromItineraryShipId.trim() || !newFromItineraryStart}
+              onClick={() => void createFromItinerary()}
+            >
+              {busy ? 'Saving…' : 'Create from itinerary'}
             </button>
           </div>
         </section>
@@ -297,6 +387,7 @@ export function SailingsPage(props: { apiBase: string }) {
                   <tr>
                     <th style={styles.th}>Code</th>
                     <th style={styles.th}>Ship</th>
+                    <th style={styles.th}>Itinerary</th>
                     <th style={styles.th}>Status</th>
                   </tr>
                 </thead>
@@ -305,12 +396,13 @@ export function SailingsPage(props: { apiBase: string }) {
                     <tr key={s.id}>
                       <td style={styles.tdMono}>{s.code}</td>
                       <td style={styles.tdMono}>{s.ship_id}</td>
+                      <td style={styles.tdMono}>{String(s.itinerary_id || '—')}</td>
                       <td style={styles.td}>{s.status}</td>
                     </tr>
                   ))}
                   {items.length === 0 ? (
                     <tr>
-                      <td style={styles.tdMuted} colSpan={3}>
+                      <td style={styles.tdMuted} colSpan={4}>
                         No sailings yet.
                       </td>
                     </tr>
