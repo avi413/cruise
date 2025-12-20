@@ -345,6 +345,16 @@ async def clear_pricing_overrides(company_id: str, request: Request):
     return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/overrides/{company_id}", request)
 
 
+@app.get("/v1/pricing/category-prices")
+async def list_pricing_category_prices(request: Request):
+    return await _proxy("GET", f"{PRICING_SERVICE_URL}/category-prices", request)
+
+
+@app.post("/v1/pricing/category-prices")
+async def upsert_pricing_category_price(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/category-prices", request)
+
+
 @app.post("/v1/holds")
 async def create_hold(request: Request):
     """Website/call-center: place a temporary hold/lock."""
