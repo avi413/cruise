@@ -285,6 +285,16 @@ async def upsert_inventory(sailing_id: str, request: Request):
     return await _proxy("POST", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}", request)
 
 
+@app.get("/v1/inventory/sailings/{sailing_id}/categories")
+async def get_category_inventory(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}/categories", request)
+
+
+@app.post("/v1/inventory/sailings/{sailing_id}/categories")
+async def upsert_category_inventory(sailing_id: str, request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}/categories", request)
+
+
 @app.post("/v1/sailings")
 async def create_sailing(request: Request):
     return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings", request)

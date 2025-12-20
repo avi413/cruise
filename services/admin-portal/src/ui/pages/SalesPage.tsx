@@ -19,6 +19,7 @@ type BookingOut = {
 type Sailing = { id: string; code: string; ship_id: string; start_date: string; end_date: string; embark_port_code: string; debark_port_code: string; status: string }
 type Customer = { id: string; email: string; first_name?: string | null; last_name?: string | null; loyalty_tier?: string | null; updated_at?: string }
 type CabinCategory = { id: string; ship_id: string; code: string; name: string; view: string; cabin_class: string; max_occupancy: number; meta: any }
+type CatInvRow = { sailing_id: string; category_code: string; capacity: number; held: number; confirmed: number; available: number }
 
 export function SalesPage(props: { apiBase: string }) {
   const [searchParams] = useSearchParams()
@@ -38,8 +39,11 @@ export function SalesPage(props: { apiBase: string }) {
   const [booking, setBooking] = useState<BookingOut | null>(null)
 
   const [invCabinType, setInvCabinType] = useState('inside')
+  const [invMode, setInvMode] = useState<'cabin_type' | 'category_code'>('cabin_type')
+  const [invCategoryCode, setInvCategoryCode] = useState('')
   const [invCap, setInvCap] = useState(100)
   const [inv, setInv] = useState<any[] | null>(null)
+  const [catInv, setCatInv] = useState<CatInvRow[] | null>(null)
 
   const [rateCabinType, setRateCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
   const [rateMultiplier, setRateMultiplier] = useState(1.0)
@@ -225,9 +229,19 @@ export function SalesPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/inventory/sailings/${sailingId}`, { method: 'POST', body: { cabin_type: invCabinType, capacity: invCap } })
-      const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
-      setInv(r)
+      if (invMode === 'category_code') {
+        const code = (invCategoryCode || cabinCategoryCode || '').trim().toUpperCase()
+        if (!code) throw new Error('Select a cabin category code to set category inventory.')
+        await apiFetch(props.apiBase, `/v1/inventory/sailings/${sailingId}/categories`, { method: 'POST', body: { category_code: code, capacity: invCap } })
+        const r = await apiFetch<CatInvRow[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}/categories`)
+        setCatInv(r)
+        setInv(null)
+      } else {
+        await apiFetch(props.apiBase, `/v1/inventory/sailings/${sailingId}`, { method: 'POST', body: { cabin_type: invCabinType, capacity: invCap } })
+        const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
+        setInv(r)
+        setCatInv(null)
+      }
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -240,8 +254,15 @@ export function SalesPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
-      setInv(r)
+      if (invMode === 'category_code' || cabinCategoryCode.trim()) {
+        const r = await apiFetch<CatInvRow[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}/categories`)
+        setCatInv(r)
+        setInv(null)
+      } else {
+        const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
+        setInv(r)
+        setCatInv(null)
+      }
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -476,11 +497,37 @@ export function SalesPage(props: { apiBase: string }) {
         <section style={styles.panel}>
           <div style={styles.panelTitle}>Inventory capacity</div>
           <div style={styles.form}>
+            <label style={styles.label}>
+              Inventory mode
+              <select style={styles.input} value={invMode} onChange={(e) => setInvMode(e.target.value as any)}>
+                <option value="cabin_type">Cabin type</option>
+                <option value="category_code">Cabin category (e.g. CO3)</option>
+              </select>
+            </label>
             <div style={styles.row2}>
-              <label style={styles.label}>
-                Cabin type
-                <input style={styles.input} value={invCabinType} onChange={(e) => setInvCabinType(e.target.value)} placeholder="inside" />
-              </label>
+              {invMode === 'category_code' ? (
+                <label style={styles.label}>
+                  Category code
+                  <select style={styles.input} value={invCategoryCode || cabinCategoryCode} onChange={(e) => setInvCategoryCode(e.target.value)}>
+                    <option value="">(select)</option>
+                    {cabinCats.map((c) => (
+                      <option key={c.id} value={c.code}>
+                        {c.code} · {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label style={styles.label}>
+                  Cabin type
+                  <select style={styles.input} value={invCabinType} onChange={(e) => setInvCabinType(e.target.value)}>
+                    <option value="inside">inside</option>
+                    <option value="oceanview">oceanview</option>
+                    <option value="balcony">balcony</option>
+                    <option value="suite">suite</option>
+                  </select>
+                </label>
+              )}
               <label style={styles.label}>
                 Capacity
                 <input style={styles.input} value={invCap} onChange={(e) => setInvCap(Number(e.target.value))} type="number" min={0} step={1} />
@@ -521,6 +568,40 @@ export function SalesPage(props: { apiBase: string }) {
                       <tr>
                         <td style={styles.tdMuted} colSpan={5}>
                           No inventory rows yet (place a hold or set capacity).
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            {catInv ? (
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Category</th>
+                      <th style={styles.th}>Capacity</th>
+                      <th style={styles.th}>Held</th>
+                      <th style={styles.th}>Confirmed</th>
+                      <th style={styles.th}>Available</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catInv.map((r) => (
+                      <tr key={r.category_code}>
+                        <td style={styles.tdMono}>{r.category_code}</td>
+                        <td style={styles.tdMono}>{r.capacity}</td>
+                        <td style={styles.tdMono}>{r.held}</td>
+                        <td style={styles.tdMono}>{r.confirmed}</td>
+                        <td style={styles.tdMono}>{r.available}</td>
+                      </tr>
+                    ))}
+                    {catInv.length === 0 ? (
+                      <tr>
+                        <td style={styles.tdMuted} colSpan={5}>
+                          No category inventory rows yet (set capacity).
                         </td>
                       </tr>
                     ) : null}

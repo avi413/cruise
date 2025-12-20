@@ -23,6 +23,25 @@ class SailingInventory(Base):
     confirmed: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class SailingCategoryInventory(Base):
+    """
+    Inventory bucket keyed by cabin category code (e.g. CO3).
+
+    This lets ops manage true category availability (not just cabin_type).
+    """
+
+    __tablename__ = "sailing_category_inventory"
+    __table_args__ = (UniqueConstraint("sailing_id", "category_code", name="uq_sailing_category_inventory_sailing_category"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    sailing_id: Mapped[str] = mapped_column(String, index=True)
+    category_code: Mapped[str] = mapped_column(String, index=True)  # e.g. CO3
+
+    capacity: Mapped[int] = mapped_column(Integer, default=0)
+    held: Mapped[int] = mapped_column(Integer, default=0)
+    confirmed: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Booking(Base):
     __tablename__ = "bookings"
 
@@ -40,6 +59,7 @@ class Booking(Base):
     sailing_id: Mapped[str] = mapped_column(String, index=True)
 
     cabin_type: Mapped[str] = mapped_column(String, index=True)
+    cabin_category_code: Mapped[str | None] = mapped_column(String, index=True)
     cabin_id: Mapped[str | None] = mapped_column(String, index=True)
 
     guests: Mapped[dict] = mapped_column(JSON)  # {"adult": 2, "child": 1, "infant": 0}
