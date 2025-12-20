@@ -13,10 +13,174 @@ app = FastAPI(
     description="Plans and manages sailings, itineraries, port stops, and operational logistics.",
 )
 
+#
+# Ports (multilingual)
+# --------------------
+# Starter repo uses in-memory storage. In production, ports should be persisted
+# (likely tenant-scoped) and referenced by stable codes (UN/LOCODE or internal).
+#
+
+
+def _norm_code(code: str) -> str:
+    c = (code or "").strip().upper()
+    if not c:
+        raise HTTPException(status_code=400, detail="port code is required")
+    return c
+
+
+def _clean_i18n_map(m: dict[str, str] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for k, v in (m or {}).items():
+        lk = (k or "").strip()
+        lv = (v or "").strip()
+        if lk and lv:
+            out[lk] = lv
+    return out
+
+
+def _parse_fallback_langs(fallback_langs: str | None) -> list[str]:
+    raw = fallback_langs or ""
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def _pick_i18n(m: dict[str, str] | None, preferred: list[str]) -> str | None:
+    mm = m or {}
+    for k in preferred:
+        v = mm.get(k)
+        if v:
+            return v
+    return next(iter(mm.values()), None)
+
+
+class PortCreate(BaseModel):
+    code: str = Field(description="UN/LOCODE or internal port code")
+    names: dict[str, str] = Field(default_factory=dict, description="Localized port names keyed by language code.")
+    cities: dict[str, str] = Field(default_factory=dict, description="Localized port cities keyed by language code.")
+    countries: dict[str, str] = Field(default_factory=dict, description="Localized port countries keyed by language code.")
+
+    @model_validator(mode="after")
+    def _validate(self) -> "PortCreate":
+        self.code = _norm_code(self.code)
+        self.names = _clean_i18n_map(self.names)
+        self.cities = _clean_i18n_map(self.cities)
+        self.countries = _clean_i18n_map(self.countries)
+        if not self.names:
+            raise ValueError("names must include at least one translation")
+        return self
+
+
+class PortPatch(BaseModel):
+    names: dict[str, str] | None = None
+    cities: dict[str, str] | None = None
+    countries: dict[str, str] | None = None
+
+
+class Port(PortCreate):
+    created_at: datetime
+    updated_at: datetime
+
+
+class PortDisplay(BaseModel):
+    code: str
+    name: str | None = None
+    city: str | None = None
+    country: str | None = None
+
+
+_PORTS: dict[str, Port] = {}
+
+
+def _port_display(code: str, *, lang: str | None, fallback_langs: str | None) -> PortDisplay | None:
+    c = _norm_code(code)
+    p = _PORTS.get(c)
+    if not p:
+        return None
+    preferred: list[str] = []
+    if lang and lang.strip():
+        preferred.append(lang.strip())
+    preferred.extend(_parse_fallback_langs(fallback_langs))
+    if "en" not in preferred:
+        preferred.append("en")
+    return PortDisplay(
+        code=p.code,
+        name=_pick_i18n(p.names, preferred),
+        city=_pick_i18n(p.cities, preferred),
+        country=_pick_i18n(p.countries, preferred),
+    )
+
+
+@app.get("/ports", response_model=list[Port])
+def list_ports(q: str | None = None):
+    items = list(_PORTS.values())
+    if q and q.strip():
+        qq = q.strip().lower()
+        items = [
+            p
+            for p in items
+            if qq in p.code.lower()
+            or any(qq in (v or "").lower() for v in (p.names or {}).values())
+            or any(qq in (v or "").lower() for v in (p.cities or {}).values())
+            or any(qq in (v or "").lower() for v in (p.countries or {}).values())
+        ]
+    items.sort(key=lambda x: x.code)
+    return items
+
+
+@app.post("/ports", response_model=Port)
+def create_port(payload: PortCreate, _principal=Depends(require_roles("staff", "admin"))):
+    code = _norm_code(payload.code)
+    if code in _PORTS:
+        raise HTTPException(status_code=409, detail="Port code already exists")
+    now = _utcnow()
+    port = Port(created_at=now, updated_at=now, **payload.model_dump())
+    _PORTS[code] = port
+    return port
+
+
+@app.get("/ports/{port_code}", response_model=Port)
+def get_port(port_code: str):
+    code = _norm_code(port_code)
+    p = _PORTS.get(code)
+    if not p:
+        raise HTTPException(status_code=404, detail="Port not found")
+    return p
+
+
+@app.patch("/ports/{port_code}", response_model=Port)
+def patch_port(port_code: str, payload: PortPatch, _principal=Depends(require_roles("staff", "admin"))):
+    code = _norm_code(port_code)
+    p = _PORTS.get(code)
+    if not p:
+        raise HTTPException(status_code=404, detail="Port not found")
+
+    if payload.names is not None:
+        p.names = {**(p.names or {}), **_clean_i18n_map(payload.names)}
+        if not p.names:
+            raise HTTPException(status_code=400, detail="names must include at least one translation")
+    if payload.cities is not None:
+        p.cities = {**(p.cities or {}), **_clean_i18n_map(payload.cities)}
+    if payload.countries is not None:
+        p.countries = {**(p.countries or {}), **_clean_i18n_map(payload.countries)}
+
+    p.updated_at = _utcnow()
+    _PORTS[code] = p
+    return p
+
+
+@app.delete("/ports/{port_code}")
+def delete_port(port_code: str, _principal=Depends(require_roles("staff", "admin"))):
+    code = _norm_code(port_code)
+    if code not in _PORTS:
+        raise HTTPException(status_code=404, detail="Port not found")
+    del _PORTS[code]
+    return {"status": "ok"}
+
 
 class PortStop(BaseModel):
     port_code: str = Field(description="UN/LOCODE or internal port code")
     port_name: str | None = None
+    port_city: str | None = None
+    port_country: str | None = None
     arrival: datetime
     departure: datetime
 
@@ -49,6 +213,10 @@ class ItineraryStop(BaseModel):
     # Port-specific fields (required when kind == 'port')
     port_code: str | None = None
     port_name: str | None = None
+    port: PortDisplay | None = Field(
+        default=None,
+        description="Computed port details (localized) based on port_code and query params (lang/fallback_langs).",
+    )
     arrival_time: str | None = Field(
         default=None,
         description="Optional arrival time (HH:MM). Used when generating sailings from this itinerary.",
@@ -72,6 +240,7 @@ class ItineraryStop(BaseModel):
         else:
             self.port_code = None
             self.port_name = None
+            self.port = None
             self.arrival_time = None
             self.departure_time = None
         return self
@@ -141,6 +310,14 @@ class SailingPatch(BaseModel):
 
 _DB: dict[str, Sailing] = {}
 _ITINERARIES: dict[str, Itinerary] = {}
+
+
+def _enrich_itinerary(itinerary: Itinerary, *, lang: str | None, fallback_langs: str | None) -> Itinerary:
+    it = itinerary.model_copy(deep=True)
+    for s in it.stops:
+        if s.kind == "port" and s.port_code:
+            s.port = _port_display(s.port_code, lang=lang, fallback_langs=fallback_langs)
+    return it
 
 
 @app.get("/health")
@@ -242,23 +419,24 @@ def create_itinerary(payload: ItineraryCreate, _principal=Depends(require_roles(
     now = _utcnow()
     itinerary = Itinerary(id=str(uuid4()), created_at=now, updated_at=now, **payload.model_dump())
     _ITINERARIES[itinerary.id] = itinerary
-    return itinerary
+    # Default to English enrichment for the admin portal; callers can request other languages via query params on GET.
+    return _enrich_itinerary(itinerary, lang="en", fallback_langs=None)
 
 
 @app.get("/itineraries", response_model=list[Itinerary])
-def list_itineraries(code: str | None = None):
+def list_itineraries(code: str | None = None, lang: str | None = None, fallback_langs: str | None = None):
     items = list(_ITINERARIES.values())
     if code is not None:
         items = [i for i in items if i.code == code]
-    return items
+    return [_enrich_itinerary(i, lang=lang, fallback_langs=fallback_langs) for i in items]
 
 
 @app.get("/itineraries/{itinerary_id}", response_model=Itinerary)
-def get_itinerary_entity(itinerary_id: str):
+def get_itinerary_entity(itinerary_id: str, lang: str | None = None, fallback_langs: str | None = None):
     itinerary = _ITINERARIES.get(itinerary_id)
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not found")
-    return itinerary
+    return _enrich_itinerary(itinerary, lang=lang, fallback_langs=fallback_langs)
 
 
 class ItineraryDates(BaseModel):
@@ -318,10 +496,19 @@ def create_sailing_from_itinerary(
         departure = datetime.combine(stop_date, dep_t)
         if departure <= arrival:
             raise HTTPException(status_code=400, detail="departure_time must be after arrival_time for port days")
+
+        # If a managed Port exists, use it to populate name/city/country unless explicitly overridden.
+        port_disp = _port_display(day.port_code or "", lang="en", fallback_langs=None) if day.port_code else None
+        port_name = (day.port_name or "").strip() or (port_disp.name if port_disp else None)
+        port_city = port_disp.city if port_disp else None
+        port_country = port_disp.country if port_disp else None
+
         port_stops.append(
             PortStop(
                 port_code=day.port_code or "",
-                port_name=day.port_name,
+                port_name=port_name,
+                port_city=port_city,
+                port_country=port_country,
                 arrival=arrival,
                 departure=departure,
             )
@@ -351,11 +538,26 @@ def list_related_sailings(itinerary_id: str):
 
 
 @app.get("/sailings/{sailing_id}/itinerary", response_model=list[PortStop])
-def get_itinerary(sailing_id: str):
+def get_itinerary(sailing_id: str, lang: str | None = None, fallback_langs: str | None = None):
     sailing = _DB.get(sailing_id)
     if not sailing:
         raise HTTPException(status_code=404, detail="Sailing not found")
-    return sailing.port_stops
+
+    out: list[PortStop] = []
+    for s in (sailing.port_stops or []):
+        disp = _port_display(s.port_code, lang=lang, fallback_langs=fallback_langs)
+        prefer_disp = bool(lang and lang.strip())
+        out.append(
+            PortStop(
+                port_code=s.port_code,
+                port_name=(disp.name if (prefer_disp and disp) else None) or s.port_name or (disp.name if disp else None),
+                port_city=(disp.city if (prefer_disp and disp) else None) or s.port_city or (disp.city if disp else None),
+                port_country=(disp.country if (prefer_disp and disp) else None) or s.port_country or (disp.country if disp else None),
+                arrival=s.arrival,
+                departure=s.departure,
+            )
+        )
+    return out
 
 
 @app.post("/sailings/{sailing_id}/port-stops", response_model=Sailing)
@@ -370,6 +572,19 @@ def add_port_stop(
 
     if stop.departure <= stop.arrival:
         raise HTTPException(status_code=400, detail="departure must be after arrival")
+
+    # Backfill managed port fields if available.
+    try:
+        disp = _port_display(stop.port_code, lang="en", fallback_langs=None)
+    except HTTPException:
+        disp = None
+    if disp:
+        if not (stop.port_name and stop.port_name.strip()):
+            stop.port_name = disp.name
+        if not (stop.port_city and stop.port_city.strip()):
+            stop.port_city = disp.city
+        if not (stop.port_country and stop.port_country.strip()):
+            stop.port_country = disp.country
 
     sailing.port_stops.append(stop)
     sailing.port_stops.sort(key=lambda s: s.arrival)

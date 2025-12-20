@@ -322,12 +322,45 @@ async def patch_sailing(sailing_id: str, request: Request):
 
 @app.get("/v1/sailings/{sailing_id}/itinerary")
 async def get_sailing_itinerary(sailing_id: str, request: Request):
-    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/itinerary", request)
+    q = request.url.query
+    url = f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/itinerary"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
 
 
 @app.post("/v1/sailings/{sailing_id}/port-stops")
 async def add_port_stop(sailing_id: str, request: Request):
     return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/port-stops", request)
+
+
+@app.get("/v1/ports")
+async def list_ports(request: Request):
+    q = request.url.query
+    url = f"{CRUISE_SERVICE_URL}/ports"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.post("/v1/ports")
+async def create_port(request: Request):
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/ports", request)
+
+
+@app.get("/v1/ports/{port_code}")
+async def get_port(port_code: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request)
+
+
+@app.patch("/v1/ports/{port_code}")
+async def patch_port(port_code: str, request: Request):
+    return await _proxy("PATCH", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request)
+
+
+@app.delete("/v1/ports/{port_code}")
+async def delete_port(port_code: str, request: Request):
+    return await _proxy("DELETE", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request)
 
 
 @app.get("/v1/itineraries")
@@ -346,7 +379,11 @@ async def create_itinerary(request: Request):
 
 @app.get("/v1/itineraries/{itinerary_id}")
 async def get_itinerary(itinerary_id: str, request: Request):
-    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}", request)
+    q = request.url.query
+    url = f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
 
 
 @app.get("/v1/itineraries/{itinerary_id}/compute")

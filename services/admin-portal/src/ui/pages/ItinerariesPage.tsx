@@ -13,6 +13,15 @@ type ItineraryStop = {
   labels?: Record<string, string> | null
 }
 
+type Port = {
+  code: string
+  names: Record<string, string>
+  cities: Record<string, string>
+  countries: Record<string, string>
+  created_at: string
+  updated_at: string
+}
+
 type Itinerary = {
   id: string
   code?: string | null
@@ -41,8 +50,18 @@ function nextDayOffset(stops: ItineraryStop[]): number {
   return Math.max(...stops.map((s) => s.day_offset)) + 1
 }
 
+function pickI18n(m: Record<string, string> | undefined, preferred: string[]): string {
+  const mm = m || {}
+  for (const k of preferred) {
+    const v = mm[k]
+    if (v) return v
+  }
+  return Object.values(mm)[0] || '—'
+}
+
 export function ItinerariesPage(props: { apiBase: string }) {
   const [items, setItems] = useState<Itinerary[]>([])
+  const [ports, setPorts] = useState<Port[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -73,6 +92,12 @@ export function ItinerariesPage(props: { apiBase: string }) {
     refresh().catch((e: any) => setErr(String(e?.detail || e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listEndpoint])
+
+  useEffect(() => {
+    apiFetch<Port[]>(props.apiBase, `/v1/ports`, { auth: false, tenant: false })
+      .then((r) => setPorts(r || []))
+      .catch(() => setPorts([]))
+  }, [props.apiBase])
 
   async function createItinerary() {
     setBusy(true)
@@ -267,16 +292,35 @@ export function ItinerariesPage(props: { apiBase: string }) {
                         />
 
                         {s.kind === 'port' ? (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                            <Input label="Port code" value={String(s.port_code || '')} onChange={(e) => setStop(idx, { port_code: e.target.value })} placeholder="ATH" />
-                            <Input
-                              label="Port name (optional)"
-                              value={String(s.port_name || '')}
-                              onChange={(e) => setStop(idx, { port_name: e.target.value })}
-                              placeholder="Athens"
-                            />
-                            <Input label="Arrival time (HH:MM)" value={String(s.arrival_time || '')} onChange={(e) => setStop(idx, { arrival_time: e.target.value })} placeholder="08:00" />
-                            <Input label="Departure time (HH:MM)" value={String(s.departure_time || '')} onChange={(e) => setStop(idx, { departure_time: e.target.value })} placeholder="18:00" />
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            {ports.length ? (
+                              <Select
+                                label="Port"
+                                value={String(s.port_code || '')}
+                                onChange={(e) => setStop(idx, { port_code: e.target.value, port_name: null })}
+                                hint="Pick a managed port code (localized name/city/country come from Ports screen)."
+                              >
+                                <option value="">(select)</option>
+                                {ports.map((p) => (
+                                  <option key={p.code} value={p.code}>
+                                    {p.code} · {pickI18n(p.names, ['en', 'ar'])} · {pickI18n(p.cities, ['en', 'ar'])}, {pickI18n(p.countries, ['en', 'ar'])}
+                                  </option>
+                                ))}
+                              </Select>
+                            ) : (
+                              <Input
+                                label="Port code"
+                                value={String(s.port_code || '')}
+                                onChange={(e) => setStop(idx, { port_code: e.target.value, port_name: null })}
+                                placeholder="ATH"
+                                hint="No managed ports yet. Create ports first to enable the picker."
+                              />
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                              <Input label="Arrival time (HH:MM)" value={String(s.arrival_time || '')} onChange={(e) => setStop(idx, { arrival_time: e.target.value })} placeholder="08:00" />
+                              <Input label="Departure time (HH:MM)" value={String(s.departure_time || '')} onChange={(e) => setStop(idx, { departure_time: e.target.value })} placeholder="18:00" />
+                            </div>
                           </div>
                         ) : (
                           <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.35 }}>
