@@ -286,6 +286,8 @@ export function ItinerariesPage(props: { apiBase: string }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  const [preferredLang, setPreferredLang] = useState('en')
+  const preferred = useMemo(() => [preferredLang, 'en', 'he'], [preferredLang])
   const [preferredLang, setPreferredLang] = useState('he')
   const preferred = useMemo(() => [preferredLang, 'he', 'en'], [preferredLang])
 
@@ -297,6 +299,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
   const [titles, setTitles] = useState<TitleRow[]>([
     { lang: 'he', text: '' },
     { lang: 'en', text: '' },
+    { lang: 'he', text: '' },
   ])
   const [stops, setStops] = useState<ItineraryStop[]>([
     {
@@ -396,6 +399,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
       setTitles([
         { lang: 'he', text: '' },
         { lang: 'en', text: '' },
+        { lang: 'he', text: '' },
       ])
       setStops([
         {
@@ -911,6 +915,14 @@ export function ItinerariesPage(props: { apiBase: string }) {
         }
         right={
           <div style={{ display: 'grid', gap: 12 }}>
+            <Panel title={`Existing itineraries (${items.length})`} subtitle="Select one to compute dates or to use when creating sailings.">
+              <div style={{ display: 'grid', gap: 10 }}>
+                <Select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+                  {items.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {String(i.code || i.id).slice(0, 18)} · {pickTitle(i.titles, preferred)}
+                    </option>
+                  ))}
             <Panel
               title={selectedItinerary ? 'Details' : 'Details'}
               subtitle={selectedItinerary ? 'Preview stops and compute end date for a given start date.' : 'Select an itinerary from the list to see details.'}
@@ -942,6 +954,21 @@ export function ItinerariesPage(props: { apiBase: string }) {
                     </div>
                   </div>
 
+                <Panel
+                  title="Stops preview"
+                  subtitle="Ports shown here are resolved from the Ports screen by port code."
+                  right={
+                    <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
+                      <option value="en">en</option>
+                      <option value="he">he</option>
+                      <option value="ar">ar</option>
+                      <option value="fr">fr</option>
+                      <option value="es">es</option>
+                      <option value={preferredLang}>{preferredLang}</option>
+                    </Select>
+                  }
+                >
+                  {selectedItinerary ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
                     <Input label="Compute end date from start date" type="date" value={computeStartDate} onChange={(e) => setComputeStartDate(e.target.value)} />
                     <Button variant="primary" disabled={busy || !selectedId || !computeStartDate} onClick={() => void computeDates()}>

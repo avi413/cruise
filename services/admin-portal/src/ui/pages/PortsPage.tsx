@@ -43,7 +43,10 @@ function portToRows(p: Port): Row[] {
   const sorted = Array.from(langs).sort()
   return sorted.length
     ? sorted.map((lang) => ({ lang, name: p.names?.[lang] || '', city: p.cities?.[lang] || '', country: p.countries?.[lang] || '' }))
-    : [{ lang: 'en', name: '', city: '', country: '' }]
+    : [
+        { lang: 'en', name: '', city: '', country: '' },
+        { lang: 'he', name: '', city: '', country: '' },
+      ]
 }
 
 export function PortsPage(props: { apiBase: string }) {
@@ -51,7 +54,7 @@ export function PortsPage(props: { apiBase: string }) {
   const [err, setErr] = useState<string | null>(null)
 
   const [preferredLang, setPreferredLang] = useState('en')
-  const preferred = useMemo(() => [preferredLang, 'en'], [preferredLang])
+  const preferred = useMemo(() => [preferredLang, 'en', 'he'], [preferredLang])
 
   const [q, setQ] = useState('')
   const [ports, setPorts] = useState<Port[]>([])
@@ -60,12 +63,15 @@ export function PortsPage(props: { apiBase: string }) {
   const [code, setCode] = useState('')
   const [rows, setRows] = useState<Row[]>([
     { lang: 'en', name: '', city: '', country: '' },
-    { lang: 'ar', name: '', city: '', country: '' },
+    { lang: 'he', name: '', city: '', country: '' },
   ])
 
   // edit
   const [selectedCode, setSelectedCode] = useState<string>('')
-  const [editRows, setEditRows] = useState<Row[]>([{ lang: 'en', name: '', city: '', country: '' }])
+  const [editRows, setEditRows] = useState<Row[]>([
+    { lang: 'en', name: '', city: '', country: '' },
+    { lang: 'he', name: '', city: '', country: '' },
+  ])
 
   async function loadPrefs() {
     try {
@@ -148,7 +154,7 @@ export function PortsPage(props: { apiBase: string }) {
       setCode('')
       setRows([
         { lang: 'en', name: '', city: '', country: '' },
-        { lang: 'ar', name: '', city: '', country: '' },
+        { lang: 'he', name: '', city: '', country: '' },
       ])
       await refresh()
     } catch (e: any) {
@@ -247,6 +253,7 @@ export function PortsPage(props: { apiBase: string }) {
                   <Input label="Search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Code / name / city / country…" />
                   <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
                     <option value="en">en</option>
+                    <option value="he">he</option>
                     <option value="ar">ar</option>
                     <option value="fr">fr</option>
                     <option value="es">es</option>
