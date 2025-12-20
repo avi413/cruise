@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
-import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, TwoCol } from '../components/ui'
+import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, Tabs } from '../components/ui'
 
 type Ship = {
   id: string
@@ -75,6 +75,14 @@ export function OnboardPage(props: { apiBase: string }) {
 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  type TabKey = 'capabilities' | 'restaurants' | 'shorex' | 'pricing'
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (typeof window === 'undefined') return 'capabilities'
+    const v = window.sessionStorage.getItem('onboard.tab')
+    if (v === 'capabilities' || v === 'restaurants' || v === 'shorex' || v === 'pricing') return v
+    return 'capabilities'
+  })
 
   const [fleet, setFleet] = useState<Ship[]>([])
   const [shipId, setShipId] = useState<string>('')
@@ -164,6 +172,14 @@ export function OnboardPage(props: { apiBase: string }) {
     refreshAll().catch((e: any) => setErr(String(e?.detail || e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem('onboard.tab', tab)
+    } catch {
+      // ignore storage failures (e.g. private mode)
+    }
+  }, [tab])
 
   useEffect(() => {
     refreshShipData().catch((e: any) => setErr(String(e?.detail || e?.message || e)))
@@ -400,8 +416,20 @@ export function OnboardPage(props: { apiBase: string }) {
         </div>
       </Panel>
 
-      <TwoCol
-        left={
+      <Tabs
+        idBase="onboard"
+        value={tab}
+        onChange={(k) => setTab(k as TabKey)}
+        tabs={[
+          { key: 'capabilities', label: 'Capabilities', badge: capabilities.length },
+          { key: 'restaurants', label: 'Restaurants', badge: restaurants.length },
+          { key: 'shorex', label: 'ShoreX', badge: shorex.length },
+          { key: 'pricing', label: 'Pricing' },
+        ]}
+      />
+
+      {tab === 'capabilities' ? (
+        <div id="onboard-panel-capabilities" role="tabpanel" aria-labelledby="onboard-tab-capabilities">
           <Panel title="Onboard capabilities" subtitle="Examples: wheelchair_accessible, halal_options, kids_friendly, vegan_options.">
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -450,8 +478,11 @@ export function OnboardPage(props: { apiBase: string }) {
               </div>
             </div>
           </Panel>
-        }
-        right={
+        </div>
+      ) : null}
+
+      {tab === 'restaurants' ? (
+        <div id="onboard-panel-restaurants" role="tabpanel" aria-labelledby="onboard-tab-restaurants">
           <Panel title="Restaurants" subtitle="Create dining venues and optionally tag them with capability codes.">
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -522,11 +553,11 @@ export function OnboardPage(props: { apiBase: string }) {
               </div>
             </div>
           </Panel>
-        }
-      />
+        </div>
+      ) : null}
 
-      <TwoCol
-        left={
+      {tab === 'shorex' ? (
+        <div id="onboard-panel-shorex" role="tabpanel" aria-labelledby="onboard-tab-shorex">
           <Panel title="Shore excursions (ShoreX)" subtitle="Port + duration + capability tags. Add a starting price on create (optional).">
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -613,8 +644,11 @@ export function OnboardPage(props: { apiBase: string }) {
               </div>
             </div>
           </Panel>
-        }
-        right={
+        </div>
+      ) : null}
+
+      {tab === 'pricing' ? (
+        <div id="onboard-panel-pricing" role="tabpanel" aria-labelledby="onboard-tab-pricing">
           <Panel title="ShoreX pricing" subtitle="Upsert per (currency, paxtype). This is where duration↔port pricing lives, since each ShoreX is tied to a port + duration.">
             <div style={{ display: 'grid', gap: 10 }}>
               <Select label="Excursion" value={priceShorexId} onChange={(e) => setPriceShorexId(e.target.value)}>
@@ -687,8 +721,8 @@ export function OnboardPage(props: { apiBase: string }) {
               ) : null}
             </div>
           </Panel>
-        }
-      />
+        </div>
+      ) : null}
     </div>
   )
 }
