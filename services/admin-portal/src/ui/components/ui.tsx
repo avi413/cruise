@@ -120,7 +120,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
     border: '1px solid rgba(255,255,255,0.12)',
   },
-  btnPrimary: { background: 'rgba(56,139,253,0.22)', border: '1px solid rgba(56,139,253,0.55)', color: '#e6edf3' },
+  btnPrimary: {
+    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
+    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
+    color: '#e6edf3',
+  },
   btnSecondary: { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e6edf3' },
   btnDanger: { background: 'rgba(248,81,73,0.12)', border: '1px solid rgba(248,81,73,0.35)', color: '#ffb4ae' },
   error: {

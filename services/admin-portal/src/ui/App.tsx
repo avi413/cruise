@@ -18,6 +18,7 @@ import { AuditPage } from './pages/AuditPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { UsersPage } from './pages/UsersPage'
 import { PreferencesPage } from './pages/PreferencesPage'
+import { CompanySettingsPage } from './pages/CompanySettingsPage'
 import { RequirePerm } from './components/RequirePerm'
 
 function envEdgeUrl(): string {
@@ -108,6 +109,7 @@ export function App() {
             }
           />
           <Route path="preferences" element={<PreferencesPage apiBase={apiBase} />} />
+          <Route path="company-settings" element={<CompanySettingsPage apiBase={apiBase} />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/company" replace />} />

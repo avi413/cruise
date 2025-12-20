@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { decodeJwt, permsFromClaims } from './jwt'
 import { getCompany, getToken, setCompany, setToken } from './storage'
+import { applyCompanyTheme, fetchCompanySettings } from './theme'
 
 export function Shell(props: { apiBase: string }) {
   const nav = useNavigate()
@@ -9,6 +10,7 @@ export function Shell(props: { apiBase: string }) {
   const token = getToken()
   const claims = decodeJwt(token)
   const role = claims?.role || 'unknown'
+  const isPlatform = Boolean(claims?.platform)
   const perms = permsFromClaims(claims)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNarrow, setIsNarrow] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 980 : false))
@@ -24,6 +26,25 @@ export function Shell(props: { apiBase: string }) {
   useEffect(() => {
     if (!isNarrow) setDrawerOpen(false)
   }, [isNarrow])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!company?.id) {
+      applyCompanyTheme(null)
+      return
+    }
+    fetchCompanySettings(props.apiBase, company.id)
+      .then((s) => {
+        if (!cancelled) applyCompanyTheme(s)
+      })
+      .catch(() => {
+        // Branding must never block the UI; fall back to defaults.
+        if (!cancelled) applyCompanyTheme(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.apiBase, company?.id])
 
   const canSales = useMemo(() => perms.has('sales.quote') || perms.has('sales.hold') || perms.has('sales.confirm'), [perms])
   const canCustomers = useMemo(() => perms.has('customers.read') || perms.has('customers.write'), [perms])
@@ -52,7 +73,10 @@ export function Shell(props: { apiBase: string }) {
             {drawerOpen ? 'Close' : 'Menu'}
           </button>
           <div style={styles.topbarBrand}>
-            <div style={styles.brandTop}>Cruise Operations Portal</div>
+            <div style={styles.brandTop}>
+              <span style={styles.logo} aria-hidden />
+              <span>Cruise Operations Portal</span>
+            </div>
             <div style={styles.brandSub}>{company ? `${company.name} (${company.code})` : 'No company selected'}</div>
           </div>
           <button style={styles.topbarSignout} onClick={logout}>
@@ -64,7 +88,10 @@ export function Shell(props: { apiBase: string }) {
       <aside style={{ ...styles.sidebar, display: isNarrow ? (drawerOpen ? 'block' : 'none') : 'block' }}>
         {!isNarrow ? (
           <div style={styles.brand}>
-            <div style={styles.brandTop}>Cruise Operations Portal</div>
+            <div style={styles.brandTop}>
+              <span style={styles.logo} aria-hidden />
+              <span>Cruise Operations Portal</span>
+            </div>
             <div style={styles.brandSub}>{company ? `${company.name} (${company.code})` : 'No company selected'}</div>
           </div>
         ) : null}
@@ -126,6 +153,11 @@ export function Shell(props: { apiBase: string }) {
               Audit log
             </NavLink>
           ) : null}
+          {isPlatform || role === 'admin' ? (
+            <NavLink to="/app/company-settings" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
+              Branding & localization
+            </NavLink>
+          ) : null}
         </nav>
 
         <div style={styles.card}>
@@ -161,7 +193,7 @@ const styles: Record<string, React.CSSProperties> = {
   shell: {
     display: 'grid',
     height: '100vh',
-    background: '#0b1220',
+    background: 'var(--csp-shell-bg, #0b1220)',
     color: '#e6edf3',
     fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial',
   },
@@ -211,8 +243,19 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 25,
   },
   brand: { marginBottom: 14 },
-  brandTop: { fontWeight: 800, fontSize: 18, letterSpacing: 0.2 },
+  brandTop: { fontWeight: 800, fontSize: 18, letterSpacing: 0.2, display: 'flex', gap: 10, alignItems: 'center' },
   brandSub: { color: 'rgba(230,237,243,0.7)', fontSize: 12, marginTop: 4 },
+  logo: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundImage: 'var(--csp-logo-url)',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    flex: '0 0 auto',
+  },
   nav: { display: 'grid', gap: 8, marginBottom: 16 },
   navBtn: {
     padding: '10px 12px',
@@ -226,9 +269,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   navActive: {
     padding: '10px 12px',
-    background: 'rgba(56,139,253,0.22)',
+    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
     color: '#e6edf3',
-    border: '1px solid rgba(56,139,253,0.55)',
+    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
     borderRadius: 10,
     cursor: 'pointer',
     textAlign: 'left',

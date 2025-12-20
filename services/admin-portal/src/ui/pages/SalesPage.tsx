@@ -20,6 +20,16 @@ type Sailing = { id: string; code: string; ship_id: string; start_date: string; 
 type Customer = { id: string; email: string; first_name?: string | null; last_name?: string | null; loyalty_tier?: string | null; updated_at?: string }
 type CabinCategory = { id: string; ship_id: string; code: string; name: string; view: string; cabin_class: string; max_occupancy: number; meta: any }
 type CatInvRow = { sailing_id: string; category_code: string; capacity: number; held: number; confirmed: number; available: number }
+type MePrefs = { user_id: string; updated_at: string; preferences: any }
+
+function formatMoney(cents: number, currency: string, locale: string): string {
+  const amount = Number(cents || 0) / 100
+  try {
+    return new Intl.NumberFormat(locale || 'en', { style: 'currency', currency: currency || 'USD' }).format(amount)
+  } catch {
+    return `${currency || 'USD'} ${amount.toFixed(2)}`
+  }
+}
 
 export function SalesPage(props: { apiBase: string }) {
   const [searchParams] = useSearchParams()
@@ -61,6 +71,19 @@ export function SalesPage(props: { apiBase: string }) {
   const [customerHits, setCustomerHits] = useState<Customer[]>([])
 
   const [cabinCats, setCabinCats] = useState<CabinCategory[]>([])
+
+  const [userLocale, setUserLocale] = useState('en')
+
+  useEffect(() => {
+    apiFetch<MePrefs>(props.apiBase, `/v1/staff/me/preferences`)
+      .then((r) => {
+        const loc = String(r?.preferences?.locale || 'en')
+        setUserLocale(loc)
+      })
+      .catch(() => {
+        /* ignore */
+      })
+  }, [props.apiBase])
 
   useEffect(() => {
     const sid = searchParams.get('sailing_id')
@@ -389,15 +412,15 @@ export function SalesPage(props: { apiBase: string }) {
             {quote ? (
               <div style={styles.card}>
                 <div style={styles.cardTitle}>
-                  Total: {quote.currency} {(quote.total / 100).toFixed(2)}
+                  Total: {formatMoney(quote.total, quote.currency, userLocale)}
                 </div>
                 <div style={styles.muted}>
-                  Subtotal {(quote.subtotal / 100).toFixed(2)} · Discounts {(quote.discounts / 100).toFixed(2)} · Taxes {(quote.taxes_fees / 100).toFixed(2)}
+                  Subtotal {formatMoney(quote.subtotal, quote.currency, userLocale)} · Discounts {formatMoney(quote.discounts, quote.currency, userLocale)} · Taxes {formatMoney(quote.taxes_fees, quote.currency, userLocale)}
                 </div>
                 <ul style={styles.ul}>
                   {quote.lines.map((l) => (
                     <li key={l.code} style={styles.li}>
-                      <span style={styles.mono}>{l.code}</span> — {l.description} ({(l.amount / 100).toFixed(2)})
+                      <span style={styles.mono}>{l.code}</span> — {l.description} ({formatMoney(l.amount, quote.currency, userLocale)})
                     </li>
                   ))}
                 </ul>
@@ -485,7 +508,7 @@ export function SalesPage(props: { apiBase: string }) {
                 </div>
                 <div style={styles.muted}>Hold expires: {booking.hold_expires_at || '—'}</div>
                 <div style={styles.muted}>
-                  Total: {booking.quote.currency} {(booking.quote.total / 100).toFixed(2)}
+                  Total: {formatMoney(booking.quote.total, booking.quote.currency, userLocale)}
                 </div>
               </div>
             ) : null}
