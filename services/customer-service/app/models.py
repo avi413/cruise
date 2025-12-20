@@ -88,3 +88,25 @@ class BookingHistory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
     meta: Mapped[dict] = mapped_column(JSON)
+
+
+class AuditLog(Base):
+    """
+    Tenant-scoped audit log for compliance.
+
+    Stored in the tenant DB (one DB per company), so no company_id column is needed.
+    """
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    actor_user_id: Mapped[str | None] = mapped_column(String, index=True)
+    actor_role: Mapped[str | None] = mapped_column(String, index=True)
+
+    action: Mapped[str] = mapped_column(String, index=True)  # e.g. "customer.create"
+    entity_type: Mapped[str] = mapped_column(String, index=True)  # e.g. "customer"
+    entity_id: Mapped[str | None] = mapped_column(String, index=True)
+
+    meta: Mapped[dict] = mapped_column(JSON)  # {before, after, request, ...}

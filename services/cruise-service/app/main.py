@@ -37,6 +37,16 @@ class Sailing(SailingCreate):
     port_stops: list[PortStop] = Field(default_factory=list)
 
 
+class SailingPatch(BaseModel):
+    code: str | None = None
+    ship_id: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    embark_port_code: str | None = None
+    debark_port_code: str | None = None
+    status: Literal["planned", "open", "closed", "cancelled"] | None = None
+
+
 _DB: dict[str, Sailing] = {}
 
 
@@ -69,6 +79,58 @@ def get_sailing(sailing_id: str):
     sailing = _DB.get(sailing_id)
     if not sailing:
         raise HTTPException(status_code=404, detail="Sailing not found")
+    return sailing
+
+
+@app.patch("/sailings/{sailing_id}", response_model=Sailing)
+def patch_sailing(
+    sailing_id: str,
+    payload: SailingPatch,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    sailing = _DB.get(sailing_id)
+    if not sailing:
+        raise HTTPException(status_code=404, detail="Sailing not found")
+
+    if payload.code is not None:
+        code = payload.code.strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="code cannot be blank")
+        # Ensure unique code across sailings (excluding self)
+        if any((sid != sailing_id and s.code == code) for (sid, s) in _DB.items()):
+            raise HTTPException(status_code=409, detail="Sailing code already exists")
+        sailing.code = code
+
+    if payload.ship_id is not None:
+        ship_id = payload.ship_id.strip()
+        if not ship_id:
+            raise HTTPException(status_code=400, detail="ship_id cannot be blank")
+        sailing.ship_id = ship_id
+
+    if payload.start_date is not None:
+        sailing.start_date = payload.start_date
+    if payload.end_date is not None:
+        sailing.end_date = payload.end_date
+
+    if sailing.end_date < sailing.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be on/after start_date")
+
+    if payload.embark_port_code is not None:
+        embark = payload.embark_port_code.strip()
+        if not embark:
+            raise HTTPException(status_code=400, detail="embark_port_code cannot be blank")
+        sailing.embark_port_code = embark
+
+    if payload.debark_port_code is not None:
+        debark = payload.debark_port_code.strip()
+        if not debark:
+            raise HTTPException(status_code=400, detail="debark_port_code cannot be blank")
+        sailing.debark_port_code = debark
+
+    if payload.status is not None:
+        sailing.status = payload.status
+
+    _DB[sailing_id] = sailing
     return sailing
 
 

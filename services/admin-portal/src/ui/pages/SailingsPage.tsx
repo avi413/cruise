@@ -20,6 +20,7 @@ export function SailingsPage(props: { apiBase: string }) {
   const [items, setItems] = useState<Sailing[]>([])
   const [sailingId, setSailingId] = useState<string>('')
   const [itinerary, setItinerary] = useState<PortStop[]>([])
+  const [selected, setSelected] = useState<Sailing | null>(null)
 
   const [code, setCode] = useState('')
   const [shipId, setShipId] = useState('')
@@ -27,6 +28,13 @@ export function SailingsPage(props: { apiBase: string }) {
   const [endDate, setEndDate] = useState('')
   const [embark, setEmbark] = useState('')
   const [debark, setDebark] = useState('')
+  const [status, setStatus] = useState<'planned' | 'open' | 'closed' | 'cancelled'>('planned')
+  const [editCode, setEditCode] = useState('')
+  const [editShipId, setEditShipId] = useState('')
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
+  const [editEmbark, setEditEmbark] = useState('')
+  const [editDebark, setEditDebark] = useState('')
 
   const [portCode, setPortCode] = useState('')
   const [portName, setPortName] = useState('')
@@ -60,6 +68,25 @@ export function SailingsPage(props: { apiBase: string }) {
       .catch((e) => setErr(String(e?.message || e)))
   }, [itineraryEndpoint, props.apiBase])
 
+  useEffect(() => {
+    if (!sailingId) {
+      setSelected(null)
+      return
+    }
+    apiFetch<Sailing>(props.apiBase, `/v1/sailings/${sailingId}`, { auth: false, tenant: false })
+      .then((s) => {
+        setSelected(s)
+        setStatus((s.status as any) || 'planned')
+        setEditCode(s.code || '')
+        setEditShipId(s.ship_id || '')
+        setEditStartDate(s.start_date || '')
+        setEditEndDate(s.end_date || '')
+        setEditEmbark(s.embark_port_code || '')
+        setEditDebark(s.debark_port_code || '')
+      })
+      .catch(() => setSelected(null))
+  }, [sailingId, props.apiBase])
+
   async function createSailing() {
     setBusy(true)
     setErr(null)
@@ -85,6 +112,35 @@ export function SailingsPage(props: { apiBase: string }) {
       setEmbark('')
       setDebark('')
       await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function updateSailing() {
+    if (!selected) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/sailings/${selected.id}`, {
+        method: 'PATCH',
+        body: {
+          code: editCode || null,
+          ship_id: editShipId || null,
+          start_date: editStartDate || null,
+          end_date: editEndDate || null,
+          embark_port_code: editEmbark || null,
+          debark_port_code: editDebark || null,
+          status,
+        },
+        auth: true,
+        tenant: false,
+      })
+      await refresh()
+      const s = await apiFetch<Sailing>(props.apiBase, `/v1/sailings/${selected.id}`, { auth: false, tenant: false })
+      setSelected(s)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -171,6 +227,48 @@ export function SailingsPage(props: { apiBase: string }) {
                 </option>
               ))}
             </select>
+            <div style={styles.row2}>
+              <label style={styles.label}>
+                Code
+                <input style={styles.input} value={editCode} onChange={(e) => setEditCode(e.target.value)} disabled={!selected} />
+              </label>
+              <label style={styles.label}>
+                Ship id
+                <input style={styles.input} value={editShipId} onChange={(e) => setEditShipId(e.target.value)} disabled={!selected} />
+              </label>
+            </div>
+            <div style={styles.row2}>
+              <label style={styles.label}>
+                Start date
+                <input style={styles.input} value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} type="date" disabled={!selected} />
+              </label>
+              <label style={styles.label}>
+                End date
+                <input style={styles.input} value={editEndDate} onChange={(e) => setEditEndDate(e.target.value)} type="date" disabled={!selected} />
+              </label>
+            </div>
+            <div style={styles.row2}>
+              <label style={styles.label}>
+                Embark port
+                <input style={styles.input} value={editEmbark} onChange={(e) => setEditEmbark(e.target.value)} disabled={!selected} />
+              </label>
+              <label style={styles.label}>
+                Debark port
+                <input style={styles.input} value={editDebark} onChange={(e) => setEditDebark(e.target.value)} disabled={!selected} />
+              </label>
+            </div>
+            <label style={styles.label}>
+              Status
+              <select style={styles.input} value={status} onChange={(e) => setStatus(e.target.value as any)} disabled={!selected}>
+                <option value="planned">planned</option>
+                <option value="open">open</option>
+                <option value="closed">closed</option>
+                <option value="cancelled">cancelled</option>
+              </select>
+            </label>
+            <button style={styles.primaryBtn} disabled={busy || !selected} onClick={() => void updateSailing()}>
+              {busy ? 'Saving…' : 'Update sailing'}
+            </button>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>

@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 
 type QuoteOut = { currency: string; subtotal: number; discounts: number; taxes_fees: number; total: number; lines: { code: string; description: string; amount: number }[] }
@@ -15,7 +16,11 @@ type BookingOut = {
   quote: QuoteOut
 }
 
+type Sailing = { id: string; code: string; ship_id: string; start_date: string; end_date: string; embark_port_code: string; debark_port_code: string; status: string }
+type Customer = { id: string; email: string; first_name?: string | null; last_name?: string | null; loyalty_tier?: string | null; updated_at?: string }
+
 export function SalesPage(props: { apiBase: string }) {
+  const [searchParams] = useSearchParams()
   const [sailingId, setSailingId] = useState('')
   const [sailingDate, setSailingDate] = useState('')
   const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
@@ -42,6 +47,72 @@ export function SalesPage(props: { apiBase: string }) {
 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  const [sailings, setSailings] = useState<Sailing[]>([])
+  const [sailingQ, setSailingQ] = useState('')
+
+  const [customerQ, setCustomerQ] = useState('')
+  const [customerHits, setCustomerHits] = useState<Customer[]>([])
+
+  useEffect(() => {
+    const sid = searchParams.get('sailing_id')
+    const bid = searchParams.get('booking_id')
+    const cid = searchParams.get('customer_id')
+    if (sid && !sailingId) setSailingId(sid)
+    if (bid && !bookingId) setBookingId(bid)
+    if (cid && !customerId) setCustomerId(cid)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
+
+  useEffect(() => {
+    // Auto-load booking when deep-linking from Notifications.
+    if (!bookingId.trim()) return
+    if (!searchParams.get('booking_id')) return
+    if (booking) return
+    loadBooking().catch(() => {
+      /* ignore */
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingId])
+
+  useEffect(() => {
+    apiFetch<Sailing[]>(props.apiBase, `/v1/sailings`, { auth: false, tenant: false })
+      .then((r) => setSailings(r || []))
+      .catch(() => {
+        /* ignore; the module still works with manual IDs */
+      })
+  }, [props.apiBase])
+
+  useEffect(() => {
+    if (!sailingId.trim()) return
+    loadInventory().catch(() => {
+      /* ignore */
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sailingId])
+
+  useEffect(() => {
+    const q = customerQ.trim()
+    if (!q) {
+      setCustomerHits([])
+      return
+    }
+    const t = window.setTimeout(() => {
+      const params = new URLSearchParams()
+      params.set('q', q)
+      params.set('limit', '10')
+      apiFetch<Customer[]>(props.apiBase, `/v1/customers?${params.toString()}`)
+        .then((r) => setCustomerHits(r || []))
+        .catch(() => setCustomerHits([]))
+    }, 250)
+    return () => window.clearTimeout(t)
+  }, [customerQ, props.apiBase])
+
+  const sailingOptions = useMemo(() => {
+    const needle = sailingQ.trim().toLowerCase()
+    if (!needle) return sailings
+    return sailings.filter((s) => `${s.code} ${s.start_date} ${s.end_date} ${s.ship_id} ${s.embark_port_code} ${s.debark_port_code}`.toLowerCase().includes(needle))
+  }, [sailings, sailingQ])
 
   function guestsList() {
     const guests: any[] = []
@@ -199,6 +270,30 @@ export function SalesPage(props: { apiBase: string }) {
           <div style={styles.panelTitle}>Quote</div>
           <div style={styles.form}>
             <label style={styles.label}>
+              Sailing (optional, for quick-fill)
+              <input style={styles.input} value={sailingQ} onChange={(e) => setSailingQ(e.target.value)} placeholder="Search sailings by code/date/port…" />
+            </label>
+            <label style={styles.label}>
+              Select sailing id (optional)
+              <select
+                style={styles.input}
+                value={sailingId}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setSailingId(v)
+                  const s = sailings.find((x) => x.id === v)
+                  if (s && !sailingDate) setSailingDate(s.start_date)
+                }}
+              >
+                <option value="">(none)</option>
+                {sailingOptions.slice(0, 150).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.code} · {s.start_date}→{s.end_date} · {s.embark_port_code}→{s.debark_port_code}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.label}>
               Sailing date (optional)
               <input style={styles.input} value={sailingDate} onChange={(e) => setSailingDate(e.target.value)} type="date" />
             </label>
@@ -267,8 +362,33 @@ export function SalesPage(props: { apiBase: string }) {
               <input style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder="(from Sailings)" />
             </label>
             <label style={styles.label}>
+              Customer search (email/name/id)
+              <input style={styles.input} value={customerQ} onChange={(e) => setCustomerQ(e.target.value)} placeholder="guest@example.com" />
+            </label>
+            {customerHits.length ? (
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>Matches</div>
+                <div style={styles.muted}>Click to select customer id.</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {customerHits.slice(0, 6).map((c) => (
+                    <button
+                      key={c.id}
+                      style={{ ...styles.secondaryBtn, textAlign: 'left' as const }}
+                      disabled={busy}
+                      onClick={() => {
+                        setCustomerId(c.id)
+                        setCustomerQ(c.email)
+                      }}
+                    >
+                      <span style={styles.mono}>{c.email}</span> — {([c.first_name, c.last_name].filter(Boolean).join(' ') || '—')} · <span style={styles.mono}>{c.id}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <label style={styles.label}>
               Customer id (optional)
-              <input style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="(from Customers)" />
+              <input style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="UUID" />
             </label>
 
             <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void placeHold()}>

@@ -101,12 +101,14 @@ services:
       CUSTOMER_SERVICE_URL: http://customer-service:8000
       BOOKING_SERVICE_URL: http://booking-service:8000
       PRICING_SERVICE_URL: http://pricing-service:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8000
     depends_on:
       - ship-service
       - cruise-service
       - customer-service
       - booking-service
       - pricing-service
+      - notification-service
     ports:
       - "8000:8000"
 
