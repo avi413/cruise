@@ -22,6 +22,8 @@ type Port = {
   updated_at: string
 }
 
+type MePrefs = { user_id: string; updated_at: string; preferences: any }
+
 type Itinerary = {
   id: string
   code?: string | null
@@ -65,6 +67,9 @@ export function ItinerariesPage(props: { apiBase: string }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  const [preferredLang, setPreferredLang] = useState('en')
+  const preferred = useMemo(() => [preferredLang, 'en'], [preferredLang])
+
   // create form
   const [code, setCode] = useState('')
   const [titles, setTitles] = useState<TitleRow[]>([
@@ -82,6 +87,25 @@ export function ItinerariesPage(props: { apiBase: string }) {
 
   const listEndpoint = useMemo(() => `/v1/itineraries`, [])
 
+  const portsByCode = useMemo(() => {
+    const m = new Map<string, Port>()
+    for (const p of ports) m.set(String(p.code || '').trim(), p)
+    return m
+  }, [ports])
+
+  const selectedItinerary = useMemo(() => items.find((i) => i.id === selectedId) || null, [items, selectedId])
+
+  async function loadPrefs() {
+    try {
+      const r = await apiFetch<MePrefs>(props.apiBase, `/v1/staff/me/preferences`)
+      const loc = String(r?.preferences?.locale || 'en').trim() || 'en'
+      setPreferredLang(loc)
+    } catch {
+      // prefs should never block screen
+      setPreferredLang('en')
+    }
+  }
+
   async function refresh() {
     const r = await apiFetch<Itinerary[]>(props.apiBase, listEndpoint, { auth: false, tenant: false })
     setItems(r || [])
@@ -89,6 +113,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
   }
 
   useEffect(() => {
+    loadPrefs().catch(() => null)
     refresh().catch((e: any) => setErr(String(e?.detail || e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listEndpoint])
@@ -202,6 +227,30 @@ export function ItinerariesPage(props: { apiBase: string }) {
 
   function removeTitleRow(idx: number) {
     setTitles((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  function portDisplayForCode(code: string | null | undefined): string {
+    const c = String(code || '').trim()
+    if (!c) return '—'
+    const p = portsByCode.get(c)
+    if (!p) return c
+    const name = pickI18n(p.names, preferred)
+    const city = pickI18n(p.cities, preferred)
+    const country = pickI18n(p.countries, preferred)
+    return `${p.code} · ${name} · ${city}, ${country}`
+  }
+
+  function itineraryPortsSummary(i: Itinerary): string {
+    const codes: string[] = []
+    for (const s of i.stops || []) {
+      if (s.kind !== 'port') continue
+      const c = String(s.port_code || '').trim()
+      if (!c) continue
+      if (!codes.includes(c)) codes.push(c)
+    }
+    if (!codes.length) return '—'
+    // keep it compact for the table
+    return codes.map((c) => portsByCode.get(c)?.code || c).join(' → ')
   }
 
   return (
@@ -385,6 +434,63 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   </div>
                 ) : null}
 
+                <Panel
+                  title="Stops preview"
+                  subtitle="Ports shown here are resolved from the Ports screen by port code."
+                  right={
+                    <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
+                      <option value="en">en</option>
+                      <option value="ar">ar</option>
+                      <option value="fr">fr</option>
+                      <option value="es">es</option>
+                      <option value={preferredLang}>{preferredLang}</option>
+                    </Select>
+                  }
+                >
+                  {selectedItinerary ? (
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {(selectedItinerary.stops || []).map((s, idx) => (
+                        <div
+                          key={`${selectedItinerary.id}-${s.day_offset}-${idx}`}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '70px 1fr',
+                            gap: 10,
+                            padding: '10px 12px',
+                            border: '1px solid rgba(255,255,255,0.10)',
+                            borderRadius: 12,
+                            background: 'rgba(255,255,255,0.03)',
+                          }}
+                        >
+                          <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: 12, color: 'rgba(230,237,243,0.75)' }}>
+                            Day {s.day_offset + 1}
+                          </div>
+                          <div style={{ display: 'grid', gap: 4 }}>
+                            <div style={{ fontWeight: 800 }}>
+                              <Mono>{s.kind}</Mono>
+                              {s.kind === 'port' ? (
+                                <span style={{ marginLeft: 8 }}>{portDisplayForCode(s.port_code) || '—'}</span>
+                              ) : (
+                                <span style={{ marginLeft: 8, color: 'rgba(230,237,243,0.70)' }}>Sea day</span>
+                              )}
+                            </div>
+                            {s.kind === 'port' ? (
+                              <div style={{ fontSize: 12, color: 'rgba(230,237,243,0.70)' }}>
+                                Arrive: <Mono>{String(s.arrival_time || '—')}</Mono> · Depart: <Mono>{String(s.departure_time || '—')}</Mono>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                      {(!selectedItinerary.stops || selectedItinerary.stops.length === 0) ? (
+                        <div style={{ color: 'rgba(230,237,243,0.60)' }}>No stops.</div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div style={{ color: 'rgba(230,237,243,0.60)' }}>Select an itinerary to preview stops.</div>
+                  )}
+                </Panel>
+
                 <div style={{ overflow: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
@@ -392,6 +498,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                         <th style={th}>Code</th>
                         <th style={th}>Title</th>
                         <th style={th}>Days</th>
+                        <th style={th}>Ports</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -400,11 +507,12 @@ export function ItinerariesPage(props: { apiBase: string }) {
                           <td style={tdMono}>{String(i.code || '—')}</td>
                           <td style={td}>{pickTitle(i.titles, ['en', 'ar'])}</td>
                           <td style={tdMono}>{String(i.stops?.length || 0)}</td>
+                          <td style={tdMono}>{itineraryPortsSummary(i)}</td>
                         </tr>
                       ))}
                       {items.length === 0 ? (
                         <tr>
-                          <td colSpan={3} style={tdMuted}>
+                          <td colSpan={4} style={tdMuted}>
                             No itineraries yet.
                           </td>
                         </tr>
