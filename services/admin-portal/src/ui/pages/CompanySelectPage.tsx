@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
-import { setCompany, setToken, StoredCompany } from '../components/storage'
+import { decodeJwt } from '../components/jwt'
+import { getToken, setCompany, setToken, StoredCompany } from '../components/storage'
 
 type Company = { id: string; name: string; code: string; created_at: string; tenant_db?: string }
 
@@ -10,6 +11,9 @@ export function CompanySelectPage(props: { apiBase: string }) {
   const [items, setItems] = useState<Company[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  const [code, setCode] = useState('')
+  const [creating, setCreating] = useState(false)
 
   const endpoint = useMemo(() => `/v1/companies`, [])
 
@@ -35,8 +39,34 @@ export function CompanySelectPage(props: { apiBase: string }) {
   function choose(c: Company) {
     const stored: StoredCompany = { id: c.id, name: c.name, code: c.code }
     setCompany(stored)
-    setToken(null)
-    nav('/login')
+    const claims = decodeJwt(getToken())
+    const isPlatform = Boolean(claims?.platform)
+    if (!isPlatform) {
+      setToken(null)
+      nav('/login')
+      return
+    }
+    nav('/app/dashboard')
+  }
+
+  async function createCompany() {
+    setCreating(true)
+    setErr(null)
+    try {
+      const r = await apiFetch<Company>(props.apiBase, `/v1/companies`, {
+        method: 'POST',
+        body: { name, code },
+        auth: true,
+        tenant: false,
+      })
+      setName('')
+      setCode('')
+      setItems([r, ...items])
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setCreating(false)
+    }
   }
 
   return (
@@ -47,6 +77,24 @@ export function CompanySelectPage(props: { apiBase: string }) {
 
         {err ? <div style={styles.error}>{err}</div> : null}
         {busy ? <div style={styles.muted}>Loading…</div> : null}
+
+        <div style={styles.createBox}>
+          <div style={styles.createTitle}>Create company (platform admin)</div>
+          <div style={styles.createSub}>Sign in as platform admin first, then create a new tenant/company here.</div>
+          <div style={styles.createGrid}>
+            <label style={styles.label}>
+              Name
+              <input style={styles.input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Oceanic Cruises" />
+            </label>
+            <label style={styles.label}>
+              Code
+              <input style={styles.input} value={code} onChange={(e) => setCode(e.target.value)} placeholder="OCEANIC" />
+            </label>
+          </div>
+          <button style={styles.primaryBtn} disabled={creating || !name.trim() || !code.trim()} onClick={() => void createCompany()}>
+            {creating ? 'Creating…' : 'Create company'}
+          </button>
+        </div>
 
         <div style={styles.list}>
           {items.map((c) => (
@@ -83,6 +131,35 @@ const styles: Record<string, React.CSSProperties> = {
   },
   title: { fontSize: 22, fontWeight: 900 },
   sub: { marginTop: 6, color: 'rgba(230,237,243,0.72)', fontSize: 13 },
+  createBox: {
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 14,
+    border: '1px solid rgba(255,255,255,0.10)',
+    background: 'rgba(0,0,0,0.18)',
+  },
+  createTitle: { fontWeight: 900 },
+  createSub: { marginTop: 6, color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.4 },
+  createGrid: { marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  label: { display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' },
+  input: {
+    padding: '10px 10px',
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(0,0,0,0.25)',
+    color: '#e6edf3',
+  },
+  primaryBtn: {
+    marginTop: 10,
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(56,139,253,0.55)',
+    background: 'rgba(56,139,253,0.22)',
+    color: '#e6edf3',
+    cursor: 'pointer',
+    fontWeight: 900,
+  },
   list: { marginTop: 14, display: 'grid', gap: 10 },
   rowBtn: {
     padding: 14,
