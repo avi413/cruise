@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
+import { getCompany } from '../components/storage'
 import * as XLSX from 'xlsx'
 
-type Company = { id: string; name: string; code: string; created_at: string }
 type Ship = {
   id: string
   company_id: string
@@ -46,8 +46,8 @@ type BulkCabinRow = {
 }
 
 export function FleetPage(props: { apiBase: string }) {
-  const [companies, setCompanies] = useState<Company[]>([])
-  const [companyId, setCompanyId] = useState<string>('')
+  const company = getCompany()
+  const companyId = company?.id || ''
   const [fleet, setFleet] = useState<Ship[]>([])
   const [shipId, setShipId] = useState<string>('')
   const [cats, setCats] = useState<CabinCategory[]>([])
@@ -76,27 +76,20 @@ export function FleetPage(props: { apiBase: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const companiesEndpoint = useMemo(() => `/v1/companies`, [])
   const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/fleet` : null), [companyId])
   const catsEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/cabin-categories` : null), [shipId])
   const cabinsEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/cabins` : null), [shipId])
 
   useEffect(() => {
-    apiFetch<{ items: Company[] }>(props.apiBase, companiesEndpoint, { auth: false, tenant: false })
-      .then((r) => {
-        setCompanies(r.items)
-        if (!companyId && r.items.length) setCompanyId(r.items[0].id)
-      })
-      .catch((e) => setErr(String(e?.message || e)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companiesEndpoint, props.apiBase])
-
-  useEffect(() => {
     if (!fleetEndpoint) return
-    apiFetch<{ items: Ship[] }>(props.apiBase, fleetEndpoint, { auth: false, tenant: false })
+    apiFetch<{ items: Ship[] }>(props.apiBase, fleetEndpoint)
       .then((r) => {
         setFleet(r.items)
-        if (!shipId && r.items.length) setShipId(r.items[0].id)
+        // Keep selection stable if possible; otherwise default to first ship (or clear).
+        setShipId((prev) => {
+          if (prev && r.items.some((s) => s.id === prev)) return prev
+          return r.items[0]?.id || ''
+        })
       })
       .catch((e) => setErr(String(e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,10 +118,8 @@ export function FleetPage(props: { apiBase: string }) {
       await apiFetch<Ship>(props.apiBase, `/v1/ships`, {
         method: 'POST',
         body: { company_id: companyId, name: shipName, code: shipCode, operator: shipOperator || null, decks: shipDecks, status: 'active' },
-        auth: true,
-        tenant: false,
       })
-      const r = await apiFetch<{ items: Ship[] }>(props.apiBase, `/v1/companies/${companyId}/fleet`, { auth: false, tenant: false })
+      const r = await apiFetch<{ items: Ship[] }>(props.apiBase, `/v1/companies/${companyId}/fleet`)
       setFleet(r.items)
       setShipName('')
       setShipCode('')
@@ -246,6 +237,15 @@ export function FleetPage(props: { apiBase: string }) {
     }
   }
 
+  if (!companyId) {
+    return (
+      <div style={styles.wrap}>
+        <div style={styles.hTitle}>Fleet & Cabins</div>
+        <div style={styles.error}>No company selected. Please select a company and sign in again.</div>
+      </div>
+    )
+  }
+
   return (
     <div style={styles.wrap}>
       <div style={styles.hTitle}>Fleet & Cabins</div>
@@ -259,13 +259,7 @@ export function FleetPage(props: { apiBase: string }) {
           <div style={styles.form}>
             <label style={styles.label}>
               Company
-              <select style={styles.input} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.code})
-                  </option>
-                ))}
-              </select>
+              <input style={styles.input} value={company ? `${company.name} (${company.code})` : companyId} readOnly />
             </label>
             <label style={styles.label}>
               Ship name
