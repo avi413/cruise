@@ -1,5 +1,8 @@
-from datetime import date
-from typing import Annotated
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -14,6 +17,7 @@ app = FastAPI(
 )
 
 _OVERRIDES_BY_COMPANY: dict[str, domain.PricingOverrides] = {}  # company_id -> overrides; "*" for global
+_FX_RATES_BY_COMPANY: dict[str, dict[tuple[str, str], dict]] = {}  # company_id -> {(base, quote) -> row}
 
 
 def _company_key(x_company_id: str | None) -> str:
@@ -31,6 +35,76 @@ def _effective_overrides(company_id: str | None) -> domain.PricingOverrides | No
     if not key:
         return None
     return _OVERRIDES_BY_COMPANY.get(key)
+
+
+def _normalize_currency(code: str | None, *, field: str = "currency") -> str:
+    c = (code or "").strip().upper()
+    if len(c) != 3 or not c.isalpha():
+        raise HTTPException(status_code=400, detail=f"{field} must be a 3-letter ISO currency code")
+    return c
+
+
+def _money_convert_cents(amount_cents: int, *, rate: float, op: Literal["mul", "div"]) -> int:
+    """
+    Convert cents using a floating rate, rounding half-up to cents.
+
+    - op="mul": amount * rate
+    - op="div": amount / rate
+    """
+    try:
+        r = Decimal(str(rate))
+    except InvalidOperation:
+        raise HTTPException(status_code=400, detail="Invalid FX rate")
+    if r <= 0:
+        raise HTTPException(status_code=400, detail="FX rate must be > 0")
+    a = Decimal(int(amount_cents))
+    out = (a * r) if op == "mul" else (a / r)
+    return int(out.to_integral_value(rounding=ROUND_HALF_UP))
+
+
+def _get_fx_rate(company_id: str, base: str, quote: str) -> tuple[float, Literal["mul", "div"]] | None:
+    """
+    Returns (rate, op) where:
+    - op="mul": amount_in_base * rate = amount_in_quote
+    - op="div": amount_in_base / rate = amount_in_quote (when inverse is stored)
+    """
+    rates = _FX_RATES_BY_COMPANY.get(company_id) or {}
+    direct = rates.get((base, quote))
+    if direct:
+        return float(direct["rate"]), "mul"
+    inv = rates.get((quote, base))
+    if inv:
+        return float(inv["rate"]), "div"
+    return None
+
+
+def _convert_quote_currency(company_id: str, q: domain.Quote, target_currency: str) -> domain.Quote:
+    src = _normalize_currency(q.currency, field="quote.currency")
+    dst = _normalize_currency(target_currency, field="currency")
+    if src == dst:
+        return q
+
+    fx = _get_fx_rate(company_id, src, dst)
+    if fx is None:
+        raise HTTPException(status_code=400, detail=f"Missing FX rate for {src}->{dst}")
+    rate, op = fx
+
+    converted_lines: list[domain.QuoteLine] = []
+    for l in q.lines:
+        converted_lines.append(
+            domain.QuoteLine(
+                code=l.code,
+                description=l.description,
+                amount=_money_convert_cents(int(l.amount), rate=rate, op=op),
+            )
+        )
+
+    subtotal = sum(int(l.amount) for l in converted_lines if l.code.startswith("fare."))
+    discounts = sum(-int(l.amount) for l in converted_lines if l.code == "discount" and int(l.amount) < 0)
+    taxes_fees = sum(int(l.amount) for l in converted_lines if l.code == "taxes_fees")
+    total = sum(int(l.amount) for l in converted_lines)
+
+    return domain.Quote(currency=dst, subtotal=subtotal, discounts=discounts, taxes_fees=taxes_fees, total=total, lines=converted_lines)
 
 
 class GuestIn(BaseModel):
@@ -74,6 +148,7 @@ def create_quote(
     _principal=Depends(get_principal_optional),
 ):
     try:
+        company_id = _company_key(x_company_id)
         req = domain.QuoteRequest(
             sailing_date=payload.sailing_date,
             cabin_type=payload.cabin_type,
@@ -84,6 +159,8 @@ def create_quote(
             currency=(payload.currency or "USD"),
         )
         q = domain.quote_with_overrides(req, today=date.today(), overrides=_effective_overrides(x_company_id))
+        if payload.currency and company_id:
+            q = _convert_quote_currency(company_id, q, payload.currency)
         return QuoteOut(
             currency=q.currency,
             subtotal=q.subtotal,
@@ -339,6 +416,79 @@ def upsert_category_price(
             for r in (v.category_prices or [])
         ],
     )
+
+
+class FxRateIn(BaseModel):
+    base: str = Field(min_length=3, max_length=3, description="Base currency (ISO 4217), e.g. USD")
+    quote: str = Field(min_length=3, max_length=3, description="Quote currency (ISO 4217), e.g. EUR")
+    rate: float = Field(gt=0.0, description="1 base = rate quote")
+    as_of: datetime | None = Field(default=None, description="Optional ISO timestamp for audit/display")
+    company_id: str | None = Field(default=None, description="Optional: target company_id (tenant). If omitted, X-Company-Id is used.")
+
+
+class FxRateOut(BaseModel):
+    company_id: str
+    base: str
+    quote: str
+    rate: float
+    as_of: datetime
+
+
+@app.get("/fx-rates", response_model=list[FxRateOut])
+def list_fx_rates(
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed FX requires X-Company-Id. Global rates are not supported.")
+    rows = list((_FX_RATES_BY_COMPANY.get(key) or {}).values())
+    rows = sorted(rows, key=lambda r: (r["base"], r["quote"]))
+    return [FxRateOut(company_id=key, base=r["base"], quote=r["quote"], rate=float(r["rate"]), as_of=r["as_of"]) for r in rows]
+
+
+@app.post("/fx-rates", response_model=FxRateOut)
+def upsert_fx_rate(
+    payload: FxRateIn,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _company_key(payload.company_id) or _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed FX requires X-Company-Id (or company_id). Global rates are not supported.")
+
+    base = _normalize_currency(payload.base, field="base")
+    quote = _normalize_currency(payload.quote, field="quote")
+    if base == quote:
+        raise HTTPException(status_code=400, detail="base and quote must be different")
+
+    as_of = payload.as_of or datetime.now(tz=timezone.utc)
+    if as_of.tzinfo is None:
+        as_of = as_of.replace(tzinfo=timezone.utc)
+
+    rates = dict(_FX_RATES_BY_COMPANY.get(key) or {})
+    rates[(base, quote)] = {"base": base, "quote": quote, "rate": float(payload.rate), "as_of": as_of}
+    _FX_RATES_BY_COMPANY[key] = rates
+    r = rates[(base, quote)]
+    return FxRateOut(company_id=key, base=r["base"], quote=r["quote"], rate=float(r["rate"]), as_of=r["as_of"])
+
+
+@app.delete("/fx-rates/{base}/{quote}")
+def delete_fx_rate(
+    base: str,
+    quote: str,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed FX requires X-Company-Id. Global rates are not supported.")
+    b = _normalize_currency(base, field="base")
+    q = _normalize_currency(quote, field="quote")
+    rates = dict(_FX_RATES_BY_COMPANY.get(key) or {})
+    rates.pop((b, q), None)
+    _FX_RATES_BY_COMPANY[key] = rates
+    return {"status": "ok"}
 
 
 @app.delete("/overrides/{company_id}")
