@@ -6,7 +6,18 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .db import engine, session
-from .models import Base, Cabin, CabinCategory, Company as CompanyRow, CompanySettings as CompanySettingsRow, Ship as ShipRow
+from .models import (
+    Base,
+    Cabin,
+    CabinCategory,
+    Company as CompanyRow,
+    CompanySettings as CompanySettingsRow,
+    Ship as ShipRow,
+    ShipCapability,
+    ShipRestaurant,
+    ShoreExcursion,
+    ShoreExcursionPrice,
+)
 from .security import require_roles
 from .tenancy import ensure_tenant_database, tenant_db_name_from_code
 
@@ -136,6 +147,21 @@ class Ship(ShipCreate):
     created_at: datetime
     amenities: list[Amenity] = Field(default_factory=list)
     maintenance_records: list[MaintenanceRecord] = Field(default_factory=list)
+
+
+def _clean_codes(items: list[str] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for x in (items or []):
+        c = (x or "").strip()
+        if not c:
+            continue
+        key = c.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
 
 
 def _now() -> datetime:
@@ -354,6 +380,505 @@ def get_ship(ship_id: str):
         amenities=[Amenity(**a) for a in (r.amenities or [])],
         maintenance_records=[MaintenanceRecord(**m) for m in (r.maintenance_records or [])],
     )
+
+
+#
+# On-ship: Capabilities, Restaurants, Shore Excursions (with port+duration+pricing)
+# -------------------------------------------------------------------------------
+#
+
+
+class ShipCapabilityCreate(BaseModel):
+    code: str = Field(min_length=1, description="Ship-scoped capability code (e.g. 'wheelchair_accessible').")
+    name: str = Field(min_length=1)
+    category: str | None = None
+    description: str | None = None
+    meta: dict = Field(default_factory=dict)
+
+
+class ShipCapabilityOut(ShipCapabilityCreate):
+    id: str
+    ship_id: str
+
+
+class ShipCapabilityPatch(BaseModel):
+    name: str | None = None
+    category: str | None = None
+    description: str | None = None
+    meta: dict | None = None
+
+
+@app.get("/ships/{ship_id}/capabilities", response_model=list[ShipCapabilityOut])
+def list_ship_capabilities(ship_id: str):
+    _ = get_ship(ship_id)
+    with session() as s:
+        rows = s.query(ShipCapability).filter(ShipCapability.ship_id == ship_id).order_by(ShipCapability.code.asc()).all()
+    return [
+        ShipCapabilityOut(
+            id=r.id,
+            ship_id=r.ship_id,
+            code=r.code,
+            name=r.name,
+            category=r.category,
+            description=r.description,
+            meta=r.meta or {},
+        )
+        for r in rows
+    ]
+
+
+@app.post("/ships/{ship_id}/capabilities", response_model=ShipCapabilityOut)
+def create_ship_capability(ship_id: str, payload: ShipCapabilityCreate, _principal=Depends(require_roles("staff", "admin"))):
+    _ = get_ship(ship_id)
+    code = (payload.code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    with session() as s:
+        existing = (
+            s.query(ShipCapability)
+            .filter(ShipCapability.ship_id == ship_id)
+            .filter(ShipCapability.code == code)
+            .first()
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Capability code already exists for this ship")
+        row = ShipCapability(
+            id=str(uuid4()),
+            ship_id=ship_id,
+            code=code,
+            name=(payload.name or "").strip(),
+            category=(payload.category or "").strip() or None,
+            description=(payload.description or "").strip() or None,
+            meta=payload.meta or {},
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShipCapabilityOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        name=row.name,
+        category=row.category,
+        description=row.description,
+        meta=row.meta or {},
+    )
+
+
+@app.patch("/capabilities/{capability_id}", response_model=ShipCapabilityOut)
+def patch_ship_capability(capability_id: str, payload: ShipCapabilityPatch, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShipCapability, capability_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Capability not found")
+        if payload.name is not None:
+            row.name = payload.name
+        if payload.category is not None:
+            row.category = payload.category or None
+        if payload.description is not None:
+            row.description = payload.description or None
+        if payload.meta is not None:
+            row.meta = payload.meta
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShipCapabilityOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        name=row.name,
+        category=row.category,
+        description=row.description,
+        meta=row.meta or {},
+    )
+
+
+@app.delete("/capabilities/{capability_id}")
+def delete_ship_capability(capability_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShipCapability, capability_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Capability not found")
+        s.delete(row)
+        s.commit()
+    return {"status": "ok"}
+
+
+class ShipRestaurantCreate(BaseModel):
+    code: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    cuisine: str | None = None
+    deck: int = Field(default=0, ge=0)
+    included: bool = True
+    reservation_required: bool = False
+    description: str | None = None
+    capability_codes: list[str] = Field(default_factory=list, description="Optional capability codes (ship-scoped).")
+    meta: dict = Field(default_factory=dict)
+
+
+class ShipRestaurantOut(ShipRestaurantCreate):
+    id: str
+    ship_id: str
+
+
+class ShipRestaurantPatch(BaseModel):
+    name: str | None = None
+    cuisine: str | None = None
+    deck: int | None = Field(default=None, ge=0)
+    included: bool | None = None
+    reservation_required: bool | None = None
+    description: str | None = None
+    capability_codes: list[str] | None = None
+    meta: dict | None = None
+
+
+@app.get("/ships/{ship_id}/restaurants", response_model=list[ShipRestaurantOut])
+def list_ship_restaurants(ship_id: str):
+    _ = get_ship(ship_id)
+    with session() as s:
+        rows = s.query(ShipRestaurant).filter(ShipRestaurant.ship_id == ship_id).order_by(ShipRestaurant.code.asc()).all()
+    return [
+        ShipRestaurantOut(
+            id=r.id,
+            ship_id=r.ship_id,
+            code=r.code,
+            name=r.name,
+            cuisine=r.cuisine,
+            deck=int(r.deck or 0),
+            included=bool(r.included),
+            reservation_required=bool(r.reservation_required),
+            description=r.description,
+            capability_codes=list(r.capability_codes or []),
+            meta=r.meta or {},
+        )
+        for r in rows
+    ]
+
+
+@app.post("/ships/{ship_id}/restaurants", response_model=ShipRestaurantOut)
+def create_ship_restaurant(ship_id: str, payload: ShipRestaurantCreate, _principal=Depends(require_roles("staff", "admin"))):
+    _ = get_ship(ship_id)
+    code = (payload.code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    with session() as s:
+        existing = (
+            s.query(ShipRestaurant)
+            .filter(ShipRestaurant.ship_id == ship_id)
+            .filter(ShipRestaurant.code == code)
+            .first()
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Restaurant code already exists for this ship")
+        row = ShipRestaurant(
+            id=str(uuid4()),
+            ship_id=ship_id,
+            code=code,
+            name=(payload.name or "").strip(),
+            cuisine=(payload.cuisine or "").strip() or None,
+            deck=int(payload.deck or 0),
+            included=bool(payload.included),
+            reservation_required=bool(payload.reservation_required),
+            description=(payload.description or "").strip() or None,
+            capability_codes=_clean_codes(payload.capability_codes),
+            meta=payload.meta or {},
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShipRestaurantOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        name=row.name,
+        cuisine=row.cuisine,
+        deck=int(row.deck or 0),
+        included=bool(row.included),
+        reservation_required=bool(row.reservation_required),
+        description=row.description,
+        capability_codes=list(row.capability_codes or []),
+        meta=row.meta or {},
+    )
+
+
+@app.patch("/restaurants/{restaurant_id}", response_model=ShipRestaurantOut)
+def patch_ship_restaurant(restaurant_id: str, payload: ShipRestaurantPatch, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShipRestaurant, restaurant_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        if payload.name is not None:
+            row.name = payload.name
+        if payload.cuisine is not None:
+            row.cuisine = payload.cuisine or None
+        if payload.deck is not None:
+            row.deck = int(payload.deck)
+        if payload.included is not None:
+            row.included = bool(payload.included)
+        if payload.reservation_required is not None:
+            row.reservation_required = bool(payload.reservation_required)
+        if payload.description is not None:
+            row.description = payload.description or None
+        if payload.capability_codes is not None:
+            row.capability_codes = _clean_codes(payload.capability_codes)
+        if payload.meta is not None:
+            row.meta = payload.meta
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShipRestaurantOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        name=row.name,
+        cuisine=row.cuisine,
+        deck=int(row.deck or 0),
+        included=bool(row.included),
+        reservation_required=bool(row.reservation_required),
+        description=row.description,
+        capability_codes=list(row.capability_codes or []),
+        meta=row.meta or {},
+    )
+
+
+@app.delete("/restaurants/{restaurant_id}")
+def delete_ship_restaurant(restaurant_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShipRestaurant, restaurant_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        s.delete(row)
+        s.commit()
+    return {"status": "ok"}
+
+
+class ShoreExcursionCreate(BaseModel):
+    code: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    port_code: str = Field(min_length=1, description="Port code (UN/LOCODE or internal).")
+    duration_minutes: int = Field(default=0, ge=0)
+    active: bool = True
+    description: str | None = None
+    capability_codes: list[str] = Field(default_factory=list)
+    meta: dict = Field(default_factory=dict)
+
+
+class ShoreExcursionOut(ShoreExcursionCreate):
+    id: str
+    ship_id: str
+
+
+class ShoreExcursionPatch(BaseModel):
+    title: str | None = None
+    port_code: str | None = None
+    duration_minutes: int | None = Field(default=None, ge=0)
+    active: bool | None = None
+    description: str | None = None
+    capability_codes: list[str] | None = None
+    meta: dict | None = None
+
+
+@app.get("/ships/{ship_id}/shorex", response_model=list[ShoreExcursionOut])
+def list_ship_shorex(ship_id: str, port_code: str | None = None):
+    _ = get_ship(ship_id)
+    with session() as s:
+        q = s.query(ShoreExcursion).filter(ShoreExcursion.ship_id == ship_id)
+        if port_code and port_code.strip():
+            q = q.filter(ShoreExcursion.port_code == port_code.strip().upper())
+        rows = q.order_by(ShoreExcursion.port_code.asc(), ShoreExcursion.code.asc()).all()
+    return [
+        ShoreExcursionOut(
+            id=r.id,
+            ship_id=r.ship_id,
+            code=r.code,
+            title=r.title,
+            port_code=r.port_code,
+            duration_minutes=int(r.duration_minutes or 0),
+            active=bool(r.active),
+            description=r.description,
+            capability_codes=list(r.capability_codes or []),
+            meta=r.meta or {},
+        )
+        for r in rows
+    ]
+
+
+@app.post("/ships/{ship_id}/shorex", response_model=ShoreExcursionOut)
+def create_ship_shorex(ship_id: str, payload: ShoreExcursionCreate, _principal=Depends(require_roles("staff", "admin"))):
+    _ = get_ship(ship_id)
+    code = (payload.code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    port = (payload.port_code or "").strip().upper()
+    if not port:
+        raise HTTPException(status_code=400, detail="port_code is required")
+    with session() as s:
+        existing = (
+            s.query(ShoreExcursion)
+            .filter(ShoreExcursion.ship_id == ship_id)
+            .filter(ShoreExcursion.code == code)
+            .first()
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Shore excursion code already exists for this ship")
+        row = ShoreExcursion(
+            id=str(uuid4()),
+            ship_id=ship_id,
+            code=code,
+            title=(payload.title or "").strip(),
+            port_code=port,
+            duration_minutes=int(payload.duration_minutes or 0),
+            active=bool(payload.active),
+            description=(payload.description or "").strip() or None,
+            capability_codes=_clean_codes(payload.capability_codes),
+            meta=payload.meta or {},
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShoreExcursionOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        title=row.title,
+        port_code=row.port_code,
+        duration_minutes=int(row.duration_minutes or 0),
+        active=bool(row.active),
+        description=row.description,
+        capability_codes=list(row.capability_codes or []),
+        meta=row.meta or {},
+    )
+
+
+@app.patch("/shorex/{shorex_id}", response_model=ShoreExcursionOut)
+def patch_ship_shorex(shorex_id: str, payload: ShoreExcursionPatch, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShoreExcursion, shorex_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Shore excursion not found")
+        if payload.title is not None:
+            row.title = payload.title
+        if payload.port_code is not None:
+            row.port_code = (payload.port_code or "").strip().upper()
+        if payload.duration_minutes is not None:
+            row.duration_minutes = int(payload.duration_minutes)
+        if payload.active is not None:
+            row.active = bool(payload.active)
+        if payload.description is not None:
+            row.description = payload.description or None
+        if payload.capability_codes is not None:
+            row.capability_codes = _clean_codes(payload.capability_codes)
+        if payload.meta is not None:
+            row.meta = payload.meta
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShoreExcursionOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        title=row.title,
+        port_code=row.port_code,
+        duration_minutes=int(row.duration_minutes or 0),
+        active=bool(row.active),
+        description=row.description,
+        capability_codes=list(row.capability_codes or []),
+        meta=row.meta or {},
+    )
+
+
+@app.delete("/shorex/{shorex_id}")
+def delete_ship_shorex(shorex_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShoreExcursion, shorex_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Shore excursion not found")
+        # cascade delete prices explicitly (sqlite doesn't enforce FK cascades by default)
+        s.query(ShoreExcursionPrice).filter(ShoreExcursionPrice.shorex_id == shorex_id).delete()
+        s.delete(row)
+        s.commit()
+    return {"status": "ok"}
+
+
+class ShoreExcursionPriceCreate(BaseModel):
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    paxtype: str = Field(default="adult", description="adult|child|infant")
+    price_cents: int = Field(ge=0)
+
+
+class ShoreExcursionPriceOut(ShoreExcursionPriceCreate):
+    id: str
+    shorex_id: str
+
+
+@app.get("/shorex/{shorex_id}/prices", response_model=list[ShoreExcursionPriceOut])
+def list_shorex_prices(shorex_id: str):
+    with session() as s:
+        shorex = s.get(ShoreExcursion, shorex_id)
+        if shorex is None:
+            raise HTTPException(status_code=404, detail="Shore excursion not found")
+        rows = (
+            s.query(ShoreExcursionPrice)
+            .filter(ShoreExcursionPrice.shorex_id == shorex_id)
+            .order_by(ShoreExcursionPrice.currency.asc(), ShoreExcursionPrice.paxtype.asc())
+            .all()
+        )
+    return [
+        ShoreExcursionPriceOut(
+            id=r.id,
+            shorex_id=r.shorex_id,
+            currency=(r.currency or "USD"),
+            paxtype=r.paxtype,
+            price_cents=int(r.price_cents or 0),
+        )
+        for r in rows
+    ]
+
+
+@app.post("/shorex/{shorex_id}/prices", response_model=ShoreExcursionPriceOut)
+def upsert_shorex_price(
+    shorex_id: str, payload: ShoreExcursionPriceCreate, _principal=Depends(require_roles("staff", "admin"))
+):
+    cur = (payload.currency or "USD").strip().upper()
+    pax = (payload.paxtype or "adult").strip().lower()
+    if pax not in ("adult", "child", "infant"):
+        raise HTTPException(status_code=400, detail="paxtype must be adult|child|infant")
+    with session() as s:
+        shorex = s.get(ShoreExcursion, shorex_id)
+        if shorex is None:
+            raise HTTPException(status_code=404, detail="Shore excursion not found")
+        row = (
+            s.query(ShoreExcursionPrice)
+            .filter(ShoreExcursionPrice.shorex_id == shorex_id)
+            .filter(ShoreExcursionPrice.currency == cur)
+            .filter(ShoreExcursionPrice.paxtype == pax)
+            .first()
+        )
+        if row is None:
+            row = ShoreExcursionPrice(
+                id=str(uuid4()),
+                shorex_id=shorex_id,
+                currency=cur,
+                paxtype=pax,
+                price_cents=int(payload.price_cents),
+            )
+        else:
+            row.price_cents = int(payload.price_cents)
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return ShoreExcursionPriceOut(id=row.id, shorex_id=row.shorex_id, currency=row.currency, paxtype=row.paxtype, price_cents=row.price_cents)
+
+
+@app.delete("/shorex-prices/{price_id}")
+def delete_shorex_price(price_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ShoreExcursionPrice, price_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Price not found")
+        s.delete(row)
+        s.commit()
+    return {"status": "ok"}
 
 
 class CabinView(str):

@@ -138,6 +138,11 @@ export function Shell(props: { apiBase: string }) {
               Fleet & Cabins
             </NavLink>
           ) : null}
+          {canFleet ? (
+            <NavLink to="/app/onboard" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
+              Onboard & ShoreX
+            </NavLink>
+          ) : null}
           {canPricing ? (
             <NavLink to="/app/pricing" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
               Pricing & Offers

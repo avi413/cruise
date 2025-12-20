@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { CruisesPage } from './pages/CruisesPage'
 import { FleetPage } from './pages/FleetPage'
+import { OnboardPage } from './pages/OnboardPage'
 import { SailingsPage } from './pages/SailingsPage'
 import { ItinerariesPage } from './pages/ItinerariesPage'
 import { PortsPage } from './pages/PortsPage'
@@ -67,6 +68,7 @@ export function App() {
             }
           />
           <Route path="fleet" element={<FleetPage apiBase={apiBase} />} />
+          <Route path="onboard" element={<OnboardPage apiBase={apiBase} />} />
           <Route path="sailings" element={<SailingsPage apiBase={apiBase} />} />
           <Route path="itineraries" element={<ItinerariesPage apiBase={apiBase} />} />
           <Route path="ports" element={<PortsPage apiBase={apiBase} />} />
