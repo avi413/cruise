@@ -1,4 +1,11 @@
-export type JwtClaims = { sub?: string; role?: string; exp?: number; iat?: number } & Record<string, unknown>
+export type JwtClaims = {
+  sub?: string
+  role?: string
+  exp?: number
+  iat?: number
+  perms?: string[]
+  groups?: { id: string; code: string; name: string }[]
+} & Record<string, unknown>
 
 function b64UrlDecode(input: string): string {
   const pad = input.length % 4 === 0 ? '' : '='.repeat(4 - (input.length % 4))
@@ -23,5 +30,13 @@ export function isExpired(claims: JwtClaims | null): boolean {
   if (!exp) return false
   const now = Math.floor(Date.now() / 1000)
   return now >= exp
+}
+
+export function permsFromClaims(claims: JwtClaims | null): Set<string> {
+  const perms = new Set<string>()
+  for (const p of claims?.perms || []) {
+    if (typeof p === 'string' && p.trim()) perms.add(p.trim())
+  }
+  return perms
 }
 

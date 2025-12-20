@@ -1,13 +1,15 @@
 import React from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { decodeJwt } from './jwt'
+import { decodeJwt, permsFromClaims } from './jwt'
 import { getCompany, getToken, setCompany, setToken } from './storage'
 
 export function Shell(props: { apiBase: string }) {
   const nav = useNavigate()
   const company = getCompany()
   const token = getToken()
-  const role = decodeJwt(token)?.role || 'unknown'
+  const claims = decodeJwt(token)
+  const role = claims?.role || 'unknown'
+  const perms = permsFromClaims(claims)
 
   function logout() {
     setToken(null)
@@ -27,18 +29,26 @@ export function Shell(props: { apiBase: string }) {
           <NavLink to="/app/dashboard" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
             Dashboard
           </NavLink>
-          <NavLink to="/app/sales" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
-            Sales (Quote / Hold / Confirm)
-          </NavLink>
-          <NavLink to="/app/customers" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
-            Customers
-          </NavLink>
-          <NavLink to="/app/sailings" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
-            Sailings & Itineraries
-          </NavLink>
-          <NavLink to="/app/fleet" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
-            Fleet & Cabins
-          </NavLink>
+          {perms.has('sales.quote') || perms.has('sales.hold') || perms.has('sales.confirm') ? (
+            <NavLink to="/app/sales" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
+              Sales (Quote / Hold / Confirm)
+            </NavLink>
+          ) : null}
+          {perms.has('customers.read') || perms.has('customers.write') ? (
+            <NavLink to="/app/customers" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
+              Customers
+            </NavLink>
+          ) : null}
+          {perms.has('sailings.read') || perms.has('sailings.write') ? (
+            <NavLink to="/app/sailings" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
+              Sailings & Itineraries
+            </NavLink>
+          ) : null}
+          {perms.has('fleet.read') || perms.has('fleet.write') ? (
+            <NavLink to="/app/fleet" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
+              Fleet & Cabins
+            </NavLink>
+          ) : null}
           {role === 'admin' ? (
             <NavLink to="/app/users" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)}>
               Users & Permissions

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -31,6 +31,35 @@ class StaffUser(Base):
 
     role: Mapped[str] = mapped_column(String, index=True)  # agent|staff|admin
     disabled: Mapped[int] = mapped_column(Integer, default=0)  # 0/1 (sqlite-friendly)
+
+
+class StaffGroup(Base):
+    """
+    Tenant-scoped permission group.
+    Example groups: sales_agents, ship_admins, service_agents, etc.
+    """
+
+    __tablename__ = "staff_groups"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    code: Mapped[str] = mapped_column(String, unique=True, index=True)  # stable identifier
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String)
+
+    # List of permission strings (scopes)
+    permissions: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class StaffGroupMember(Base):
+    __tablename__ = "staff_group_members"
+    __table_args__ = (UniqueConstraint("user_id", "group_id", name="uq_staff_group_member_user_group"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("staff_users.id"), index=True)
+    group_id: Mapped[str] = mapped_column(String, ForeignKey("staff_groups.id"), index=True)
 
 
 class Customer(Base):

@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from .consumer import start_consumer
 from .db import session
-from .models import BookingHistory, Customer, StaffUser
+from .models import BookingHistory, Customer, StaffGroup, StaffGroupMember, StaffUser
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
 
@@ -27,6 +27,40 @@ app = FastAPI(
 
 def _now() -> datetime:
     return datetime.now(tz=timezone.utc)
+
+
+# ----------------------------
+# Permissions (scopes)
+# ----------------------------
+
+# Keep this list business-oriented; expand as modules grow.
+ALL_PERMISSIONS: set[str] = {
+    "sales.quote",
+    "sales.hold",
+    "sales.confirm",
+    "customers.read",
+    "customers.write",
+    "sailings.read",
+    "sailings.write",
+    "fleet.read",
+    "fleet.write",
+    "inventory.read",
+    "inventory.write",
+    "rates.write",
+    "users.manage",
+}
+
+
+def _normalize_perm(p: str) -> str:
+    return (p or "").strip()
+
+
+def _validate_perms(perms: list[str]) -> list[str]:
+    cleaned = sorted({p for p in (_normalize_perm(x) for x in perms or []) if p})
+    unknown = [p for p in cleaned if p not in ALL_PERMISSIONS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown permissions: {', '.join(unknown)}")
+    return cleaned
 
 
 def _normalize_email(email: str) -> str:
@@ -241,6 +275,34 @@ class StaffLoginIn(BaseModel):
     password: str
 
 
+class StaffGroupCreate(BaseModel):
+    code: str = Field(description="Stable identifier, e.g. sales_agents")
+    name: str
+    description: str | None = None
+    permissions: list[str] = Field(default_factory=list)
+
+
+class StaffGroupOut(StaffGroupCreate):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class StaffGroupPatch(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    permissions: list[str] | None = None
+
+
+class GroupMemberOut(BaseModel):
+    user_id: str
+    group_id: str
+
+
+class GroupAddMemberIn(BaseModel):
+    user_id: str
+
+
 @app.post("/staff/login")
 def staff_login(payload: StaffLoginIn, tenant_engine=Depends(get_tenant_engine)):
     email = _normalize_email(payload.email)
@@ -253,7 +315,24 @@ def staff_login(payload: StaffLoginIn, tenant_engine=Depends(get_tenant_engine))
         if not _verify_password(payload.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    return {"access_token": issue_token(sub=user.id, role=user.role), "token_type": "bearer"}
+        rows = (
+            s.query(StaffGroup, StaffGroupMember)
+            .join(StaffGroupMember, StaffGroupMember.group_id == StaffGroup.id)
+            .filter(StaffGroupMember.user_id == user.id)
+            .all()
+        )
+        groups = [{"id": g.id, "code": g.code, "name": g.name} for (g, _m) in rows]
+        perms: set[str] = set()
+        for (g, _m) in rows:
+            for p in (g.permissions or []):
+                if isinstance(p, str) and p.strip():
+                    perms.add(p.strip())
+        perms_list = sorted(perms)
+
+    return {
+        "access_token": issue_token(sub=user.id, role=user.role, extra_claims={"groups": groups, "perms": perms_list}),
+        "token_type": "bearer",
+    }
 
 
 @app.get("/staff/users", response_model=list[StaffUserOut])
@@ -356,3 +435,162 @@ def patch_staff_user(
         role=user.role,
         disabled=bool(user.disabled),
     )
+
+
+@app.get("/staff/groups", response_model=list[StaffGroupOut])
+def list_staff_groups(
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        rows = s.query(StaffGroup).order_by(StaffGroup.created_at.desc()).all()
+    return [
+        StaffGroupOut(
+            id=r.id,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+            code=r.code,
+            name=r.name,
+            description=r.description,
+            permissions=list(r.permissions or []),
+        )
+        for r in rows
+    ]
+
+
+@app.post("/staff/groups", response_model=StaffGroupOut)
+def create_staff_group(
+    payload: StaffGroupCreate,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    code = (payload.code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    perms = _validate_perms(payload.permissions)
+
+    with session(tenant_engine) as s:
+        exists = s.query(StaffGroup).filter(StaffGroup.code == code).first()
+        if exists is not None:
+            raise HTTPException(status_code=409, detail="Group code already exists")
+        now = _now()
+        g = StaffGroup(
+            id=str(uuid4()),
+            created_at=now,
+            updated_at=now,
+            code=code,
+            name=(payload.name or "").strip(),
+            description=payload.description,
+            permissions=perms,
+        )
+        s.add(g)
+        s.commit()
+        s.refresh(g)
+
+    return StaffGroupOut(
+        id=g.id,
+        created_at=g.created_at,
+        updated_at=g.updated_at,
+        code=g.code,
+        name=g.name,
+        description=g.description,
+        permissions=list(g.permissions or []),
+    )
+
+
+@app.patch("/staff/groups/{group_id}", response_model=StaffGroupOut)
+def patch_staff_group(
+    group_id: str,
+    payload: StaffGroupPatch,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        g = s.get(StaffGroup, group_id)
+        if g is None:
+            raise HTTPException(status_code=404, detail="Group not found")
+
+        if payload.name is not None:
+            g.name = payload.name
+        if payload.description is not None:
+            g.description = payload.description
+        if payload.permissions is not None:
+            g.permissions = _validate_perms(payload.permissions)
+
+        g.updated_at = _now()
+        s.add(g)
+        s.commit()
+        s.refresh(g)
+
+    return StaffGroupOut(
+        id=g.id,
+        created_at=g.created_at,
+        updated_at=g.updated_at,
+        code=g.code,
+        name=g.name,
+        description=g.description,
+        permissions=list(g.permissions or []),
+    )
+
+
+@app.get("/staff/groups/{group_id}/members", response_model=list[GroupMemberOut])
+def list_group_members(
+    group_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        g = s.get(StaffGroup, group_id)
+        if g is None:
+            raise HTTPException(status_code=404, detail="Group not found")
+        rows = s.query(StaffGroupMember).filter(StaffGroupMember.group_id == group_id).all()
+    return [GroupMemberOut(user_id=r.user_id, group_id=r.group_id) for r in rows]
+
+
+@app.post("/staff/groups/{group_id}/members", response_model=GroupMemberOut)
+def add_group_member(
+    group_id: str,
+    payload: GroupAddMemberIn,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        g = s.get(StaffGroup, group_id)
+        if g is None:
+            raise HTTPException(status_code=404, detail="Group not found")
+        u = s.get(StaffUser, payload.user_id)
+        if u is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        exists = (
+            s.query(StaffGroupMember)
+            .filter(StaffGroupMember.group_id == group_id)
+            .filter(StaffGroupMember.user_id == payload.user_id)
+            .first()
+        )
+        if exists is not None:
+            return GroupMemberOut(user_id=exists.user_id, group_id=exists.group_id)
+        m = StaffGroupMember(id=str(uuid4()), group_id=group_id, user_id=payload.user_id)
+        s.add(m)
+        s.commit()
+    return GroupMemberOut(user_id=payload.user_id, group_id=group_id)
+
+
+@app.delete("/staff/groups/{group_id}/members/{user_id}")
+def remove_group_member(
+    group_id: str,
+    user_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        row = (
+            s.query(StaffGroupMember)
+            .filter(StaffGroupMember.group_id == group_id)
+            .filter(StaffGroupMember.user_id == user_id)
+            .first()
+        )
+        if row is None:
+            return {"status": "ok"}
+        s.delete(row)
+        s.commit()
+    return {"status": "ok"}

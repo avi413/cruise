@@ -2,21 +2,55 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 
 type StaffUser = { id: string; email: string; role: string; disabled: boolean; created_at: string; updated_at: string }
+type StaffGroup = { id: string; code: string; name: string; description?: string | null; permissions: string[]; created_at: string; updated_at: string }
+type GroupMember = { user_id: string; group_id: string }
 
 export function UsersPage(props: { apiBase: string }) {
   const [items, setItems] = useState<StaffUser[]>([])
+  const [groups, setGroups] = useState<StaffGroup[]>([])
+  const [members, setMembers] = useState<Record<string, Set<string>>>({})
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('agent')
   const [disabled, setDisabled] = useState(false)
+
+  const [gCode, setGCode] = useState('sales_agents')
+  const [gName, setGName] = useState('Sales Agents')
+  const [gDesc, setGDesc] = useState('Call center sales agents')
+  const [gPerms, setGPerms] = useState(
+    [
+      'sales.quote',
+      'sales.hold',
+      'sales.confirm',
+      'customers.read',
+      'customers.write',
+      'sailings.read',
+      'fleet.read',
+      'inventory.read',
+    ].join(','),
+  )
+
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const endpoint = useMemo(() => `/v1/staff/users`, [])
+  const groupsEndpoint = useMemo(() => `/v1/staff/groups`, [])
 
   async function refresh() {
     const r = await apiFetch<StaffUser[]>(props.apiBase, endpoint)
     setItems(r)
+
+    const gs = await apiFetch<StaffGroup[]>(props.apiBase, groupsEndpoint)
+    setGroups(gs)
+
+    const memMap: Record<string, Set<string>> = {}
+    await Promise.all(
+      gs.map(async (g) => {
+        const m = await apiFetch<GroupMember[]>(props.apiBase, `/v1/staff/groups/${g.id}/members`)
+        memMap[g.id] = new Set(m.map((x) => x.user_id))
+      }),
+    )
+    setMembers(memMap)
   }
 
   useEffect(() => {
@@ -54,10 +88,41 @@ export function UsersPage(props: { apiBase: string }) {
     }
   }
 
+  async function createGroup() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const permissions = gPerms
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      await apiFetch(props.apiBase, `/v1/staff/groups`, { method: 'POST', body: { code: gCode, name: gName, description: gDesc || null, permissions } })
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setMember(groupId: string, userId: string, add: boolean) {
+    setBusy(true)
+    setErr(null)
+    try {
+      if (add) await apiFetch(props.apiBase, `/v1/staff/groups/${groupId}/members`, { method: 'POST', body: { user_id: userId } })
+      else await apiFetch(props.apiBase, `/v1/staff/groups/${groupId}/members/${userId}`, { method: 'DELETE' })
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div style={styles.wrap}>
       <div style={styles.hTitle}>Users & Permissions</div>
-      <div style={styles.hSub}>Admin-only. Create and disable portal users for this company/tenant.</div>
+      <div style={styles.hSub}>Admin-only. Manage users, groups (Sales Agents / Ship Admin / Service Agent), and permission scopes per group.</div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
@@ -133,6 +198,83 @@ export function UsersPage(props: { apiBase: string }) {
           </div>
         </section>
       </div>
+
+      <div style={styles.grid}>
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Create group</div>
+          <div style={styles.form}>
+            <label style={styles.label}>
+              Code
+              <input style={styles.input} value={gCode} onChange={(e) => setGCode(e.target.value)} placeholder="sales_agents" />
+            </label>
+            <label style={styles.label}>
+              Name
+              <input style={styles.input} value={gName} onChange={(e) => setGName(e.target.value)} placeholder="Sales Agents" />
+            </label>
+            <label style={styles.label}>
+              Description
+              <input style={styles.input} value={gDesc} onChange={(e) => setGDesc(e.target.value)} placeholder="Call center sales agents" />
+            </label>
+            <label style={styles.label}>
+              Permissions (comma-separated)
+              <input style={styles.input} value={gPerms} onChange={(e) => setGPerms(e.target.value)} placeholder="sales.quote,sales.hold,..." />
+            </label>
+            <button style={styles.primaryBtn} disabled={busy || !gCode.trim() || !gName.trim()} onClick={() => void createGroup()}>
+              {busy ? 'Saving…' : 'Create group'}
+            </button>
+            <div style={styles.muted}>
+              Available scopes:{' '}
+              <span style={styles.mono}>
+                sales.quote, sales.hold, sales.confirm, customers.read, customers.write, sailings.read, sailings.write, fleet.read, fleet.write,
+                inventory.read, inventory.write, rates.write, users.manage
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Group assignments</div>
+          <div style={styles.muted}>Tick users into groups. Changes apply on next login.</div>
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>User</th>
+                  {groups.map((g) => (
+                    <th key={g.id} style={styles.th}>
+                      {g.name}
+                      <div style={styles.thSub}>{g.code}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((u) => (
+                  <tr key={u.id}>
+                    <td style={styles.tdMono}>{u.email}</td>
+                    {groups.map((g) => {
+                      const set = members[g.id] || new Set<string>()
+                      const checked = set.has(u.id)
+                      return (
+                        <td key={`${u.id}-${g.id}`} style={styles.td}>
+                          <input type="checkbox" checked={checked} disabled={busy} onChange={(e) => void setMember(g.id, u.id, e.target.checked)} />
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+                {items.length === 0 ? (
+                  <tr>
+                    <td style={styles.tdMuted} colSpan={Math.max(1, groups.length + 1)}>
+                      No users yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
   )
 }
@@ -159,6 +301,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(0,0,0,0.25)',
     color: '#e6edf3',
   },
+  muted: { color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.4 },
+  mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
   primaryBtn: {
     padding: '10px 12px',
     borderRadius: 10,
@@ -194,7 +338,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid rgba(255,255,255,0.10)',
     color: 'rgba(230,237,243,0.75)',
     fontWeight: 900,
+    verticalAlign: 'bottom',
   },
+  thSub: { marginTop: 4, color: 'rgba(230,237,243,0.55)', fontSize: 11, fontWeight: 700 },
   td: { padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' },
   tdMono: {
     padding: '10px 8px',

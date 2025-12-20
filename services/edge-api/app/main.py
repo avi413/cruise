@@ -160,6 +160,36 @@ async def patch_staff_user(user_id: str, request: Request):
     return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request)
 
 
+@app.get("/v1/staff/groups")
+async def list_staff_groups(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)
+
+
+@app.post("/v1/staff/groups")
+async def create_staff_group(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)
+
+
+@app.patch("/v1/staff/groups/{group_id}")
+async def patch_staff_group(group_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}", request)
+
+
+@app.get("/v1/staff/groups/{group_id}/members")
+async def list_staff_group_members(group_id: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request)
+
+
+@app.post("/v1/staff/groups/{group_id}/members")
+async def add_staff_group_member(group_id: str, request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request)
+
+
+@app.delete("/v1/staff/groups/{group_id}/members/{user_id}")
+async def remove_staff_group_member(group_id: str, user_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members/{user_id}", request)
+
+
 @app.post("/v1/customers")
 async def create_customer(request: Request):
     return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers", request)
