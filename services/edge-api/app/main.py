@@ -94,6 +94,18 @@ async def list_companies():
     return {"items": companies}
 
 
+@app.get("/v1/companies/{company_id}/settings")
+async def get_company_settings(company_id: str, request: Request):
+    """Admin portal: company white-label + localization settings."""
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request)
+
+
+@app.patch("/v1/companies/{company_id}/settings")
+async def patch_company_settings(company_id: str, request: Request):
+    """Admin portal: update company white-label + localization settings."""
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request)
+
+
 @app.post("/v1/companies")
 async def create_company(request: Request):
     """Admin portal: create cruise company."""

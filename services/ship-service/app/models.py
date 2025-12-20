@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -23,6 +23,30 @@ class Company(Base):
     tenant_db: Mapped[str] = mapped_column(String, unique=True, index=True)
 
     ships: Mapped[list[Ship]] = relationship(back_populates="company")  # type: ignore[name-defined]
+
+
+class CompanySettings(Base):
+    """
+    Company-scoped configuration stored in the control-plane DB.
+
+    This intentionally lives in its own table (instead of adding columns to `companies`)
+    to avoid schema-migration friction in this starter repo.
+    """
+
+    __tablename__ = "company_settings"
+    __table_args__ = (UniqueConstraint("company_id", name="uq_company_settings_company_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    company_id: Mapped[str] = mapped_column(String, ForeignKey("companies.id"), index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    # White-label branding and UI theme configuration (logo, colors, backgrounds, etc.)
+    branding: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # Localization preferences (supported locales/currencies, defaults)
+    localization: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class Ship(Base):
