@@ -327,11 +327,13 @@ def health():
 
 @app.post("/sailings", response_model=Sailing)
 def create_sailing(payload: SailingCreate, _principal=Depends(require_roles("staff", "admin"))):
-    if any(s.code == payload.code for s in _DB.values()):
-        raise HTTPException(status_code=409, detail="Sailing code already exists")
-    sailing = Sailing(id=str(uuid4()), created_at=_utcnow(), **payload.model_dump())
-    _DB[sailing.id] = sailing
-    return sailing
+    # Business rule: a Sailing must always be related to an Itinerary.
+    # Use the itinerary-scoped endpoint so we can reliably attach the relation and
+    # generate derived fields (ports, end_date, port stops) from the itinerary.
+    raise HTTPException(
+        status_code=400,
+        detail="Sailing must be created from an itinerary. Use POST /itineraries/{itinerary_id}/sailings.",
+    )
 
 
 @app.get("/sailings", response_model=list[Sailing])
