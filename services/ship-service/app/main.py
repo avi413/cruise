@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .db import engine, session
-from .models import Base, Company as CompanyRow, Ship as ShipRow
+from .models import Base, Cabin, CabinCategory, Company as CompanyRow, Ship as ShipRow
 from .security import require_roles
 from .tenancy import ensure_tenant_database, tenant_db_name_from_code
 
@@ -217,6 +217,259 @@ def get_ship(ship_id: str):
         status=r.status,
         amenities=[Amenity(**a) for a in (r.amenities or [])],
         maintenance_records=[MaintenanceRecord(**m) for m in (r.maintenance_records or [])],
+    )
+
+
+class CabinView(str):
+    pass
+
+
+class CabinCategoryCreate(BaseModel):
+    code: str
+    name: str
+    view: str = Field(description="inside|no_view|partial_view|full_view|balcony|suite|panoramic|... (free text)")
+    cabin_class: str = Field(default="classic", description="classic|deluxe|suite|... (free text)")
+    max_occupancy: int = Field(default=2, ge=1)
+    meta: dict = Field(default_factory=dict)
+
+
+class CabinCategoryOut(CabinCategoryCreate):
+    id: str
+    ship_id: str
+
+
+class CabinCategoryPatch(BaseModel):
+    name: str | None = None
+    view: str | None = None
+    cabin_class: str | None = None
+    max_occupancy: int | None = Field(default=None, ge=1)
+    meta: dict | None = None
+
+
+class CabinCreate(BaseModel):
+    cabin_no: str
+    deck: int = Field(default=0, ge=0)
+    category_id: str | None = None
+    status: str = Field(default="active", description="active|inactive|maintenance")
+    accessories: list[str] = Field(default_factory=list)
+    meta: dict = Field(default_factory=dict)
+
+
+class CabinOut(CabinCreate):
+    id: str
+    ship_id: str
+
+
+class CabinPatch(BaseModel):
+    deck: int | None = Field(default=None, ge=0)
+    category_id: str | None = None
+    status: str | None = None
+    accessories: list[str] | None = None
+    meta: dict | None = None
+
+
+@app.get("/ships/{ship_id}/cabin-categories", response_model=list[CabinCategoryOut])
+def list_cabin_categories(ship_id: str):
+    _ = get_ship(ship_id)
+    with session() as s:
+        rows = s.query(CabinCategory).filter(CabinCategory.ship_id == ship_id).order_by(CabinCategory.code.asc()).all()
+    return [
+        CabinCategoryOut(
+            id=r.id,
+            ship_id=r.ship_id,
+            code=r.code,
+            name=r.name,
+            view=r.view,
+            cabin_class=r.cabin_class,
+            max_occupancy=r.max_occupancy,
+            meta=r.meta or {},
+        )
+        for r in rows
+    ]
+
+
+@app.post("/ships/{ship_id}/cabin-categories", response_model=CabinCategoryOut)
+def create_cabin_category(
+    ship_id: str,
+    payload: CabinCategoryCreate,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    _ = get_ship(ship_id)
+    with session() as s:
+        existing = (
+            s.query(CabinCategory)
+            .filter(CabinCategory.ship_id == ship_id)
+            .filter(CabinCategory.code == payload.code)
+            .first()
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Category code already exists for this ship")
+        row = CabinCategory(
+            id=str(uuid4()),
+            ship_id=ship_id,
+            code=payload.code.strip(),
+            name=payload.name.strip(),
+            view=(payload.view or "").strip(),
+            cabin_class=(payload.cabin_class or "").strip(),
+            max_occupancy=int(payload.max_occupancy),
+            meta=payload.meta,
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return CabinCategoryOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        name=row.name,
+        view=row.view,
+        cabin_class=row.cabin_class,
+        max_occupancy=row.max_occupancy,
+        meta=row.meta or {},
+    )
+
+
+@app.patch("/cabin-categories/{category_id}", response_model=CabinCategoryOut)
+def patch_cabin_category(
+    category_id: str,
+    payload: CabinCategoryPatch,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    with session() as s:
+        row = s.get(CabinCategory, category_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+        if payload.name is not None:
+            row.name = payload.name
+        if payload.view is not None:
+            row.view = payload.view
+        if payload.cabin_class is not None:
+            row.cabin_class = payload.cabin_class
+        if payload.max_occupancy is not None:
+            row.max_occupancy = int(payload.max_occupancy)
+        if payload.meta is not None:
+            row.meta = payload.meta
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return CabinCategoryOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        code=row.code,
+        name=row.name,
+        view=row.view,
+        cabin_class=row.cabin_class,
+        max_occupancy=row.max_occupancy,
+        meta=row.meta or {},
+    )
+
+
+@app.get("/ships/{ship_id}/cabins", response_model=list[CabinOut])
+def list_cabins(ship_id: str, category_id: str | None = None):
+    _ = get_ship(ship_id)
+    with session() as s:
+        q = s.query(Cabin).filter(Cabin.ship_id == ship_id)
+        if category_id:
+            q = q.filter(Cabin.category_id == category_id)
+        rows = q.order_by(Cabin.deck.asc(), Cabin.cabin_no.asc()).all()
+    return [
+        CabinOut(
+            id=r.id,
+            ship_id=r.ship_id,
+            cabin_no=r.cabin_no,
+            deck=r.deck,
+            category_id=r.category_id,
+            status=r.status,
+            accessories=list(r.accessories or []),
+            meta=r.meta or {},
+        )
+        for r in rows
+    ]
+
+
+@app.post("/ships/{ship_id}/cabins", response_model=CabinOut)
+def create_cabin(
+    ship_id: str,
+    payload: CabinCreate,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    _ = get_ship(ship_id)
+    with session() as s:
+        existing = (
+            s.query(Cabin).filter(Cabin.ship_id == ship_id).filter(Cabin.cabin_no == payload.cabin_no.strip()).first()
+        )
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Cabin number already exists for this ship")
+
+        if payload.category_id is not None:
+            cat = s.get(CabinCategory, payload.category_id)
+            if cat is None or cat.ship_id != ship_id:
+                raise HTTPException(status_code=400, detail="Invalid category_id for this ship")
+
+        row = Cabin(
+            id=str(uuid4()),
+            ship_id=ship_id,
+            category_id=payload.category_id,
+            cabin_no=payload.cabin_no.strip(),
+            deck=int(payload.deck),
+            status=payload.status.strip(),
+            accessories=list(payload.accessories or []),
+            meta=payload.meta,
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return CabinOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        cabin_no=row.cabin_no,
+        deck=row.deck,
+        category_id=row.category_id,
+        status=row.status,
+        accessories=list(row.accessories or []),
+        meta=row.meta or {},
+    )
+
+
+@app.patch("/cabins/{cabin_id}", response_model=CabinOut)
+def patch_cabin(
+    cabin_id: str,
+    payload: CabinPatch,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    with session() as s:
+        row = s.get(Cabin, cabin_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cabin not found")
+        if payload.category_id is not None:
+            if payload.category_id == "":
+                row.category_id = None
+            else:
+                cat = s.get(CabinCategory, payload.category_id)
+                if cat is None or cat.ship_id != row.ship_id:
+                    raise HTTPException(status_code=400, detail="Invalid category_id for this ship")
+                row.category_id = payload.category_id
+        if payload.deck is not None:
+            row.deck = int(payload.deck)
+        if payload.status is not None:
+            row.status = payload.status
+        if payload.accessories is not None:
+            row.accessories = list(payload.accessories or [])
+        if payload.meta is not None:
+            row.meta = payload.meta
+
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+    return CabinOut(
+        id=row.id,
+        ship_id=row.ship_id,
+        cabin_no=row.cabin_no,
+        deck=row.deck,
+        category_id=row.category_id,
+        status=row.status,
+        accessories=list(row.accessories or []),
+        meta=row.meta or {},
     )
 
 

@@ -2,12 +2,25 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String
+from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class SailingInventory(Base):
+    __tablename__ = "sailing_inventory"
+    __table_args__ = (UniqueConstraint("sailing_id", "cabin_type", name="uq_sailing_inventory_sailing_cabin_type"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    sailing_id: Mapped[str] = mapped_column(String, index=True)
+    cabin_type: Mapped[str] = mapped_column(String, index=True)  # inside|oceanview|balcony|suite (or future)
+
+    capacity: Mapped[int] = mapped_column(Integer, default=0)  # max sellable
+    held: Mapped[int] = mapped_column(Integer, default=0)
+    confirmed: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Booking(Base):

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from . import events
 from .db import session
-from .models import Booking
+from .models import Booking, SailingInventory
 from .security import require_roles
 from .tenancy import get_company_id, get_tenant_engine
 
@@ -74,9 +74,132 @@ def _now() -> datetime:
     return datetime.now(tz=timezone.utc)
 
 
+def _release_expired_holds(tenant_engine) -> int:
+    """
+    Best-effort cleanup to prevent inventory getting stuck in held state.
+    This is NOT a background scheduler; it's invoked on write paths.
+    """
+    now = _now()
+    released = 0
+    with session(tenant_engine) as s:
+        expired = (
+            s.query(Booking)
+            .filter(Booking.status == "held")
+            .filter(Booking.hold_expires_at.isnot(None))
+            .filter(Booking.hold_expires_at < now)
+            .all()
+        )
+
+        for b in expired:
+            inv = (
+                s.query(SailingInventory)
+                .filter(SailingInventory.sailing_id == b.sailing_id)
+                .filter(SailingInventory.cabin_type == b.cabin_type)
+                .first()
+            )
+            if inv is not None and inv.held > 0:
+                inv.held = max(0, inv.held - 1)
+                s.add(inv)
+
+            b.status = "cancelled"
+            b.updated_at = now
+            b.hold_expires_at = None
+            s.add(b)
+            released += 1
+
+        s.commit()
+    return released
+
+
+def _ensure_inventory_row(s, sailing_id: str, cabin_type: str) -> SailingInventory:
+    inv = (
+        s.query(SailingInventory)
+        .filter(SailingInventory.sailing_id == sailing_id)
+        .filter(SailingInventory.cabin_type == cabin_type)
+        .first()
+    )
+    if inv is None:
+        # Starter-friendly default to avoid breaking flows; portal can set real capacity.
+        inv = SailingInventory(
+            id=str(uuid4()),
+            sailing_id=sailing_id,
+            cabin_type=cabin_type,
+            capacity=999,
+            held=0,
+            confirmed=0,
+        )
+        s.add(inv)
+        s.commit()
+        s.refresh(inv)
+    return inv
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+class InventoryUpsert(BaseModel):
+    cabin_type: str
+    capacity: int = Field(ge=0)
+
+
+class InventoryOut(BaseModel):
+    sailing_id: str
+    cabin_type: str
+    capacity: int
+    held: int
+    confirmed: int
+    available: int
+
+
+@app.get("/inventory/sailings/{sailing_id}", response_model=list[InventoryOut])
+def get_inventory(
+    sailing_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
+        rows = s.query(SailingInventory).filter(SailingInventory.sailing_id == sailing_id).all()
+    return [
+        InventoryOut(
+            sailing_id=r.sailing_id,
+            cabin_type=r.cabin_type,
+            capacity=r.capacity,
+            held=r.held,
+            confirmed=r.confirmed,
+            available=max(0, r.capacity - r.held - r.confirmed),
+        )
+        for r in rows
+    ]
+
+
+@app.post("/inventory/sailings/{sailing_id}", response_model=InventoryOut)
+def upsert_inventory(
+    sailing_id: str,
+    payload: InventoryUpsert,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    if not payload.cabin_type.strip():
+        raise HTTPException(status_code=400, detail="cabin_type is required")
+    with session(tenant_engine) as s:
+        inv = _ensure_inventory_row(s, sailing_id=sailing_id, cabin_type=payload.cabin_type.strip())
+        inv.capacity = int(payload.capacity)
+        # Clamp held/confirmed to capacity if capacity reduced.
+        inv.held = min(inv.held, inv.capacity)
+        inv.confirmed = min(inv.confirmed, inv.capacity - inv.held)
+        s.add(inv)
+        s.commit()
+        s.refresh(inv)
+    return InventoryOut(
+        sailing_id=inv.sailing_id,
+        cabin_type=inv.cabin_type,
+        capacity=inv.capacity,
+        held=inv.held,
+        confirmed=inv.confirmed,
+        available=max(0, inv.capacity - inv.held - inv.confirmed),
+    )
 
 
 @app.post("/holds", response_model=BookingOut)
@@ -86,6 +209,9 @@ async def create_hold(
     tenant_engine=Depends(get_tenant_engine),
     _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
 ):
+    # Prevent stale holds from blocking inventory.
+    _release_expired_holds(tenant_engine)
+
     # Quote via pricing-service
     pricing_url = __import__("os").getenv("PRICING_SERVICE_URL", "http://localhost:8004")
     req = {
@@ -125,6 +251,12 @@ async def create_hold(
     )
 
     with session(tenant_engine) as s:
+        inv = _ensure_inventory_row(s, sailing_id=booking.sailing_id, cabin_type=booking.cabin_type)
+        available = max(0, inv.capacity - inv.held - inv.confirmed)
+        if available <= 0:
+            raise HTTPException(status_code=409, detail="Sold out")
+        inv.held += 1
+        s.add(inv)
         s.add(booking)
         s.commit()
 
@@ -206,6 +338,8 @@ async def confirm_booking(
     _principal=Depends(require_roles("guest", "agent", "staff", "admin")),
 ):
     now = _now()
+    # Prevent stale holds from blocking inventory.
+    _release_expired_holds(tenant_engine)
     with session(tenant_engine) as s:
         booking = s.get(Booking, booking_id)
         if booking is None:
@@ -220,6 +354,19 @@ async def confirm_booking(
             s.add(booking)
             s.commit()
             raise HTTPException(status_code=409, detail="Hold expired")
+
+        inv = (
+            s.query(SailingInventory)
+            .filter(SailingInventory.sailing_id == booking.sailing_id)
+            .filter(SailingInventory.cabin_type == booking.cabin_type)
+            .first()
+        )
+        if inv is not None:
+            inv.held = max(0, inv.held - 1)
+            inv.confirmed += 1
+            # hard clamp
+            inv.confirmed = min(inv.confirmed, max(0, inv.capacity - inv.held))
+            s.add(inv)
 
         booking.status = "confirmed"
         booking.updated_at = now

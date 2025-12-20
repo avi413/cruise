@@ -95,10 +95,173 @@ async def create_ship(request: Request):
     return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships", request)
 
 
+@app.get("/v1/ships/{ship_id}")
+async def get_ship(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
+
+
+@app.patch("/v1/ships/{ship_id}")
+async def patch_ship(ship_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
+
+
+@app.get("/v1/ships/{ship_id}/cabin-categories")
+async def list_ship_cabin_categories(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request)
+
+
+@app.post("/v1/ships/{ship_id}/cabin-categories")
+async def create_ship_cabin_category(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request)
+
+
+@app.patch("/v1/cabin-categories/{category_id}")
+async def patch_ship_cabin_category(category_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request)
+
+
+@app.get("/v1/ships/{ship_id}/cabins")
+async def list_ship_cabins(ship_id: str, request: Request):
+    # passthrough query params (category_id) by manually appending
+    q = request.url.query
+    url = f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.post("/v1/ships/{ship_id}/cabins")
+async def create_ship_cabin(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins", request)
+
+
+@app.patch("/v1/cabins/{cabin_id}")
+async def patch_ship_cabin(cabin_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request)
+
+
+@app.post("/v1/staff/login")
+async def staff_login(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/login", request)
+
+
+@app.get("/v1/staff/users")
+async def list_staff_users(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/users", request)
+
+
+@app.post("/v1/staff/users")
+async def create_staff_user(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/users", request)
+
+
+@app.patch("/v1/staff/users/{user_id}")
+async def patch_staff_user(user_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request)
+
+
+@app.get("/v1/staff/groups")
+async def list_staff_groups(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)
+
+
+@app.post("/v1/staff/groups")
+async def create_staff_group(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)
+
+
+@app.patch("/v1/staff/groups/{group_id}")
+async def patch_staff_group(group_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}", request)
+
+
+@app.get("/v1/staff/groups/{group_id}/members")
+async def list_staff_group_members(group_id: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request)
+
+
+@app.post("/v1/staff/groups/{group_id}/members")
+async def add_staff_group_member(group_id: str, request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request)
+
+
+@app.delete("/v1/staff/groups/{group_id}/members/{user_id}")
+async def remove_staff_group_member(group_id: str, user_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members/{user_id}", request)
+
+
+@app.post("/v1/customers")
+async def create_customer(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers", request)
+
+
+@app.patch("/v1/customers/{customer_id}")
+async def patch_customer(customer_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request)
+
+
+@app.get("/v1/inventory/sailings/{sailing_id}")
+async def get_inventory(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}", request)
+
+
+@app.post("/v1/inventory/sailings/{sailing_id}")
+async def upsert_inventory(sailing_id: str, request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}", request)
+
+
+@app.post("/v1/sailings")
+async def create_sailing(request: Request):
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings", request)
+
+
+@app.get("/v1/sailings")
+async def list_sailings(request: Request):
+    q = request.url.query
+    url = f"{CRUISE_SERVICE_URL}/sailings"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.get("/v1/sailings/{sailing_id}")
+async def get_sailing(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request)
+
+
+@app.get("/v1/sailings/{sailing_id}/itinerary")
+async def get_sailing_itinerary(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/itinerary", request)
+
+
+@app.post("/v1/sailings/{sailing_id}/port-stops")
+async def add_port_stop(sailing_id: str, request: Request):
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/port-stops", request)
+
 @app.post("/v1/quote")
 async def create_quote(request: Request):
     """Website/mobile: get real-time pricing quote."""
     return await _proxy("POST", f"{PRICING_SERVICE_URL}/quote", request)
+
+
+@app.get("/v1/pricing/overrides")
+async def list_pricing_overrides(request: Request):
+    return await _proxy("GET", f"{PRICING_SERVICE_URL}/overrides", request)
+
+
+@app.post("/v1/pricing/overrides/cabin-multipliers")
+async def set_pricing_cabin_multiplier(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/overrides/cabin-multipliers", request)
+
+
+@app.post("/v1/pricing/overrides/base-fares")
+async def set_pricing_base_fare(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/overrides/base-fares", request)
+
+
+@app.delete("/v1/pricing/overrides/{company_id}")
+async def clear_pricing_overrides(company_id: str, request: Request):
+    return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/overrides/{company_id}", request)
 
 
 @app.post("/v1/holds")

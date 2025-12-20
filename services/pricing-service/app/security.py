@@ -30,9 +30,29 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
 
+def get_principal(
+    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)],
+) -> dict:
+    if creds is None:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    return decode_token(creds.credentials)
+
+
 def get_principal_optional(
     creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)],
 ) -> Optional[dict]:
     if creds is None:
         return None
     return decode_token(creds.credentials)
+
+
+def require_roles(*allowed_roles: str):
+    allowed = set(allowed_roles)
+
+    def _dep(principal: Annotated[dict, Depends(get_principal)]) -> dict:
+        role = principal.get("role")
+        if role not in allowed:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        return principal
+
+    return _dep
