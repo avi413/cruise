@@ -153,3 +153,29 @@ def test_category_pricing_is_per_sailing_date():
         overrides=overrides,
     )
     assert q2.lines[0].code.startswith("fare.")
+
+
+def test_category_pricing_can_select_price_type():
+    today = date.today()
+    overrides = domain.PricingOverrides(
+        category_prices=[
+            domain.CategoryPriceRule(category_code="CO3", price_type="regular", currency="EUR", min_guests=2, price_per_person=300_00),
+            domain.CategoryPriceRule(category_code="CO3", price_type="internet", currency="EUR", min_guests=2, price_per_person=290_00),
+        ]
+    )
+
+    q = domain.quote_with_overrides(
+        domain.QuoteRequest(
+            sailing_date=today,
+            cabin_type="inside",
+            cabin_category_code="CO3",
+            guests=[domain.Guest(paxtype="adult"), domain.Guest(paxtype="adult")],
+            coupon_code=None,
+            loyalty_tier=None,
+            currency="EUR",
+            price_type="internet",
+        ),
+        today=today,
+        overrides=overrides,
+    )
+    assert q.subtotal == 2 * 290_00

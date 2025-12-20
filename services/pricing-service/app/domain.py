@@ -6,6 +6,7 @@ from typing import Literal
 
 Paxtype = Literal["adult", "child", "infant"]
 CabinType = Literal["inside", "oceanview", "balcony", "suite"]
+PriceType = str
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,9 @@ class CategoryPriceRule:
     currency: str
     min_guests: int
     price_per_person: int  # cents
+    # "rate plan" / price bucket (e.g. regular, internet, promo, etc).
+    # Kept flexible as a free-form string for now.
+    price_type: PriceType = "regular"
     # Date applicability (cruise/sailing date). If both None, applies to any date.
     # If one bound is provided, it's treated as an open-ended range.
     effective_start_date: date | None = None
@@ -43,6 +47,8 @@ class QuoteRequest:
     loyalty_tier: str | None
     cabin_category_code: str | None = None
     currency: str = "USD"
+    # Which "bucket" to use when category pricing exists (regular/internet/etc).
+    price_type: PriceType = "regular"
 
 
 @dataclass(frozen=True)
@@ -129,6 +135,28 @@ def quote_with_overrides(req: QuoteRequest, today: date, overrides: PricingOverr
     category_code = (req.cabin_category_code or "").strip().upper() or None
     if category_code and overrides and overrides.category_prices:
         rules = [r for r in overrides.category_prices if (r.category_code or "").strip().upper() == category_code]
+
+        # Prefer matching currency (if requested).
+        req_currency = (req.currency or "").strip().upper() or None
+        if req_currency:
+            cur_matches = [r for r in rules if (r.currency or "").strip().upper() == req_currency]
+            if cur_matches:
+                rules = cur_matches
+
+        # Prefer matching price type (rate plan), with safe fallback to "regular".
+        desired_pt = (req.price_type or "regular").strip().lower() or "regular"
+
+        def _norm_pt(x: str | None) -> str:
+            return (x or "regular").strip().lower() or "regular"
+
+        pt_matches = [r for r in rules if _norm_pt(getattr(r, "price_type", None)) == desired_pt]
+        if pt_matches:
+            rules = pt_matches
+        elif desired_pt != "regular":
+            reg = [r for r in rules if _norm_pt(getattr(r, "price_type", None)) == "regular"]
+            if reg:
+                rules = reg
+
         if rules:
             guest_count = len(req.guests)
             sail = req.sailing_date
@@ -168,8 +196,8 @@ def quote_with_overrides(req: QuoteRequest, today: date, overrides: PricingOverr
 
             lines: list[QuoteLine] = [
                 QuoteLine(
-                    code=f"fare.category.{category_code}",
-                    description=f"Cabin category {category_code} ({best.currency}) — {billable} pax billed (min {min_guests})",
+                    code=f"fare.category.{category_code}.{(best.price_type or 'regular').strip().lower() or 'regular'}",
+                    description=f"Cabin category {category_code} ({best.currency}) [{(best.price_type or 'regular').strip().lower() or 'regular'}] — {billable} pax billed (min {min_guests})",
                     amount=subtotal,
                 )
             ]
