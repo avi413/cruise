@@ -11,6 +11,7 @@ import { CruisesPage } from './pages/CruisesPage'
 import { FleetPage } from './pages/FleetPage'
 import { SailingsPage } from './pages/SailingsPage'
 import { ItinerariesPage } from './pages/ItinerariesPage'
+import { PortsPage } from './pages/PortsPage'
 import { CustomersPage } from './pages/CustomersPage'
 import { SalesPage } from './pages/SalesPage'
 import { PricingPage } from './pages/PricingPage'
@@ -68,6 +69,7 @@ export function App() {
           <Route path="fleet" element={<FleetPage apiBase={apiBase} />} />
           <Route path="sailings" element={<SailingsPage apiBase={apiBase} />} />
           <Route path="itineraries" element={<ItinerariesPage apiBase={apiBase} />} />
+          <Route path="ports" element={<PortsPage apiBase={apiBase} />} />
           <Route path="customers" element={<CustomersPage apiBase={apiBase} />} />
           <Route path="sales" element={<SalesPage apiBase={apiBase} />} />
           <Route
