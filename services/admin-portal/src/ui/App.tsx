@@ -2,6 +2,8 @@ import React, { useMemo } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Shell } from './components/Shell'
 import { RequireAuth } from './components/auth'
+import { decodeJwt, isExpired } from './components/jwt'
+import { getCompany, getToken } from './components/storage'
 import { CompanySelectPage } from './pages/CompanySelectPage'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -26,11 +28,19 @@ function envEdgeUrl(): string {
 
 export function App() {
   const apiBase = useMemo(() => envEdgeUrl(), [])
+  const initial = useMemo(() => {
+    const company = getCompany()
+    const token = getToken()
+    const claims = decodeJwt(token)
+    const okToken = Boolean(token) && !isExpired(claims)
+    if (company?.id && okToken) return '/app/dashboard'
+    return '/login'
+  }, [])
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/company" replace />} />
+        <Route path="/" element={<Navigate to={initial} replace />} />
         <Route path="/company" element={<CompanySelectPage apiBase={apiBase} />} />
         <Route path="/login" element={<LoginPage apiBase={apiBase} />} />
 
