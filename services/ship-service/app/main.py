@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .db import engine, session
-from .models import Base, Cabin, CabinCategory, Company as CompanyRow, Ship as ShipRow
+from .models import Base, Cabin, CabinCategory, Company as CompanyRow, CompanySettings as CompanySettingsRow, Ship as ShipRow
 from .security import require_roles
 from .tenancy import ensure_tenant_database, tenant_db_name_from_code
 
@@ -41,6 +41,85 @@ class Company(CompanyCreate):
     id: str
     created_at: datetime
     tenant_db: str
+
+
+def _default_company_settings(company: CompanyRow) -> dict:
+    # Keep defaults stable and conservative; frontend applies these as CSS vars.
+    return {
+        "branding": {
+            "display_name": company.name,
+            "logo_url": None,
+            "primary_color": "#388bfd",
+            "secondary_color": "#9ecbff",
+            "background_url": None,
+            "email_from_name": company.name,
+            "email_from_address": None,
+            "email_templates": {},  # future: {template_key: {subject, html, text}}
+        },
+        "localization": {
+            "default_locale": "en",
+            "supported_locales": ["en"],
+            "default_currency": "USD",
+            "supported_currencies": ["USD"],
+        },
+    }
+
+
+def _load_or_create_company_settings(company_id: str) -> CompanySettingsRow:
+    with session() as s:
+        company = s.get(CompanyRow, company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+
+        row = s.query(CompanySettingsRow).filter(CompanySettingsRow.company_id == company_id).first()
+        if row is not None:
+            return row
+
+        now = _now()
+        defaults = _default_company_settings(company)
+        row = CompanySettingsRow(
+            id=str(uuid4()),
+            company_id=company_id,
+            created_at=now,
+            updated_at=now,
+            branding=defaults["branding"],
+            localization=defaults["localization"],
+        )
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        return row
+
+
+class CompanyBranding(BaseModel):
+    display_name: str | None = None
+    logo_url: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    background_url: str | None = None
+    email_from_name: str | None = None
+    email_from_address: str | None = None
+    email_templates: dict = Field(default_factory=dict)
+
+
+class CompanyLocalization(BaseModel):
+    default_locale: str | None = None
+    supported_locales: list[str] | None = None
+    default_currency: str | None = None
+    supported_currencies: list[str] | None = None
+
+
+class CompanySettingsOut(BaseModel):
+    company_id: str
+    created_at: datetime
+    updated_at: datetime
+    branding: CompanyBranding
+    localization: CompanyLocalization
+
+
+class CompanySettingsPatch(BaseModel):
+    branding: CompanyBranding | None = None
+    localization: CompanyLocalization | None = None
 
 
 class ShipCreate(BaseModel):
@@ -113,6 +192,56 @@ def get_company(company_id: str):
     if not r:
         raise HTTPException(status_code=404, detail="Company not found")
     return Company(id=r.id, created_at=r.created_at, name=r.name, code=r.code, tenant_db=r.tenant_db)
+
+
+@app.get("/companies/{company_id}/settings", response_model=CompanySettingsOut)
+def get_company_settings(company_id: str):
+    """
+    White-label + localization settings for this company.
+
+    - Public read (used to brand the login experience).
+    - Writes require staff/admin.
+    """
+    row = _load_or_create_company_settings(company_id)
+    return CompanySettingsOut(
+        company_id=row.company_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        branding=CompanyBranding(**(row.branding or {})),
+        localization=CompanyLocalization(**(row.localization or {})),
+    )
+
+
+@app.patch("/companies/{company_id}/settings", response_model=CompanySettingsOut)
+def patch_company_settings(company_id: str, payload: CompanySettingsPatch, _principal=Depends(require_roles("staff", "admin"))):
+    row = _load_or_create_company_settings(company_id)
+    with session() as s:
+        row = s.get(CompanySettingsRow, row.id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Settings not found")
+
+        if payload.branding is not None:
+            merged = dict(row.branding or {})
+            merged.update({k: v for (k, v) in payload.branding.model_dump().items() if v is not None})
+            row.branding = merged
+
+        if payload.localization is not None:
+            merged = dict(row.localization or {})
+            merged.update({k: v for (k, v) in payload.localization.model_dump().items() if v is not None})
+            row.localization = merged
+
+        row.updated_at = _now()
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+
+    return CompanySettingsOut(
+        company_id=row.company_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        branding=CompanyBranding(**(row.branding or {})),
+        localization=CompanyLocalization(**(row.localization or {})),
+    )
 
 
 class CompanyPatch(BaseModel):
