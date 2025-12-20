@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
+import * as XLSX from 'xlsx'
 
 type Company = { id: string; name: string; code: string; created_at: string }
 type Ship = {
@@ -35,6 +36,15 @@ type Cabin = {
   meta: any
 }
 
+type BulkCabinRow = {
+  cabin_no: string
+  deck?: number
+  category_code?: string
+  category_id?: string
+  status?: string
+  accessories?: string
+}
+
 export function FleetPage(props: { apiBase: string }) {
   const [companies, setCompanies] = useState<Company[]>([])
   const [companyId, setCompanyId] = useState<string>('')
@@ -58,6 +68,10 @@ export function FleetPage(props: { apiBase: string }) {
   const [cabinDeck, setCabinDeck] = useState(0)
   const [cabinCategoryId, setCabinCategoryId] = useState<string>('')
   const [cabinAccessories, setCabinAccessories] = useState('safety_box,iron')
+
+  const [importRows, setImportRows] = useState<BulkCabinRow[]>([])
+  const [importMode, setImportMode] = useState<'skip_existing' | 'error_on_existing'>('skip_existing')
+  const [importResult, setImportResult] = useState<any | null>(null)
 
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -164,6 +178,67 @@ export function FleetPage(props: { apiBase: string }) {
       setCabins(r)
       setCabinNo('')
       setCabinDeck(0)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function parseExcel(file: File) {
+    setErr(null)
+    setImportResult(null)
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = new Uint8Array(reader.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const sheetName = wb.SheetNames[0]
+        const ws = wb.Sheets[sheetName]
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
+        const rows: BulkCabinRow[] = json
+          .map((r) => ({
+            cabin_no: String(r.cabin_no || r.cabinNo || r['Cabin No'] || r['cabin_no'] || '').trim(),
+            deck: r.deck !== undefined && r.deck !== '' ? Number(r.deck) : undefined,
+            category_code: String(r.category_code || r.categoryCode || r['category_code'] || r['Category Code'] || '').trim() || undefined,
+            category_id: String(r.category_id || r.categoryId || r['category_id'] || '').trim() || undefined,
+            status: String(r.status || '').trim() || undefined,
+            accessories: String(r.accessories || r['Accessories'] || '').trim() || undefined,
+          }))
+          .filter((r) => r.cabin_no)
+        setImportRows(rows)
+      } catch (e: any) {
+        setErr(String(e?.message || e))
+        setImportRows([])
+      }
+    }
+    reader.onerror = () => setErr('Failed to read file.')
+    reader.readAsArrayBuffer(file)
+  }
+
+  async function bulkImportCabins() {
+    if (!shipId) return
+    if (!importRows.length) return
+    setBusy(true)
+    setErr(null)
+    setImportResult(null)
+    try {
+      const items = importRows.map((r) => ({
+        cabin_no: r.cabin_no,
+        deck: r.deck ?? 0,
+        category_id: r.category_id ?? null,
+        category_code: r.category_code ?? null,
+        status: r.status ?? 'active',
+        accessories: (r.accessories || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        meta: {},
+      }))
+      const res = await apiFetch(props.apiBase, `/v1/ships/${shipId}/cabins/bulk`, { method: 'POST', body: { mode: importMode, items } })
+      setImportResult(res)
+      const r = await apiFetch<Cabin[]>(props.apiBase, `/v1/ships/${shipId}/cabins`)
+      setCabins(r)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -349,6 +424,85 @@ export function FleetPage(props: { apiBase: string }) {
                   <tr>
                     <td style={styles.tdMuted} colSpan={4}>
                       No cabins yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div style={styles.grid}>
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Import cabins (Excel)</div>
+          <div style={styles.muted}>
+            Upload an .xlsx with columns: <span style={styles.mono}>cabin_no</span>, <span style={styles.mono}>deck</span>, optional{' '}
+            <span style={styles.mono}>category_code</span> or <span style={styles.mono}>category_id</span>, optional <span style={styles.mono}>status</span>,{' '}
+            optional <span style={styles.mono}>accessories</span> (comma-separated).
+          </div>
+          <div style={styles.form}>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              disabled={!shipId || busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) parseExcel(f)
+              }}
+            />
+            <label style={styles.label}>
+              Import mode
+              <select style={styles.input} value={importMode} onChange={(e) => setImportMode(e.target.value as any)} disabled={busy}>
+                <option value="skip_existing">Skip existing cabins (recommended)</option>
+                <option value="error_on_existing">Error on existing cabins</option>
+              </select>
+            </label>
+            <button style={styles.primaryBtn} disabled={busy || !shipId || importRows.length === 0} onClick={() => void bulkImportCabins()}>
+              {busy ? 'Importing…' : `Import ${importRows.length} cabins`}
+            </button>
+            {importResult ? (
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>Import result</div>
+                <div style={styles.muted}>
+                  Created: <span style={styles.mono}>{importResult.created}</span> · Skipped: <span style={styles.mono}>{importResult.skipped}</span> · Errors:{' '}
+                  <span style={styles.mono}>{(importResult.errors || []).length}</span>
+                </div>
+                {(importResult.errors || []).length ? (
+                  <div style={{ marginTop: 8, whiteSpace: 'pre-wrap', fontSize: 12, color: 'rgba(230,237,243,0.75)' }}>
+                    {JSON.stringify(importResult.errors.slice(0, 10), null, 2)}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Preview (first 20)</div>
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Cabin</th>
+                  <th style={styles.th}>Deck</th>
+                  <th style={styles.th}>Category code</th>
+                  <th style={styles.th}>Accessories</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importRows.slice(0, 20).map((r, idx) => (
+                  <tr key={idx}>
+                    <td style={styles.tdMono}>{r.cabin_no}</td>
+                    <td style={styles.tdMono}>{r.deck ?? '—'}</td>
+                    <td style={styles.tdMono}>{r.category_code || r.category_id || '—'}</td>
+                    <td style={styles.td}>{r.accessories || '—'}</td>
+                  </tr>
+                ))}
+                {importRows.length === 0 ? (
+                  <tr>
+                    <td style={styles.tdMuted} colSpan={4}>
+                      No import file loaded.
                     </td>
                   </tr>
                 ) : null}
