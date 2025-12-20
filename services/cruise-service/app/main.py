@@ -251,6 +251,10 @@ class ItineraryCreate(BaseModel):
     titles: dict[str, str] = Field(
         description="Localized itinerary titles keyed by language code (e.g. {'en': 'Greek Isles', 'ar': '...'})."
     )
+    map_image_url: str | None = Field(
+        default=None,
+        description="Optional map image URL for the itinerary (used for itinerary overview/map previews).",
+    )
     stops: list[ItineraryStop] = Field(min_length=1, description="Ordered list of itinerary days/stops.")
 
     @model_validator(mode="after")

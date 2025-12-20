@@ -40,6 +40,68 @@ export function Button(props: { variant?: 'primary' | 'secondary' | 'danger'; di
   )
 }
 
+export type TabItem = { key: string; label: string; badge?: React.ReactNode; disabled?: boolean }
+
+export function Tabs(props: { idBase: string; tabs: TabItem[]; value: string; onChange: (key: string) => void }) {
+  function nextEnabled(fromIdx: number, dir: 1 | -1): number {
+    const n = props.tabs.length
+    for (let step = 1; step <= n; step++) {
+      const i = (fromIdx + dir * step + n) % n
+      if (!props.tabs[i]?.disabled) return i
+    }
+    return fromIdx
+  }
+
+  function onKeyDown(e: React.KeyboardEvent, idx: number) {
+    if (props.tabs.length === 0) return
+    const k = e.key
+    if (k !== 'ArrowRight' && k !== 'ArrowLeft' && k !== 'Home' && k !== 'End') return
+    e.preventDefault()
+
+    const targetIdx =
+      k === 'Home'
+        ? nextEnabled(-1, 1)
+        : k === 'End'
+          ? nextEnabled(0, -1)
+          : k === 'ArrowRight'
+            ? nextEnabled(idx, 1)
+            : nextEnabled(idx, -1)
+
+    const target = props.tabs[targetIdx]
+    if (!target || target.disabled) return
+    props.onChange(target.key)
+
+    const el = document.getElementById(`${props.idBase}-tab-${target.key}`)
+    if (el instanceof HTMLElement) el.focus()
+  }
+
+  return (
+    <div role="tablist" aria-label="Sections" style={styles.tabList}>
+      {props.tabs.map((t, idx) => {
+        const selected = t.key === props.value
+        return (
+          <button
+            key={t.key}
+            id={`${props.idBase}-tab-${t.key}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={`${props.idBase}-panel-${t.key}`}
+            tabIndex={selected ? 0 : -1}
+            disabled={t.disabled}
+            onClick={() => (t.disabled ? null : props.onChange(t.key))}
+            onKeyDown={(e) => onKeyDown(e, idx)}
+            style={{ ...styles.tabBtn, ...(selected ? styles.tabBtnActive : null), opacity: t.disabled ? 0.5 : 1 }}
+          >
+            <span>{t.label}</span>
+            {t.badge !== undefined ? <span style={styles.tabBadge}>{t.badge}</span> : null}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement> & { label?: string; hint?: string }) {
   const input = <input {...props} style={{ ...styles.input, ...(props.style || {}) }} />
   if (!props.label) return input
@@ -127,6 +189,39 @@ const styles: Record<string, React.CSSProperties> = {
   },
   btnSecondary: { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#e6edf3' },
   btnDanger: { background: 'rgba(248,81,73,0.12)', border: '1px solid rgba(248,81,73,0.35)', color: '#ffb4ae' },
+  tabList: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    padding: 2,
+  },
+  tabBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 10px',
+    borderRadius: 999,
+    cursor: 'pointer',
+    fontWeight: 900,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#e6edf3',
+    whiteSpace: 'nowrap',
+  },
+  tabBtnActive: {
+    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
+    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
+  },
+  tabBadge: {
+    padding: '2px 8px',
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 900,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(0,0,0,0.18)',
+    color: 'rgba(230,237,243,0.85)',
+  },
   error: {
     padding: 12,
     borderRadius: 12,

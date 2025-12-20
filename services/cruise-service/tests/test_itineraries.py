@@ -20,6 +20,7 @@ def test_itinerary_entity_compute_dates_and_related_sailings():
     create_itinerary_payload = {
         "code": "TEST-3D",
         "titles": {"en": "Test Itinerary", "ar": "مسار تجريبي"},
+        "map_image_url": "https://example.com/itineraries/test-3d/map.jpg",
         "stops": [
             {
                 "day_offset": 0,
@@ -55,6 +56,7 @@ def test_itinerary_entity_compute_dates_and_related_sailings():
     itinerary = r.json()
     itinerary_id = itinerary["id"]
     assert itinerary["titles"]["en"] == "Test Itinerary"
+    assert itinerary["map_image_url"] == "https://example.com/itineraries/test-3d/map.jpg"
     assert len(itinerary["stops"]) == 3
 
     r = client.get(f"/itineraries/{itinerary_id}/compute", params={"start_date": "2025-01-10"})

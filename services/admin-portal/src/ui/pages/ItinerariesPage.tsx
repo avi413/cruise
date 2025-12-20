@@ -29,6 +29,7 @@ type Itinerary = {
   id: string
   code?: string | null
   titles: Record<string, string>
+  map_image_url?: string | null
   stops: ItineraryStop[]
   created_at: string
   updated_at: string
@@ -38,7 +39,7 @@ type ItineraryDates = { start_date: string; end_date: string; nights: number; da
 
 type TitleRow = { lang: string; text: string }
 
-type ImportItinerary = { code: string; titles: Record<string, string>; stops: ItineraryStop[] }
+type ImportItinerary = { code: string; titles: Record<string, string>; map_image_url?: string | null; stops: ItineraryStop[] }
 type ImportPreview = {
   fileName: string
   itineraries: ImportItinerary[]
@@ -93,6 +94,7 @@ function buildTemplateWorkbook(): XLSX.WorkBook {
       code: 'GREEK-7N',
       title_he: 'איי יוון',
       title_en: 'Greek Isles',
+      map_image_url: 'https://cdn.example.com/itineraries/greek-7n/map.jpg',
     },
   ])
 
@@ -181,7 +183,10 @@ function buildImportPreview(fileName: string, wb: XLSX.WorkBook): ImportPreview 
     if (en) titles.en = en
     if (!he && !en) warnings.push(`itineraries row ${idx + 2} (${code}): no title provided (title_he/title_en).`)
 
-    byCode.set(code, { code, titles, stops: [] })
+    const mapImageUrl = asStr(r.map_image_url)
+    if (!mapImageUrl) errors.push(`itineraries row ${idx + 2} (${code}): "map_image_url" is required.`)
+
+    byCode.set(code, { code, titles, map_image_url: mapImageUrl || null, stops: [] })
   }
 
   // Group stops by itinerary_code and build day offsets
@@ -297,10 +302,10 @@ export function ItinerariesPage(props: { apiBase: string }) {
 
   // create form
   const [code, setCode] = useState('')
+  const [mapImageUrl, setMapImageUrl] = useState('')
   const [titles, setTitles] = useState<TitleRow[]>([
     { lang: 'he', text: '' },
     { lang: 'en', text: '' },
-    { lang: 'he', text: '' },
   ])
   const [stops, setStops] = useState<ItineraryStop[]>([
     {
@@ -351,7 +356,8 @@ export function ItinerariesPage(props: { apiBase: string }) {
   async function loadPrefs() {
     try {
       const r = await apiFetch<MePrefs>(props.apiBase, `/v1/staff/me/preferences`)
-      const loc = String(r?.preferences?.locale || 'he').trim() || 'he'
+      const locRaw = String(r?.preferences?.locale || 'he').trim() || 'he'
+      const loc = locRaw === 'en' || locRaw === 'he' ? locRaw : 'he'
       setPreferredLang(loc)
     } catch {
       // prefs should never block screen
@@ -391,16 +397,17 @@ export function ItinerariesPage(props: { apiBase: string }) {
       const payload = {
         code: code.trim() ? code.trim() : null,
         titles: titlesObj,
+        map_image_url: mapImageUrl.trim() ? mapImageUrl.trim() : null,
         stops,
       }
 
       await apiFetch(props.apiBase, `/v1/itineraries`, { method: 'POST', body: payload, auth: true, tenant: false })
 
       setCode('')
+      setMapImageUrl('')
       setTitles([
         { lang: 'he', text: '' },
         { lang: 'en', text: '' },
-        { lang: 'he', text: '' },
       ])
       setStops([
         {
@@ -487,14 +494,6 @@ export function ItinerariesPage(props: { apiBase: string }) {
     })
   }
 
-  function addTitleRow() {
-    setTitles((prev) => [...prev, { lang: '', text: '' }])
-  }
-
-  function removeTitleRow(idx: number) {
-    setTitles((prev) => prev.filter((_, i) => i !== idx))
-  }
-
   function portDisplayForCode(code: string | null | undefined): string {
     const c = String(code || '').trim()
     if (!c) return '—'
@@ -550,7 +549,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
         setImportProgress({ done: i, total: its.length, current: it.code })
         await apiFetch(props.apiBase, `/v1/itineraries`, {
           method: 'POST',
-          body: { code: it.code, titles: it.titles, stops: it.stops },
+          body: { code: it.code, titles: it.titles, map_image_url: it.map_image_url || null, stops: it.stops },
           auth: true,
           tenant: false,
         })
@@ -600,21 +599,26 @@ export function ItinerariesPage(props: { apiBase: string }) {
             <Panel title="New itinerary" subtitle="Tip: start with titles (he/en), then add day-by-day stops.">
               <div style={{ display: 'grid', gap: 10 }}>
                 <Input label="Itinerary code (optional)" value={code} onChange={(e) => setCode(e.target.value)} placeholder="GREEK-7N" />
+                <Input
+                  label="Map image URL"
+                  value={mapImageUrl}
+                  onChange={(e) => setMapImageUrl(e.target.value)}
+                  placeholder="https://cdn.example.com/itineraries/greek-7n/map.jpg"
+                  hint="Required. This is the itinerary overview route/map image."
+                />
 
-                <Panel title="Titles" subtitle="Default languages are he + en. You can add more languages if needed.">
+                <Panel title="Titles" subtitle="Only he + en are supported for itinerary titles.">
                   <div style={{ display: 'grid', gap: 10 }}>
                     {titles.map((t, idx) => (
-                      <div key={idx} style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: 8, alignItems: 'end' }}>
-                        <Input label="Lang" value={t.lang} onChange={(e) => setTitleRow(idx, { lang: e.target.value })} placeholder="he" />
-                        <Input label="Title" value={t.text} onChange={(e) => setTitleRow(idx, { text: e.target.value })} placeholder="איי יוון / Greek Isles" />
-                        <Button variant="danger" disabled={busy || titles.length <= 1} onClick={() => removeTitleRow(idx)}>
-                          Remove
-                        </Button>
+                      <div key={idx} style={{ display: 'grid', gap: 8 }}>
+                        <Input
+                          label={`Title (${t.lang})`}
+                          value={t.text}
+                          onChange={(e) => setTitleRow(idx, { text: e.target.value })}
+                          placeholder={t.lang === 'he' ? 'איי יוון' : 'Greek Isles'}
+                        />
                       </div>
                     ))}
-                    <Button variant="secondary" disabled={busy} onClick={addTitleRow}>
-                      Add language
-                    </Button>
                   </div>
                 </Panel>
 
@@ -737,6 +741,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   variant="primary"
                   disabled={
                     busy ||
+                    !String(mapImageUrl || '').trim() ||
                     stops.length < 1 ||
                     stops.some((s) => !String(s.image_url || '').trim()) ||
                     stops.some((s) => s.kind === 'port' && !String(s.port_code || '').trim())
@@ -865,6 +870,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                     <thead>
                       <tr>
                         <th style={th}>Code</th>
+                        <th style={th}>Map</th>
                         <th style={th}>Title</th>
                         <th style={th}>Days</th>
                         <th style={th}>Ports</th>
@@ -885,6 +891,26 @@ export function ItinerariesPage(props: { apiBase: string }) {
                             }}
                           >
                             <td style={tdMono}>{String(i.code || '—')}</td>
+                            <td style={td}>
+                              {String(i.map_image_url || '').trim() ? (
+                                <img
+                                  src={String(i.map_image_url)}
+                                  alt="Itinerary map"
+                                  style={{
+                                    width: 64,
+                                    height: 40,
+                                    objectFit: 'cover',
+                                    borderRadius: 8,
+                                    border: '1px solid rgba(255,255,255,0.12)',
+                                    background: 'rgba(255,255,255,0.04)',
+                                    display: 'block',
+                                  }}
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <span style={{ color: 'rgba(230,237,243,0.60)' }}>—</span>
+                              )}
+                            </td>
                             <td style={td}>{pickTitle(i.titles, preferred)}</td>
                             <td style={tdMono}>{String(i.stops?.length || 0)}</td>
                             <td style={tdMono}>{itineraryPortsSummary(i)}</td>
@@ -894,7 +920,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                       })}
                       {filtered.length === 0 ? (
                         <tr>
-                          <td colSpan={5} style={tdMuted}>
+                          <td colSpan={6} style={tdMuted}>
                             No itineraries match your search.
                           </td>
                         </tr>
@@ -935,21 +961,30 @@ export function ItinerariesPage(props: { apiBase: string }) {
                 <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
                   <option value="he">he</option>
                   <option value="en">en</option>
-                  <option value="ar">ar</option>
-                  <option value="fr">fr</option>
-                  <option value="es">es</option>
-                  <option value={preferredLang}>{preferredLang}</option>
                 </Select>
               }
             >
               {selectedItinerary ? (
                 <div style={{ display: 'grid', gap: 12 }}>
+                  {String(selectedItinerary.map_image_url || '').trim() ? (
+                    <div style={{ border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, overflow: 'hidden' }}>
+                      <img
+                        src={String(selectedItinerary.map_image_url)}
+                        alt="Itinerary map"
+                        style={{ width: '100%', height: 220, objectFit: 'cover', display: 'block', background: 'rgba(255,255,255,0.04)' }}
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : null}
                   <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
                     <div>
                       Code: <Mono>{String(selectedItinerary.code || '—')}</Mono>
                     </div>
                     <div>
                       Title: <Mono>{pickTitle(selectedItinerary.titles, preferred)}</Mono>
+                    </div>
+                    <div>
+                      Map image: <Mono>{String(selectedItinerary.map_image_url || '—')}</Mono>
                     </div>
                     <div>
                       Id: <Mono>{selectedItinerary.id}</Mono>
