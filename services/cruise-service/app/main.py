@@ -445,6 +445,41 @@ def get_itinerary_entity(itinerary_id: str, lang: str | None = None, fallback_la
     return _enrich_itinerary(itinerary, lang=lang, fallback_langs=fallback_langs)
 
 
+@app.put("/itineraries/{itinerary_id}", response_model=Itinerary)
+def replace_itinerary(
+    itinerary_id: str,
+    payload: ItineraryCreate,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    """Replace an existing itinerary (full update).
+
+    The admin portal edits the whole itinerary (titles, map, and stops) as a unit,
+    so we use PUT semantics here.
+    """
+    existing = _ITINERARIES.get(itinerary_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+
+    if payload.code is not None:
+        code = payload.code.strip()
+        if not code:
+            raise HTTPException(status_code=400, detail="code cannot be blank")
+        # Ensure unique code across itineraries (excluding self)
+        if any((iid != itinerary_id and i.code == code) for (iid, i) in _ITINERARIES.items()):
+            raise HTTPException(status_code=409, detail="Itinerary code already exists")
+        payload.code = code
+
+    now = _utcnow()
+    updated = Itinerary(
+        id=existing.id,
+        created_at=existing.created_at,
+        updated_at=now,
+        **payload.model_dump(),
+    )
+    _ITINERARIES[itinerary_id] = updated
+    return _enrich_itinerary(updated, lang="en", fallback_langs=None)
+
+
 class ItineraryDates(BaseModel):
     start_date: date
     end_date: date
