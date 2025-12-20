@@ -17,16 +17,20 @@ _OVERRIDES_BY_COMPANY: dict[str, domain.PricingOverrides] = {}  # company_id -> 
 
 
 def _company_key(x_company_id: str | None) -> str:
-    return (x_company_id or "").strip() or "*"
+    return (x_company_id or "").strip()
 
 
 def _effective_overrides(company_id: str | None) -> domain.PricingOverrides | None:
+    """
+    Company-managed pricing:
+    - If a company_id is provided, use that company's overrides (if any)
+    - Do NOT fall back to global ("*") overrides
+    - If no company_id is provided, return None (defaults apply)
+    """
     key = _company_key(company_id)
-    o = _OVERRIDES_BY_COMPANY.get(key)
-    if o is not None:
-        return o
-    # fallback to global if company-specific missing
-    return _OVERRIDES_BY_COMPANY.get("*")
+    if not key:
+        return None
+    return _OVERRIDES_BY_COMPANY.get(key)
 
 
 class GuestIn(BaseModel):
@@ -105,13 +109,13 @@ def dev_token(payload: TokenRequest):
 class CabinMultiplierIn(BaseModel):
     cabin_type: domain.CabinType
     multiplier: float = Field(gt=0.0)
-    company_id: str | None = Field(default=None, description="Optional: target company_id; omit for global")
+    company_id: str | None = Field(default=None, description="Optional: target company_id (tenant). If omitted, X-Company-Id is used.")
 
 
 class BaseFareIn(BaseModel):
     paxtype: domain.Paxtype
     amount: int = Field(ge=0, description="Amount in cents")
-    company_id: str | None = Field(default=None, description="Optional: target company_id; omit for global")
+    company_id: str | None = Field(default=None, description="Optional: target company_id (tenant). If omitted, X-Company-Id is used.")
 
 
 class OverridesOut(BaseModel):
@@ -151,8 +155,14 @@ def list_overrides(_principal=Depends(require_roles("staff", "admin"))):
 
 
 @app.post("/overrides/cabin-multipliers", response_model=OverridesOut)
-def set_cabin_multiplier(payload: CabinMultiplierIn, _principal=Depends(require_roles("staff", "admin"))):
-    key = _company_key(payload.company_id)
+def set_cabin_multiplier(
+    payload: CabinMultiplierIn,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _company_key(payload.company_id) or _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed pricing requires X-Company-Id (or company_id). Global overrides are not supported.")
     cur = _OVERRIDES_BY_COMPANY.get(key) or domain.PricingOverrides()
     cabin_multiplier = dict(cur.cabin_multiplier or {})
     cabin_multiplier[payload.cabin_type] = float(payload.multiplier)
@@ -185,8 +195,14 @@ def set_cabin_multiplier(payload: CabinMultiplierIn, _principal=Depends(require_
 
 
 @app.post("/overrides/base-fares", response_model=OverridesOut)
-def set_base_fare(payload: BaseFareIn, _principal=Depends(require_roles("staff", "admin"))):
-    key = _company_key(payload.company_id)
+def set_base_fare(
+    payload: BaseFareIn,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _company_key(payload.company_id) or _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed pricing requires X-Company-Id (or company_id). Global overrides are not supported.")
     cur = _OVERRIDES_BY_COMPANY.get(key) or domain.PricingOverrides()
     base_by_pax = dict(cur.base_by_pax or {})
     base_by_pax[payload.paxtype] = int(payload.amount)
@@ -225,7 +241,7 @@ class CategoryPriceIn(BaseModel):
     price_per_person: int = Field(ge=0, description="Per-person price in cents")
     effective_start_date: date | None = Field(default=None, description="Optional: apply from this cruise/sailing date (inclusive)")
     effective_end_date: date | None = Field(default=None, description="Optional: apply until this cruise/sailing date (inclusive)")
-    company_id: str | None = Field(default=None, description="Optional: target company_id; omit for global")
+    company_id: str | None = Field(default=None, description="Optional: target company_id (tenant). If omitted, X-Company-Id is used.")
 
 
 class CategoryPricesOut(BaseModel):
@@ -254,8 +270,14 @@ def list_category_prices(_principal=Depends(require_roles("staff", "admin"))):
 
 
 @app.post("/category-prices", response_model=CategoryPricesOut)
-def upsert_category_price(payload: CategoryPriceIn, _principal=Depends(require_roles("staff", "admin"))):
-    key = _company_key(payload.company_id)
+def upsert_category_price(
+    payload: CategoryPriceIn,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _company_key(payload.company_id) or _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed pricing requires X-Company-Id (or company_id). Global pricing rules are not supported.")
     cur = _OVERRIDES_BY_COMPANY.get(key) or domain.PricingOverrides()
 
     code = (payload.category_code or "").strip().upper()
@@ -322,5 +344,7 @@ def upsert_category_price(payload: CategoryPriceIn, _principal=Depends(require_r
 @app.delete("/overrides/{company_id}")
 def clear_overrides(company_id: str, _principal=Depends(require_roles("staff", "admin"))):
     key = _company_key(company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Global overrides are not supported.")
     _OVERRIDES_BY_COMPANY.pop(key, None)
     return {"status": "ok"}

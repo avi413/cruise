@@ -10,6 +10,10 @@ import { DashboardPage } from './pages/DashboardPage'
 import { CruisesPage } from './pages/CruisesPage'
 import { FleetPage } from './pages/FleetPage'
 import { OnboardPage } from './pages/OnboardPage'
+import { FleetLayoutPage } from './pages/fleet/FleetLayoutPage'
+import { FleetShipsPage } from './pages/fleet/FleetShipsPage'
+import { FleetCabinCategoriesPage } from './pages/fleet/FleetCabinCategoriesPage'
+import { FleetCabinsPage } from './pages/fleet/FleetCabinsPage'
 import { SailingsPage } from './pages/SailingsPage'
 import { ItinerariesPage } from './pages/ItinerariesPage'
 import { PortsPage } from './pages/PortsPage'
@@ -69,6 +73,12 @@ export function App() {
           />
           <Route path="fleet" element={<FleetPage apiBase={apiBase} />} />
           <Route path="onboard" element={<OnboardPage apiBase={apiBase} />} />
+          <Route path="fleet" element={<FleetLayoutPage />}>
+            <Route index element={<Navigate to="ships" replace />} />
+            <Route path="ships" element={<FleetShipsPage apiBase={apiBase} />} />
+            <Route path="categories" element={<FleetCabinCategoriesPage apiBase={apiBase} />} />
+            <Route path="cabins" element={<FleetCabinsPage apiBase={apiBase} />} />
+          </Route>
           <Route path="sailings" element={<SailingsPage apiBase={apiBase} />} />
           <Route path="itineraries" element={<ItinerariesPage apiBase={apiBase} />} />
           <Route path="ports" element={<PortsPage apiBase={apiBase} />} />
