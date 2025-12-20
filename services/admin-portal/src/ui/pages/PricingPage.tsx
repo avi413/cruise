@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
+import { fetchCompanySettings } from '../components/theme'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../components/ui'
 
 type OverridesOut = {
@@ -24,6 +25,7 @@ export function PricingPage(props: { apiBase: string }) {
 
   const [catCode, setCatCode] = useState('CO3')
   const [catCurrency, setCatCurrency] = useState('USD')
+  const [defaultCurrency, setDefaultCurrency] = useState('USD')
   const [catMinGuests, setCatMinGuests] = useState(2)
   const [catPricePerPerson, setCatPricePerPerson] = useState(120000)
   const [catStartDate, setCatStartDate] = useState('')
@@ -34,6 +36,24 @@ export function PricingPage(props: { apiBase: string }) {
 
   const companyId = company?.id || null
   const listEndpoint = useMemo(() => `/v1/pricing/overrides`, [])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!companyId) return
+    fetchCompanySettings(props.apiBase, companyId)
+      .then((s) => {
+        if (cancelled) return
+        const cur = String(s?.localization?.default_currency || 'USD').trim().toUpperCase() || 'USD'
+        setDefaultCurrency(cur)
+        setCatCurrency((prev) => (prev === 'USD' ? cur : prev))
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultCurrency('USD')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.apiBase, companyId])
 
   async function refresh() {
     setBusy(true)
@@ -115,7 +135,7 @@ export function PricingPage(props: { apiBase: string }) {
         method: 'POST',
         body: {
           category_code: catCode.trim().toUpperCase(),
-          currency: catCurrency.trim().toUpperCase() || 'USD',
+          currency: catCurrency.trim().toUpperCase() || defaultCurrency,
           min_guests: catMinGuests,
           price_per_person: catPricePerPerson,
           effective_start_date: catStartDate.trim() || null,

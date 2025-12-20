@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
+import { fetchCompanySettings } from '../components/theme'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, TwoCol } from '../components/ui'
 
 type Ship = {
@@ -76,6 +77,8 @@ export function OnboardPage(props: { apiBase: string }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>(['USD'])
+
   const [fleet, setFleet] = useState<Ship[]>([])
   const [shipId, setShipId] = useState<string>('')
 
@@ -139,6 +142,26 @@ export function OnboardPage(props: { apiBase: string }) {
     setSxPort((prev) => prev || list[0]?.code || '')
   }
 
+  async function refreshCompanySettings() {
+    if (!companyId) return
+    try {
+      const s = await fetchCompanySettings(props.apiBase, companyId)
+      const cur = String(s?.localization?.default_currency || 'USD')
+        .trim()
+        .toUpperCase() || 'USD'
+      const supp = (s?.localization?.supported_currencies || [])
+        .map((c) => String(c || '').trim().toUpperCase())
+        .filter(Boolean)
+      const list = supp.length ? Array.from(new Set(supp)) : [cur]
+      setSupportedCurrencies(list)
+      // Update initial currency defaults; avoid clobbering explicit user edits.
+      setSxPriceCurrency((prev) => (prev === 'USD' ? cur : prev))
+      setPriceCurrency((prev) => (prev === 'USD' ? cur : prev))
+    } catch {
+      setSupportedCurrencies(['USD'])
+    }
+  }
+
   async function refreshAll() {
     await Promise.all([refreshFleet(), refreshPorts()])
   }
@@ -161,7 +184,7 @@ export function OnboardPage(props: { apiBase: string }) {
   }
 
   useEffect(() => {
-    refreshAll().catch((e: any) => setErr(String(e?.detail || e?.message || e)))
+    Promise.all([refreshCompanySettings(), refreshAll()]).catch((e: any) => setErr(String(e?.detail || e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -547,9 +570,11 @@ export function OnboardPage(props: { apiBase: string }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr', gap: 10 }}>
                 <Select label="Price currency" value={sxPriceCurrency} onChange={(e) => setSxPriceCurrency(e.target.value)}>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
+                  {supportedCurrencies.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </Select>
                 <Select label="Paxtype" value={sxPricePax} onChange={(e) => setSxPricePax(e.target.value)}>
                   <option value="adult">adult</option>
@@ -627,9 +652,11 @@ export function OnboardPage(props: { apiBase: string }) {
               </Select>
               <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr auto', gap: 10, alignItems: 'end' }}>
                 <Select label="Currency" value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)} disabled={!priceShorexId}>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
+                  {supportedCurrencies.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </Select>
                 <Select label="Paxtype" value={pricePax} onChange={(e) => setPricePax(e.target.value)} disabled={!priceShorexId}>
                   <option value="adult">adult</option>

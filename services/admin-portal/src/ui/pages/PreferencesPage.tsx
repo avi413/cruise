@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { apiFetch } from '../api/client'
+import { fetchCompanySettings } from '../components/theme'
+import { getCompany } from '../components/storage'
 
 type MePrefs = { user_id: string; updated_at: string; preferences: any }
 
@@ -12,13 +14,14 @@ function safeJsonParse(s: string): any {
 }
 
 export function PreferencesPage(props: { apiBase: string }) {
+  const company = getCompany()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [prefs, setPrefs] = useState<any>(null)
 
   const [locale, setLocale] = useState('en')
-  const [currency, setCurrency] = useState('USD')
   const [dashboardLayoutJson, setDashboardLayoutJson] = useState('[]')
+  const [companyCurrency, setCompanyCurrency] = useState('USD')
 
   useEffect(() => {
     let cancelled = false
@@ -29,7 +32,6 @@ export function PreferencesPage(props: { apiBase: string }) {
         if (cancelled) return
         setPrefs(r.preferences || {})
         setLocale(String(r.preferences?.locale || 'en'))
-        setCurrency(String(r.preferences?.currency || 'USD'))
         setDashboardLayoutJson(JSON.stringify(r.preferences?.dashboard?.layout || [], null, 2))
       })
       .catch((e: any) => {
@@ -43,16 +45,35 @@ export function PreferencesPage(props: { apiBase: string }) {
     }
   }, [props.apiBase])
 
+  useEffect(() => {
+    let cancelled = false
+    if (!company?.id) return
+    fetchCompanySettings(props.apiBase, company.id)
+      .then((s) => {
+        if (cancelled) return
+        const cur = String(s?.localization?.default_currency || 'USD').trim().toUpperCase() || 'USD'
+        setCompanyCurrency(cur)
+      })
+      .catch(() => {
+        // Best-effort; fall back to USD.
+        if (!cancelled) setCompanyCurrency('USD')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.apiBase, company?.id])
+
   async function save() {
     setBusy(true)
     setErr(null)
     try {
       const layout = safeJsonParse(dashboardLayoutJson)
+      const basePrefs = { ...(prefs || {}) }
+      delete (basePrefs as any).currency // currency is company-wide
       const payload = {
         preferences: {
-          ...(prefs || {}),
+          ...basePrefs,
           locale: locale.trim() || 'en',
-          currency: currency.trim().toUpperCase() || 'USD',
           dashboard: { ...(prefs?.dashboard || {}), layout },
         },
       }
@@ -68,27 +89,26 @@ export function PreferencesPage(props: { apiBase: string }) {
   return (
     <div style={styles.wrap}>
       <div style={styles.hTitle}>My preferences</div>
-      <div style={styles.hSub}>Language, currency, and workspace layout (saved per user).</div>
+      <div style={styles.hSub}>Language and workspace layout (saved per user). Currency is managed in company settings.</div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
       <div style={styles.grid}>
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Locale & currency</div>
+          <div style={styles.panelTitle}>Locale</div>
           <div style={styles.form}>
             <label style={styles.label}>
               Locale
               <input style={styles.input} value={locale} onChange={(e) => setLocale(e.target.value)} placeholder="en / es / fr / ar / ..." />
             </label>
-            <label style={styles.label}>
-              Currency
-              <input style={styles.input} value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="USD / EUR / GBP / ..." />
-            </label>
+            <div style={styles.muted}>
+              Currency: <span style={{ fontFamily: styles.mono.fontFamily as any }}>{companyCurrency}</span> (set in <span style={{ fontFamily: styles.mono.fontFamily as any }}>Branding &amp; localization</span>)
+            </div>
             <button style={styles.primaryBtn} disabled={busy} onClick={() => void save()}>
               {busy ? 'Saving…' : 'Save'}
             </button>
             <div style={styles.muted}>
-              Note: this is the persistence layer. Next, the UI will use these values for formatting, default search filters, and reduced-click booking flows.
+              Note: this is the persistence layer. Next, the UI will use locale for formatting, and workspace layout for reduced-click workflows.
             </div>
           </div>
         </section>

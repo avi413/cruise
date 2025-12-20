@@ -4,13 +4,17 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import os
 import secrets
+import time
 from datetime import date, datetime, timezone
 from typing import Annotated
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 
@@ -34,6 +38,9 @@ app = FastAPI(
     version="0.1.0",
     description="Customer profiles, preferences, loyalty/rewards, and booking history (projected from events).",
 )
+
+SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
+_LOCALIZATION_DEFAULTS_CACHE: dict[str, tuple[dict, float]] = {}  # company_id -> (defaults, expires_at_epoch_s)
 
 
 def _now() -> datetime:
@@ -138,6 +145,38 @@ def _verify_password(password: str, encoded: str) -> bool:
         return hmac.compare_digest(dk, expected)
     except Exception:
         return False
+
+
+def _company_localization_defaults(company_id: str | None) -> dict:
+    """
+    Single source of truth for locale/currency defaults: ship-service company settings.
+
+    Returns a dict like: {"default_locale": "en", "default_currency": "USD"}.
+    Never raises; falls back to safe defaults if upstream is unavailable.
+    """
+    key = (company_id or "").strip()
+    if not key:
+        return {"default_locale": "en", "default_currency": "USD"}
+
+    now = time.time()
+    cached = _LOCALIZATION_DEFAULTS_CACHE.get(key)
+    if cached and cached[1] > now:
+        return dict(cached[0])
+
+    url = f"{SHIP_SERVICE_URL}/companies/{key}/settings"
+    try:
+        req = Request(url, headers={"accept": "application/json"})
+        with urlopen(req, timeout=2.5) as resp:
+            raw = resp.read()
+        data = json.loads(raw.decode("utf-8"))
+        loc = (data or {}).get("localization") or {}
+        default_locale = str(loc.get("default_locale") or "en").strip() or "en"
+        default_currency = str(loc.get("default_currency") or "USD").strip().upper() or "USD"
+        out = {"default_locale": default_locale, "default_currency": default_currency}
+        _LOCALIZATION_DEFAULTS_CACHE[key] = (out, now + 60.0)
+        return dict(out)
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        return {"default_locale": "en", "default_currency": "USD"}
 
 
 @app.on_event("startup")
@@ -929,7 +968,7 @@ class PlatformLoginIn(BaseModel):
     password: str
 
 
-def _load_or_create_user_prefs(tenant_engine, user_id: str) -> StaffUserPreference:
+def _load_or_create_user_prefs(tenant_engine, user_id: str, *, company_id: str | None) -> StaffUserPreference:
     with session(tenant_engine) as s:
         # Platform admin tokens use a synthetic subject ("platform-admin") which may not
         # exist in a tenant DB's `staff_users` table. In Postgres, `staff_user_preferences.user_id`
@@ -963,14 +1002,15 @@ def _load_or_create_user_prefs(tenant_engine, user_id: str) -> StaffUserPreferen
         if row is not None:
             return row
         now = _now()
+        defaults = _company_localization_defaults(company_id)
         row = StaffUserPreference(
             id=str(uuid4()),
             user_id=user_id,
             created_at=now,
             updated_at=now,
             preferences={
-                "locale": "en",
-                "currency": "USD",
+                "locale": defaults.get("default_locale") or "en",
+                "currency": defaults.get("default_currency") or "USD",
                 "dashboard": {
                     "layout": [],  # frontend-defined (widget grid / positions)
                 },
@@ -997,11 +1037,12 @@ class StaffMePreferencesPatch(BaseModel):
 def get_my_preferences(
     tenant_engine=Depends(get_tenant_engine),
     principal=Depends(require_roles("agent", "staff", "admin")),
+    x_company_id: Annotated[str | None, Header()] = None,
 ):
     user_id = str((principal or {}).get("sub") or "")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
-    row = _load_or_create_user_prefs(tenant_engine, user_id)
+    row = _load_or_create_user_prefs(tenant_engine, user_id, company_id=x_company_id)
     return StaffMePreferencesOut(user_id=row.user_id, updated_at=row.updated_at, preferences=row.preferences or {})
 
 
@@ -1010,12 +1051,13 @@ def patch_my_preferences(
     payload: StaffMePreferencesPatch,
     tenant_engine=Depends(get_tenant_engine),
     principal=Depends(require_roles("agent", "staff", "admin")),
+    x_company_id: Annotated[str | None, Header()] = None,
 ):
     user_id = str((principal or {}).get("sub") or "")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    row = _load_or_create_user_prefs(tenant_engine, user_id)
+    row = _load_or_create_user_prefs(tenant_engine, user_id, company_id=x_company_id)
     with session(tenant_engine) as s:
         row = s.get(StaffUserPreference, row.id)
         if row is None:
@@ -1023,7 +1065,10 @@ def patch_my_preferences(
 
         merged = dict(row.preferences or {})
         # Shallow merge keeps API predictable; frontend can store nested objects under keys.
-        merged.update(dict(payload.preferences or {}))
+        incoming = dict(payload.preferences or {})
+        # Currency is tenant-wide (single source of truth in Company Settings), not per-user.
+        incoming.pop("currency", None)
+        merged.update(incoming)
         row.preferences = merged
         row.updated_at = _now()
         s.add(row)

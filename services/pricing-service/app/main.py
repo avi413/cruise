@@ -1,5 +1,10 @@
+import json
+import os
+import time
 from datetime import date
 from typing import Annotated
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -14,6 +19,9 @@ app = FastAPI(
 )
 
 _OVERRIDES_BY_COMPANY: dict[str, domain.PricingOverrides] = {}  # company_id -> overrides; "*" for global
+
+SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
+_DEFAULT_CURRENCY_CACHE: dict[str, tuple[str, float]] = {}  # company_id -> (currency, expires_at_epoch_s)
 
 
 def _company_key(x_company_id: str | None) -> str:
@@ -31,6 +39,38 @@ def _effective_overrides(company_id: str | None) -> domain.PricingOverrides | No
     if not key:
         return None
     return _OVERRIDES_BY_COMPANY.get(key)
+
+
+def _company_default_currency(company_id: str | None) -> str | None:
+    """
+    Read company default currency from the single source of truth: ship-service company settings.
+
+    - Public read endpoint
+    - Cached briefly to avoid chatty cross-service calls on high-traffic quote paths
+    """
+    key = _company_key(company_id)
+    if not key:
+        return None
+
+    now = time.time()
+    cached = _DEFAULT_CURRENCY_CACHE.get(key)
+    if cached and cached[1] > now:
+        return cached[0]
+
+    url = f"{SHIP_SERVICE_URL}/companies/{key}/settings"
+    try:
+        req = Request(url, headers={"accept": "application/json"})
+        with urlopen(req, timeout=2.5) as resp:
+            raw = resp.read()
+        data = json.loads(raw.decode("utf-8"))
+        cur = str(((data or {}).get("localization") or {}).get("default_currency") or "").strip().upper()
+        if cur:
+            _DEFAULT_CURRENCY_CACHE[key] = (cur, now + 60.0)
+            return cur
+        return None
+    except (HTTPError, URLError, TimeoutError, ValueError):
+        # Never fail quotes due to settings lookup; fall back to USD.
+        return None
 
 
 class GuestIn(BaseModel):
@@ -74,6 +114,9 @@ def create_quote(
     _principal=Depends(get_principal_optional),
 ):
     try:
+        cur = (payload.currency or "").strip().upper()
+        if not cur:
+            cur = _company_default_currency(x_company_id) or "USD"
         req = domain.QuoteRequest(
             sailing_date=payload.sailing_date,
             cabin_type=payload.cabin_type,
@@ -81,7 +124,7 @@ def create_quote(
             guests=[domain.Guest(paxtype=g.paxtype) for g in payload.guests],
             coupon_code=payload.coupon_code,
             loyalty_tier=payload.loyalty_tier,
-            currency=(payload.currency or "USD"),
+            currency=cur,
         )
         q = domain.quote_with_overrides(req, today=date.today(), overrides=_effective_overrides(x_company_id))
         return QuoteOut(
