@@ -133,7 +133,14 @@ def list_overrides(_principal=Depends(require_roles("staff", "admin"))):
                 cabin_multiplier={c: float(m) for c, m in (v.cabin_multiplier or {}).items()} if v.cabin_multiplier else None,
                 demand_multiplier=float(v.demand_multiplier) if v.demand_multiplier is not None else None,
                 category_prices=[
-                    {"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person}
+                    {
+                        "category_code": r.category_code,
+                        "currency": r.currency,
+                        "min_guests": r.min_guests,
+                        "price_per_person": r.price_per_person,
+                        "effective_start_date": r.effective_start_date.isoformat() if r.effective_start_date else None,
+                        "effective_end_date": r.effective_end_date.isoformat() if r.effective_end_date else None,
+                    }
                     for r in (v.category_prices or [])
                 ]
                 if v.category_prices
@@ -162,7 +169,14 @@ def set_cabin_multiplier(payload: CabinMultiplierIn, _principal=Depends(require_
         cabin_multiplier={c: float(m) for c, m in (v.cabin_multiplier or {}).items()} if v.cabin_multiplier else None,
         demand_multiplier=float(v.demand_multiplier) if v.demand_multiplier is not None else None,
         category_prices=[
-            {"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person}
+            {
+                "category_code": r.category_code,
+                "currency": r.currency,
+                "min_guests": r.min_guests,
+                "price_per_person": r.price_per_person,
+                "effective_start_date": r.effective_start_date.isoformat() if r.effective_start_date else None,
+                "effective_end_date": r.effective_end_date.isoformat() if r.effective_end_date else None,
+            }
             for r in (v.category_prices or [])
         ]
         if v.category_prices
@@ -189,7 +203,14 @@ def set_base_fare(payload: BaseFareIn, _principal=Depends(require_roles("staff",
         cabin_multiplier={c: float(m) for c, m in (v.cabin_multiplier or {}).items()} if v.cabin_multiplier else None,
         demand_multiplier=float(v.demand_multiplier) if v.demand_multiplier is not None else None,
         category_prices=[
-            {"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person}
+            {
+                "category_code": r.category_code,
+                "currency": r.currency,
+                "min_guests": r.min_guests,
+                "price_per_person": r.price_per_person,
+                "effective_start_date": r.effective_start_date.isoformat() if r.effective_start_date else None,
+                "effective_end_date": r.effective_end_date.isoformat() if r.effective_end_date else None,
+            }
             for r in (v.category_prices or [])
         ]
         if v.category_prices
@@ -202,6 +223,8 @@ class CategoryPriceIn(BaseModel):
     currency: str = Field(default="USD", min_length=3, max_length=3)
     min_guests: int = Field(default=2, ge=1, description="Minimum billable occupancy")
     price_per_person: int = Field(ge=0, description="Per-person price in cents")
+    effective_start_date: date | None = Field(default=None, description="Optional: apply from this cruise/sailing date (inclusive)")
+    effective_end_date: date | None = Field(default=None, description="Optional: apply until this cruise/sailing date (inclusive)")
     company_id: str | None = Field(default=None, description="Optional: target company_id; omit for global")
 
 
@@ -216,7 +239,16 @@ def list_category_prices(_principal=Depends(require_roles("staff", "admin"))):
     for k, v in sorted(_OVERRIDES_BY_COMPANY.items(), key=lambda kv: kv[0]):
         items = []
         for r in (v.category_prices or []):
-            items.append({"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person})
+            items.append(
+                {
+                    "category_code": r.category_code,
+                    "currency": r.currency,
+                    "min_guests": r.min_guests,
+                    "price_per_person": r.price_per_person,
+                    "effective_start_date": r.effective_start_date.isoformat() if r.effective_start_date else None,
+                    "effective_end_date": r.effective_end_date.isoformat() if r.effective_end_date else None,
+                }
+            )
         out.append(CategoryPricesOut(company_id=k, items=items))
     return out
 
@@ -235,13 +267,34 @@ def upsert_category_price(payload: CategoryPriceIn, _principal=Depends(require_r
         currency=curcy,
         min_guests=int(payload.min_guests),
         price_per_person=int(payload.price_per_person),
+        effective_start_date=payload.effective_start_date,
+        effective_end_date=payload.effective_end_date,
     )
 
     rules = list(cur.category_prices or [])
-    # Upsert by (category_code, currency, min_guests)
-    rules = [r for r in rules if not (r.category_code == rule.category_code and r.currency == rule.currency and int(r.min_guests) == int(rule.min_guests))]
+    # Upsert by (category_code, currency, min_guests, effective_start_date, effective_end_date)
+    rules = [
+        r
+        for r in rules
+        if not (
+            r.category_code == rule.category_code
+            and r.currency == rule.currency
+            and int(r.min_guests) == int(rule.min_guests)
+            and r.effective_start_date == rule.effective_start_date
+            and r.effective_end_date == rule.effective_end_date
+        )
+    ]
     rules.append(rule)
-    rules = sorted(rules, key=lambda r: (r.category_code, r.currency, int(r.min_guests)))
+    rules = sorted(
+        rules,
+        key=lambda r: (
+            r.category_code,
+            r.currency,
+            r.effective_start_date or date.min,
+            r.effective_end_date or date.max,
+            int(r.min_guests),
+        ),
+    )
 
     _OVERRIDES_BY_COMPANY[key] = domain.PricingOverrides(
         base_by_pax=cur.base_by_pax,
@@ -252,7 +305,17 @@ def upsert_category_price(payload: CategoryPriceIn, _principal=Depends(require_r
     v = _OVERRIDES_BY_COMPANY[key]
     return CategoryPricesOut(
         company_id=key,
-        items=[{"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person} for r in (v.category_prices or [])],
+        items=[
+            {
+                "category_code": r.category_code,
+                "currency": r.currency,
+                "min_guests": r.min_guests,
+                "price_per_person": r.price_per_person,
+                "effective_start_date": r.effective_start_date.isoformat() if r.effective_start_date else None,
+                "effective_end_date": r.effective_end_date.isoformat() if r.effective_end_date else None,
+            }
+            for r in (v.category_prices or [])
+        ],
     )
 
 

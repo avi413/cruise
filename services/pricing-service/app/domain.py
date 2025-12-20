@@ -28,6 +28,10 @@ class CategoryPriceRule:
     currency: str
     min_guests: int
     price_per_person: int  # cents
+    # Date applicability (cruise/sailing date). If both None, applies to any date.
+    # If one bound is provided, it's treated as an open-ended range.
+    effective_start_date: date | None = None
+    effective_end_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,24 @@ def quote_with_overrides(req: QuoteRequest, today: date, overrides: PricingOverr
         rules = [r for r in overrides.category_prices if (r.category_code or "").strip().upper() == category_code]
         if rules:
             guest_count = len(req.guests)
+            sail = req.sailing_date
+
+            def _date_ok(r: CategoryPriceRule) -> bool:
+                if sail is None:
+                    # If no sailing_date provided, allow only rules that are not date-restricted.
+                    return r.effective_start_date is None and r.effective_end_date is None
+                if r.effective_start_date is not None and sail < r.effective_start_date:
+                    return False
+                if r.effective_end_date is not None and sail > r.effective_end_date:
+                    return False
+                return True
+
+            rules = [r for r in rules if _date_ok(r)]
+            if not rules:
+                # fall back to cabin_type pricing if nothing matches the date
+                rules = []
+
+        if rules:
             # Prefer the "closest" occupancy bracket:
             # - if there is a rule with min_guests <= guest_count, pick the largest such min_guests
             # - otherwise pick the smallest min_guests available (and bill min occupancy)

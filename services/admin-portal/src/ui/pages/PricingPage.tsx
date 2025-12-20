@@ -8,7 +8,7 @@ type OverridesOut = {
   base_by_pax: Record<string, number> | null
   cabin_multiplier: Record<string, number> | null
   demand_multiplier: number | null
-  category_prices?: { category_code: string; currency: string; min_guests: number; price_per_person: number }[] | null
+  category_prices?: { category_code: string; currency: string; min_guests: number; price_per_person: number; effective_start_date?: string | null; effective_end_date?: string | null }[] | null
 }
 
 export function PricingPage(props: { apiBase: string }) {
@@ -27,6 +27,8 @@ export function PricingPage(props: { apiBase: string }) {
   const [catCurrency, setCatCurrency] = useState('USD')
   const [catMinGuests, setCatMinGuests] = useState(2)
   const [catPricePerPerson, setCatPricePerPerson] = useState(120000)
+  const [catStartDate, setCatStartDate] = useState('')
+  const [catEndDate, setCatEndDate] = useState('')
 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -112,6 +114,8 @@ export function PricingPage(props: { apiBase: string }) {
           currency: catCurrency.trim().toUpperCase() || 'USD',
           min_guests: catMinGuests,
           price_per_person: catPricePerPerson,
+          effective_start_date: catStartDate.trim() || null,
+          effective_end_date: catEndDate.trim() || null,
           company_id: companyId,
         },
       })
@@ -194,6 +198,10 @@ export function PricingPage(props: { apiBase: string }) {
           <Input label="Min guests" type="number" min="1" step="1" value={catMinGuests} onChange={(e) => setCatMinGuests(Number(e.target.value))} />
           <Input label="Price / person (cents)" type="number" min="0" step="1000" value={catPricePerPerson} onChange={(e) => setCatPricePerPerson(Number(e.target.value))} />
         </div>
+        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Input label="Cruise date start (optional)" type="date" value={catStartDate} onChange={(e) => setCatStartDate(e.target.value)} />
+          <Input label="Cruise date end (optional)" type="date" value={catEndDate} onChange={(e) => setCatEndDate(e.target.value)} />
+        </div>
         <div style={{ marginTop: 10 }}>
           <Button variant="primary" disabled={busy || !catCode.trim() || (scope === 'company' && !company?.id)} onClick={() => void upsertCategoryPrice()}>
             {busy ? 'Saving…' : 'Save category price'}
@@ -249,6 +257,10 @@ export function PricingPage(props: { apiBase: string }) {
                         {o.category_prices.map((r) => (
                           <div key={`${r.category_code}-${r.currency}-${r.min_guests}`}>
                             <Mono>{r.category_code}</Mono> · {r.currency} · min {r.min_guests} · {(r.price_per_person / 100).toFixed(2)} / pax
+                            <span style={{ color: 'rgba(230,237,243,0.65)' }}>
+                              {' '}
+                              · date {r.effective_start_date || 'any'} → {r.effective_end_date || 'any'}
+                            </span>
                           </div>
                         ))}
                       </div>
