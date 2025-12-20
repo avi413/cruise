@@ -2,12 +2,35 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, String
+from sqlalchemy import JSON, DateTime, Integer, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class StaffUser(Base):
+    """
+    Tenant-scoped portal users (call center / ops / admins).
+
+    Notes:
+    - Stored in the tenant DB (one DB per company), so no company_id column is needed.
+    - Authentication is intentionally minimal (dev-friendly) for this starter repo.
+    """
+
+    __tablename__ = "staff_users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String)
+
+    role: Mapped[str] = mapped_column(String, index=True)  # agent|staff|admin
+    disabled: Mapped[int] = mapped_column(Integer, default=0)  # 0/1 (sqlite-friendly)
 
 
 class Customer(Base):
