@@ -30,7 +30,39 @@ def tenant_engine(tenant_db: str) -> Engine:
     url = TENANT_DATABASE_URL_TEMPLATE.format(db=tenant_db)
     eng = create_engine(url, pool_pre_ping=True)
     Base.metadata.create_all(eng)
+    _ensure_schema(eng)
     return eng
+
+
+def _ensure_schema(engine: Engine) -> None:
+    """
+    Starter-repo migration shim.
+
+    SQLAlchemy `create_all()` will not add columns to existing tables.
+    We add new columns/tables in a best-effort way to keep dev/prod moving
+    without introducing Alembic in this starter.
+    """
+    try:
+        backend = engine.url.get_backend_name()
+    except Exception:
+        backend = ""
+
+    # bookings.cabin_category_code (new)
+    if "postgres" in backend:
+        try:
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cabin_category_code VARCHAR;")
+        except Exception:
+            return
+    elif "sqlite" in backend:
+        try:
+            with engine.begin() as conn:
+                cols = conn.exec_driver_sql("PRAGMA table_info(bookings);").fetchall()
+                names = {r[1] for r in cols}  # (cid, name, type, notnull, dflt_value, pk)
+                if "cabin_category_code" not in names:
+                    conn.exec_driver_sql("ALTER TABLE bookings ADD COLUMN cabin_category_code TEXT;")
+        except Exception:
+            return
 
 
 def _lookup_tenant_db(company_id: str) -> str:
