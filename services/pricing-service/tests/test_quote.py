@@ -106,3 +106,50 @@ def test_category_pricing_applies_min_guests():
         overrides=overrides,
     )
     assert q.subtotal == 2 * 100_00
+
+
+def test_category_pricing_is_per_sailing_date():
+    today = date.today()
+    overrides = domain.PricingOverrides(
+        category_prices=[
+            domain.CategoryPriceRule(
+                category_code="CO3",
+                currency="USD",
+                min_guests=2,
+                price_per_person=100_00,
+                effective_start_date=today,
+                effective_end_date=today,
+            ),
+        ]
+    )
+    # matching date -> category pricing
+    q1 = domain.quote_with_overrides(
+        domain.QuoteRequest(
+            sailing_date=today,
+            cabin_type="inside",
+            guests=[domain.Guest(paxtype="adult"), domain.Guest(paxtype="adult")],
+            coupon_code=None,
+            loyalty_tier=None,
+            cabin_category_code="CO3",
+            currency="USD",
+        ),
+        today=today,
+        overrides=overrides,
+    )
+    assert q1.subtotal == 2 * 100_00
+
+    # different date -> falls back to cabin_type pricing
+    q2 = domain.quote_with_overrides(
+        domain.QuoteRequest(
+            sailing_date=today.replace(day=min(28, today.day)) + timedelta(days=1),
+            cabin_type="inside",
+            guests=[domain.Guest(paxtype="adult"), domain.Guest(paxtype="adult")],
+            coupon_code=None,
+            loyalty_tier=None,
+            cabin_category_code="CO3",
+            currency="USD",
+        ),
+        today=today,
+        overrides=overrides,
+    )
+    assert q2.lines[0].code.startswith("fare.")
