@@ -313,7 +313,8 @@ async def create_hold(
         "loyalty_tier": payload.loyalty_tier,
     }
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    # Ignore HTTP(S)_PROXY env vars for internal service calls.
+    async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
         r = await client.post(f"{pricing_url}/quote", json=req, headers={"X-Company-Id": company_id})
         if r.status_code >= 400:
             raise HTTPException(status_code=502, detail={"pricing_error": r.text})

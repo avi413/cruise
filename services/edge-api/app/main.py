@@ -97,7 +97,9 @@ async def _proxy(method: str, url: str, request: Request):
 
     body = await request.body()
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    # Important: ignore HTTP(S)_PROXY env vars for internal service calls.
+    # Proxy settings can break docker-compose DNS names (e.g. pricing-service).
+    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
         try:
             r = await client.request(method, url, content=body, headers=headers)
         except httpx.RequestError as e:
@@ -128,7 +130,7 @@ async def _proxy(method: str, url: str, request: Request):
 @app.get("/v1/cruises")
 async def list_cruises():
     """Website: browse sailings, with ship metadata."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
         try:
             sailings = (await client.get(f"{CRUISE_SERVICE_URL}/sailings")).json()
             ships = (await client.get(f"{SHIP_SERVICE_URL}/ships")).json()
@@ -150,7 +152,7 @@ async def list_cruises():
 @app.get("/v1/companies")
 async def list_companies():
     """Admin portal: list cruise companies."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
         companies = (await client.get(f"{SHIP_SERVICE_URL}/companies")).json()
     return {"items": companies}
 
@@ -176,7 +178,7 @@ async def create_company(request: Request):
 @app.get("/v1/companies/{company_id}/fleet")
 async def list_company_fleet(company_id: str):
     """Admin portal: list ships by company (fleet)."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
         ships = (await client.get(f"{SHIP_SERVICE_URL}/companies/{company_id}/ships")).json()
     return {"items": ships}
 
