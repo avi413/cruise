@@ -2,8 +2,12 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json tsconfig.json vite.config.ts index.html ./
-RUN npm ci --no-audit --no-fund
+COPY package.json tsconfig.json vite.config.ts index.html ./
+# Don't copy the lockfile here: when building on arm64/alpine (musl),
+# Rollup needs a different optional native package than x64/glibc.
+# Using `npm install` lets npm resolve the correct optional dependency
+# for the build platform.
+RUN npm install --no-audit --no-fund
 
 COPY src ./src
 
