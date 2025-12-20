@@ -37,6 +37,7 @@ export function SalesPage(props: { apiBase: string }) {
   const [sailingDate, setSailingDate] = useState('')
   const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
   const [cabinCategoryCode, setCabinCategoryCode] = useState('')
+  const [priceType, setPriceType] = useState('regular')
   const [adult, setAdult] = useState(2)
   const [child, setChild] = useState(0)
   const [infant, setInfant] = useState(0)
@@ -176,6 +177,7 @@ export function SalesPage(props: { apiBase: string }) {
           sailing_date: sailingDate || null,
           cabin_type: cabinType,
           cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
+          price_type: priceType.trim().toLowerCase() || 'regular',
           guests: guestsList(),
           coupon_code: coupon || null,
           loyalty_tier: tier || null,
@@ -204,6 +206,7 @@ export function SalesPage(props: { apiBase: string }) {
           sailing_date: sailingDate ? `${sailingDate}T00:00:00Z` : null,
           cabin_type: cabinType,
           cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
+          price_type: priceType.trim().toLowerCase() || 'regular',
           guests: { adult, child, infant },
           coupon_code: coupon || null,
           loyalty_tier: tier || null,
@@ -373,6 +376,15 @@ export function SalesPage(props: { apiBase: string }) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label style={styles.label}>
+              Price type (rate plan)
+              <input
+                style={styles.input}
+                value={priceType}
+                onChange={(e) => setPriceType(e.target.value)}
+                placeholder="regular | internet | …"
+              />
             </label>
             <label style={styles.label}>
               Cabin type (inventory)
