@@ -475,6 +475,104 @@ def upsert_category_price(
     )
 
 
+@app.post("/category-prices/bulk", response_model=CategoryPricesOut)
+def upsert_category_prices_bulk(
+    payload: list[CategoryPriceIn],
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    """
+    Bulk upsert category pricing rules.
+
+    This is optimized for admin workflows where you want to apply the same set of
+    price buckets (e.g. regular/internet/...) across many cabin categories.
+    """
+    if not payload:
+        raise HTTPException(status_code=400, detail="payload must be a non-empty list")
+
+    # Company key is shared across the whole batch.
+    key = _company_key(payload[0].company_id) or _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed pricing requires X-Company-Id (or company_id). Global pricing rules are not supported.")
+
+    # Disallow mixing companies in one request.
+    for p in payload:
+        if p.company_id is not None and _company_key(p.company_id) != key:
+            raise HTTPException(status_code=400, detail="Bulk upsert must target exactly one company_id")
+
+    cur = _OVERRIDES_BY_COMPANY.get(key) or domain.PricingOverrides()
+    rules = list(cur.category_prices or [])
+
+    for p in payload:
+        code = (p.category_code or "").strip().upper()
+        if not code:
+            raise HTTPException(status_code=400, detail="category_code is required")
+        price_type = (p.price_type or "regular").strip().lower()
+        if not price_type:
+            raise HTTPException(status_code=400, detail="price_type is required")
+        curcy = (p.currency or "USD").strip().upper()
+
+        rule = domain.CategoryPriceRule(
+            category_code=code,
+            price_type=price_type,
+            currency=curcy,
+            min_guests=int(p.min_guests),
+            price_per_person=int(p.price_per_person),
+            effective_start_date=p.effective_start_date,
+            effective_end_date=p.effective_end_date,
+        )
+
+        # Upsert by (category_code, price_type, currency, min_guests, effective_start_date, effective_end_date)
+        rules = [
+            r
+            for r in rules
+            if not (
+                r.category_code == rule.category_code
+                and (getattr(r, "price_type", None) or "regular") == rule.price_type
+                and r.currency == rule.currency
+                and int(r.min_guests) == int(rule.min_guests)
+                and r.effective_start_date == rule.effective_start_date
+                and r.effective_end_date == rule.effective_end_date
+            )
+        ]
+        rules.append(rule)
+
+    rules = sorted(
+        rules,
+        key=lambda r: (
+            r.category_code,
+            (getattr(r, "price_type", None) or "regular"),
+            r.currency,
+            r.effective_start_date or date.min,
+            r.effective_end_date or date.max,
+            int(r.min_guests),
+        ),
+    )
+
+    _OVERRIDES_BY_COMPANY[key] = domain.PricingOverrides(
+        base_by_pax=cur.base_by_pax,
+        cabin_multiplier=cur.cabin_multiplier,
+        demand_multiplier=cur.demand_multiplier,
+        category_prices=rules,
+    )
+    v = _OVERRIDES_BY_COMPANY[key]
+    return CategoryPricesOut(
+        company_id=key,
+        items=[
+            {
+                "category_code": r.category_code,
+                "price_type": (getattr(r, "price_type", None) or "regular"),
+                "currency": r.currency,
+                "min_guests": r.min_guests,
+                "price_per_person": r.price_per_person,
+                "effective_start_date": r.effective_start_date.isoformat() if r.effective_start_date else None,
+                "effective_end_date": r.effective_end_date.isoformat() if r.effective_end_date else None,
+            }
+            for r in (v.category_prices or [])
+        ],
+    )
+
+
 class FxRateIn(BaseModel):
     base: str = Field(min_length=3, max_length=3, description="Base currency (ISO 4217), e.g. USD")
     quote: str = Field(min_length=3, max_length=3, description="Quote currency (ISO 4217), e.g. EUR")

@@ -86,6 +86,11 @@ async def _proxy(method: str, url: str, request: Request):
     # Forward Authorization for service-side RBAC
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
+    # Forward content-type so upstream can parse JSON bodies.
+    if "content-type" in request.headers:
+        headers["content-type"] = request.headers["content-type"]
+    if "accept" in request.headers:
+        headers["accept"] = request.headers["accept"]
     # Forward tenant header for per-company databases
     if "x-company-id" in request.headers:
         headers["x-company-id"] = request.headers["x-company-id"]
@@ -588,6 +593,11 @@ async def list_pricing_category_prices(request: Request):
 @app.post("/v1/pricing/category-prices")
 async def upsert_pricing_category_price(request: Request):
     return await _proxy("POST", f"{PRICING_SERVICE_URL}/category-prices", request)
+
+
+@app.post("/v1/pricing/category-prices/bulk")
+async def upsert_pricing_category_prices_bulk(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/category-prices/bulk", request)
 
 
 @app.post("/v1/holds")

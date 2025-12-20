@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
 import { fetchCompanySettings } from '../components/theme'
-import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../components/ui'
+import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, TextArea } from '../components/ui'
 
 type OverridesOut = {
   company_id: string
@@ -20,6 +20,18 @@ type OverridesOut = {
   }[] | null
 }
 
+type Sailing = {
+  id: string
+  code: string
+  ship_id: string
+  start_date: string
+  end_date: string
+  embark_port_code: string
+  debark_port_code: string
+  status: string
+  created_at: string
+}
+
 export function PricingPage(props: { apiBase: string }) {
   const company = getCompany()
   const [items, setItems] = useState<OverridesOut[]>([])
@@ -31,15 +43,15 @@ export function PricingPage(props: { apiBase: string }) {
   const [child, setChild] = useState(60000)
   const [infant, setInfant] = useState(10000)
 
-  const [catCode, setCatCode] = useState('CO3')
-  const [catPriceType, setCatPriceType] = useState('regular')
+  const [catCodesRaw, setCatCodesRaw] = useState('CO3')
+  const [catPriceTypesRaw, setCatPriceTypesRaw] = useState('regular')
   const [catCurrency, setCatCurrency] = useState('USD')
   const [defaultCurrency, setDefaultCurrency] = useState('USD')
   const [catMinGuests, setCatMinGuests] = useState(2)
   // Display/edit in major currency units (e.g. 300.00 EUR), send cents to API.
   const [catPricePerPerson, setCatPricePerPerson] = useState(1200)
-  const [catStartDate, setCatStartDate] = useState('')
-  const [catEndDate, setCatEndDate] = useState('')
+  const [sailings, setSailings] = useState<Sailing[]>([])
+  const [selectedSailingId, setSelectedSailingId] = useState<string>('')
 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -64,6 +76,24 @@ export function PricingPage(props: { apiBase: string }) {
       cancelled = true
     }
   }, [props.apiBase, companyId])
+
+  useEffect(() => {
+    let cancelled = false
+    apiFetch<Sailing[]>(props.apiBase, `/v1/sailings`, { auth: false, tenant: false })
+      .then((r) => {
+        if (cancelled) return
+        const rows = r || []
+        setSailings(rows)
+        if (!selectedSailingId && rows.length) setSelectedSailingId(rows[0].id)
+      })
+      .catch(() => {
+        if (!cancelled) setSailings([])
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.apiBase])
 
   async function refresh() {
     setBusy(true)
@@ -137,23 +167,60 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function upsertCategoryPrice() {
+  function parseCodes(raw: string): string[] {
+    const tokens = String(raw || '')
+      .split(/[\s,]+/g)
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean)
+    return Array.from(new Set(tokens))
+  }
+
+  function parsePriceTypes(raw: string): string[] {
+    const tokens = String(raw || '')
+      .split(/[\s,]+/g)
+      .map((x) => x.trim().toLowerCase())
+      .filter(Boolean)
+    return Array.from(new Set(tokens.length ? tokens : ['regular']))
+  }
+
+  async function upsertCategoryPricesBulk() {
     setBusy(true)
     setErr(null)
     try {
+      if (!companyId) {
+        setErr('Select a company first.')
+        return
+      }
+      const codes = parseCodes(catCodesRaw)
+      const priceTypes = parsePriceTypes(catPriceTypesRaw)
+      if (!codes.length) {
+        setErr('Enter at least one category code.')
+        return
+      }
+
       const pricePerPersonCents = Math.max(0, Math.round(Number(catPricePerPerson) * 100))
-      await apiFetch(props.apiBase, `/v1/pricing/category-prices`, {
-        method: 'POST',
-        body: {
-          category_code: catCode.trim().toUpperCase(),
-          price_type: catPriceType.trim().toLowerCase() || 'regular',
+
+      const sailing = sailings.find((s) => String(s.id) === String(selectedSailingId))
+      const effStart = sailing?.start_date || null
+      const effEnd = sailing?.end_date || null
+
+      const rows = codes.flatMap((code) =>
+        priceTypes.map((pt) => ({
+          category_code: code,
+          price_type: pt || 'regular',
           currency: (catCurrency.trim().toUpperCase() || defaultCurrency || 'USD').trim().toUpperCase(),
           min_guests: catMinGuests,
           price_per_person: pricePerPersonCents,
-          effective_start_date: catStartDate.trim() || null,
-          effective_end_date: catEndDate.trim() || null,
+          // We don't ask for optional dates; we attach pricing to the selected cruise/sailing.
+          effective_start_date: effStart,
+          effective_end_date: effEnd,
           company_id: companyId,
-        },
+        }))
+      )
+
+      await apiFetch(props.apiBase, `/v1/pricing/category-prices/bulk`, {
+        method: 'POST',
+        body: rows,
       })
       await refresh()
     } catch (e: any) {
@@ -222,17 +289,40 @@ export function PricingPage(props: { apiBase: string }) {
       </div>
 
       <Panel
-        title="Cabin category pricing (by category + price type)"
-        subtitle="Define per-person pricing for a cabin category code (e.g. CO3), with a price type/rate plan (regular, internet, etc) and minimum billable guests (e.g. 2)."
+        title="Cabin category pricing (bulk)"
+        subtitle="Create category prices for a list of cabin category codes, and apply all price types (rate plans) to each category. We don’t ask for optional date fields; pricing is attached to the selected cruise/sailing."
       >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
-          <Input label="Category code" value={catCode} onChange={(e) => setCatCode(e.target.value)} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
+          <Select
+            label="Cruise / sailing"
+            value={selectedSailingId}
+            onChange={(e) => setSelectedSailingId(e.target.value)}
+            hint="Pricing will be attached to this sailing’s date range automatically."
+          >
+            <option value="">(Any sailing date)</option>
+            {sailings.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.code} · {s.start_date} → {s.end_date} · {s.embark_port_code} → {s.debark_port_code}
+              </option>
+            ))}
+          </Select>
+          <TextArea
+            label="Category codes"
+            value={catCodesRaw}
+            onChange={(e) => setCatCodesRaw(e.target.value)}
+            rows={3}
+            placeholder="CO1, CO2, CO3"
+            hint="Enter one per line, or separate with spaces/commas."
+            style={{ minHeight: 88, resize: 'vertical' }}
+          />
+        </div>
+        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
           <Input
-            label="Price type"
-            value={catPriceType}
-            onChange={(e) => setCatPriceType(e.target.value)}
-            placeholder="regular | internet | …"
-            hint="This lets you store multiple prices per category (e.g. regular vs internet)."
+            label="Price types"
+            value={catPriceTypesRaw}
+            onChange={(e) => setCatPriceTypesRaw(e.target.value)}
+            placeholder="regular, internet, promo"
+            hint="Comma/space-separated. Each type will be created for each category code."
           />
           <Input label="Currency" value={catCurrency} onChange={(e) => setCatCurrency(e.target.value)} />
           <Input label="Min guests" type="number" min="1" step="1" value={catMinGuests} onChange={(e) => setCatMinGuests(Number(e.target.value))} />
@@ -246,13 +336,13 @@ export function PricingPage(props: { apiBase: string }) {
             hint="Enter major units (e.g. 300.00 = €300.00). Saved as cents in API."
           />
         </div>
-        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Input label="Cruise date start (optional)" type="date" value={catStartDate} onChange={(e) => setCatStartDate(e.target.value)} />
-          <Input label="Cruise date end (optional)" type="date" value={catEndDate} onChange={(e) => setCatEndDate(e.target.value)} />
-        </div>
         <div style={{ marginTop: 10 }}>
-          <Button variant="primary" disabled={busy || !catCode.trim() || !catPriceType.trim() || !company?.id} onClick={() => void upsertCategoryPrice()}>
-            {busy ? 'Saving…' : 'Save category price'}
+          <Button
+            variant="primary"
+            disabled={busy || !parseCodes(catCodesRaw).length || !parsePriceTypes(catPriceTypesRaw).length || !company?.id}
+            onClick={() => void upsertCategoryPricesBulk()}
+          >
+            {busy ? 'Saving…' : 'Save category prices'}
           </Button>
         </div>
       </Panel>
@@ -313,10 +403,6 @@ export function PricingPage(props: { apiBase: string }) {
                                   key={`${r.category_code}-${r.price_type || 'regular'}-${r.currency}-${r.min_guests}-${r.effective_start_date || 'any'}-${r.effective_end_date || 'any'}`}
                                 >
                                   <Mono>{(r.price_type || 'regular').toLowerCase()}</Mono> · {r.currency} · min {r.min_guests} · {(r.price_per_person / 100).toFixed(2)} / pax
-                                  <span style={{ color: 'rgba(230,237,243,0.65)' }}>
-                                    {' '}
-                                    · date {r.effective_start_date || 'any'} → {r.effective_end_date || 'any'}
-                                  </span>
                                 </div>
                               ))}
                             </div>
