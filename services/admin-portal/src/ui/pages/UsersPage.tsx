@@ -5,6 +5,22 @@ type StaffUser = { id: string; email: string; role: string; disabled: boolean; c
 type StaffGroup = { id: string; code: string; name: string; description?: string | null; permissions: string[]; created_at: string; updated_at: string }
 type GroupMember = { user_id: string; group_id: string }
 
+const ALL_PERMS = [
+  'sales.quote',
+  'sales.hold',
+  'sales.confirm',
+  'customers.read',
+  'customers.write',
+  'sailings.read',
+  'sailings.write',
+  'fleet.read',
+  'fleet.write',
+  'inventory.read',
+  'inventory.write',
+  'rates.write',
+  'users.manage',
+] as const
+
 export function UsersPage(props: { apiBase: string }) {
   const [items, setItems] = useState<StaffUser[]>([])
   const [groups, setGroups] = useState<StaffGroup[]>([])
@@ -13,22 +29,17 @@ export function UsersPage(props: { apiBase: string }) {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('agent')
   const [disabled, setDisabled] = useState(false)
+  const [newUserGroups, setNewUserGroups] = useState<Record<string, boolean>>({})
 
   const [gCode, setGCode] = useState('sales_agents')
   const [gName, setGName] = useState('Sales Agents')
   const [gDesc, setGDesc] = useState('Call center sales agents')
-  const [gPerms, setGPerms] = useState(
-    [
-      'sales.quote',
-      'sales.hold',
-      'sales.confirm',
-      'customers.read',
-      'customers.write',
-      'sailings.read',
-      'fleet.read',
-      'inventory.read',
-    ].join(','),
-  )
+  const [gPerms, setGPerms] = useState<Record<string, boolean>>(() => {
+    const d: Record<string, boolean> = {}
+    for (const p of ALL_PERMS) d[p] = false
+    for (const p of ['sales.quote', 'sales.hold', 'sales.confirm', 'customers.read', 'customers.write', 'sailings.read', 'fleet.read', 'inventory.read']) d[p] = true
+    return d
+  })
 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -62,11 +73,18 @@ export function UsersPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/staff/users`, { method: 'POST', body: { email, password, role, disabled } })
+      const u = await apiFetch<StaffUser>(props.apiBase, `/v1/staff/users`, { method: 'POST', body: { email, password, role, disabled } })
+      const selectedGroupIds = Object.entries(newUserGroups)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+      for (const gid of selectedGroupIds) {
+        await apiFetch(props.apiBase, `/v1/staff/groups/${gid}/members`, { method: 'POST', body: { user_id: u.id } })
+      }
       setEmail('')
       setPassword('')
       setRole('agent')
       setDisabled(false)
+      setNewUserGroups({})
       await refresh()
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
@@ -92,10 +110,9 @@ export function UsersPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      const permissions = gPerms
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
+      const permissions = Object.entries(gPerms)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
       await apiFetch(props.apiBase, `/v1/staff/groups`, { method: 'POST', body: { code: gCode, name: gName, description: gDesc || null, permissions } })
       await refresh()
     } catch (e: any) {
@@ -122,7 +139,9 @@ export function UsersPage(props: { apiBase: string }) {
   return (
     <div style={styles.wrap}>
       <div style={styles.hTitle}>Users & Permissions</div>
-      <div style={styles.hSub}>Admin-only. Manage users, groups (Sales Agents / Ship Admin / Service Agent), and permission scopes per group.</div>
+      <div style={styles.hSub}>
+        Admin-only. Manage users, groups, and permissions. Tip: tenant admins now automatically get full access even without group membership (avoids setup lockouts).
+      </div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
@@ -158,6 +177,23 @@ export function UsersPage(props: { apiBase: string }) {
             <button style={styles.primaryBtn} disabled={busy || !email.trim() || !password.trim()} onClick={() => void create()}>
               {busy ? 'Saving…' : 'Create user'}
             </button>
+            <div style={styles.muted}>Optional: assign groups now (recommended for agents/staff).</div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {groups.map((g) => (
+                <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(newUserGroups[g.id])}
+                    disabled={busy}
+                    onChange={(e) => setNewUserGroups({ ...newUserGroups, [g.id]: e.target.checked })}
+                  />
+                  <span>
+                    {g.name} <span style={styles.muted}>({g.code})</span>
+                  </span>
+                </label>
+              ))}
+              {groups.length === 0 ? <div style={styles.muted}>No groups yet — create one below.</div> : null}
+            </div>
           </div>
         </section>
 
@@ -215,20 +251,23 @@ export function UsersPage(props: { apiBase: string }) {
               Description
               <input style={styles.input} value={gDesc} onChange={(e) => setGDesc(e.target.value)} placeholder="Call center sales agents" />
             </label>
-            <label style={styles.label}>
-              Permissions (comma-separated)
-              <input style={styles.input} value={gPerms} onChange={(e) => setGPerms(e.target.value)} placeholder="sales.quote,sales.hold,..." />
-            </label>
+            <div style={styles.muted}>Permissions</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {ALL_PERMS.map((p) => (
+                <label key={p} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(gPerms[p])}
+                    disabled={busy}
+                    onChange={(e) => setGPerms({ ...gPerms, [p]: e.target.checked })}
+                  />
+                  <span style={styles.mono}>{p}</span>
+                </label>
+              ))}
+            </div>
             <button style={styles.primaryBtn} disabled={busy || !gCode.trim() || !gName.trim()} onClick={() => void createGroup()}>
               {busy ? 'Saving…' : 'Create group'}
             </button>
-            <div style={styles.muted}>
-              Available scopes:{' '}
-              <span style={styles.mono}>
-                sales.quote, sales.hold, sales.confirm, customers.read, customers.write, sailings.read, sailings.write, fleet.read, fleet.write,
-                inventory.read, inventory.write, rates.write, users.manage
-              </span>
-            </div>
           </div>
         </section>
 
