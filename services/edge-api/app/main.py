@@ -188,6 +188,18 @@ async def platform_login(request: Request):
     return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/platform/login", request)
 
 
+@app.get("/v1/staff/me/preferences")
+async def get_my_preferences(request: Request):
+    """Admin portal: per-user preferences (tenant-scoped)."""
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/me/preferences", request)
+
+
+@app.patch("/v1/staff/me/preferences")
+async def patch_my_preferences(request: Request):
+    """Admin portal: update per-user preferences (tenant-scoped)."""
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/me/preferences", request)
+
+
 @app.get("/v1/staff/users")
 async def list_staff_users(request: Request):
     return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/users", request)

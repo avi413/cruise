@@ -73,6 +73,9 @@ export function Shell(props: { apiBase: string }) {
           <NavLink to="/app/dashboard" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
             Dashboard
           </NavLink>
+          <NavLink to="/app/preferences" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
+            My preferences
+          </NavLink>
           {(canSailings || canSales) ? (
             <NavLink to="/app/cruises" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
               Cruises (Browse)
