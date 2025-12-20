@@ -71,7 +71,14 @@ def health():
 @app.post("/companies", response_model=Company)
 def create_company(payload: CompanyCreate, _principal=Depends(require_roles("staff", "admin"))):
     tenant_db = tenant_db_name_from_code(payload.code)
-    ensure_tenant_database(tenant_db)
+    try:
+        ensure_tenant_database(tenant_db)
+    except Exception as e:
+        # Most common: postgres is not reachable / wrong DSN.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unable to provision tenant database '{tenant_db}'. Ensure postgres is running and POSTGRES_ADMIN_DSN is correct. Error: {e}",
+        )
 
     now = _now()
     row = CompanyRow(

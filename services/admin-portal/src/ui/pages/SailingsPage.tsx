@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
+import { getCompany } from '../components/storage'
 
 type Sailing = {
   id: string
@@ -15,12 +16,15 @@ type Sailing = {
 }
 
 type PortStop = { port_code: string; port_name?: string | null; arrival: string; departure: string }
+type Ship = { id: string; name: string; code: string }
 
 export function SailingsPage(props: { apiBase: string }) {
+  const company = getCompany()
   const [items, setItems] = useState<Sailing[]>([])
   const [sailingId, setSailingId] = useState<string>('')
   const [itinerary, setItinerary] = useState<PortStop[]>([])
   const [selected, setSelected] = useState<Sailing | null>(null)
+  const [ships, setShips] = useState<Ship[]>([])
 
   const [code, setCode] = useState('')
   const [shipId, setShipId] = useState('')
@@ -57,6 +61,13 @@ export function SailingsPage(props: { apiBase: string }) {
     refresh().catch((e) => setErr(String(e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listEndpoint])
+
+  useEffect(() => {
+    if (!company?.id) return
+    apiFetch<{ items: Ship[] }>(props.apiBase, `/v1/companies/${company.id}/fleet`, { auth: false, tenant: false })
+      .then((r) => setShips(r.items || []))
+      .catch(() => setShips([]))
+  }, [company?.id, props.apiBase])
 
   useEffect(() => {
     if (!itineraryEndpoint) {
@@ -189,7 +200,18 @@ export function SailingsPage(props: { apiBase: string }) {
             </label>
             <label style={styles.label}>
               Ship id
-              <input style={styles.input} value={shipId} onChange={(e) => setShipId(e.target.value)} placeholder="(from Fleet)" />
+              {ships.length ? (
+                <select style={styles.input} value={shipId} onChange={(e) => setShipId(e.target.value)}>
+                  <option value="">(select)</option>
+                  {ships.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input style={styles.input} value={shipId} onChange={(e) => setShipId(e.target.value)} placeholder="(from Fleet)" />
+              )}
             </label>
             <div style={styles.row2}>
               <label style={styles.label}>

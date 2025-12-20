@@ -499,7 +499,12 @@ def staff_login(payload: StaffLoginIn, tenant_engine=Depends(get_tenant_engine))
             for p in (g.permissions or []):
                 if isinstance(p, str) and p.strip():
                     perms.add(p.strip())
-        perms_list = sorted(perms)
+        # Admins should be able to manage the tenant even if no groups exist yet.
+        # This avoids lockouts like "can't manage users/pricing unless attached to a group".
+        if user.role == "admin":
+            perms_list = sorted(ALL_PERMISSIONS)
+        else:
+            perms_list = sorted(perms)
 
     return {
         "access_token": issue_token(sub=user.id, role=user.role, extra_claims={"groups": groups, "perms": perms_list}),
