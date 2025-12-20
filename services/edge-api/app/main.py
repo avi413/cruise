@@ -329,6 +329,45 @@ async def get_sailing_itinerary(sailing_id: str, request: Request):
 async def add_port_stop(sailing_id: str, request: Request):
     return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/port-stops", request)
 
+
+@app.get("/v1/itineraries")
+async def list_itineraries(request: Request):
+    q = request.url.query
+    url = f"{CRUISE_SERVICE_URL}/itineraries"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.post("/v1/itineraries")
+async def create_itinerary(request: Request):
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/itineraries", request)
+
+
+@app.get("/v1/itineraries/{itinerary_id}")
+async def get_itinerary(itinerary_id: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}", request)
+
+
+@app.get("/v1/itineraries/{itinerary_id}/compute")
+async def compute_itinerary_dates(itinerary_id: str, request: Request):
+    q = request.url.query
+    url = f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/compute"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.get("/v1/itineraries/{itinerary_id}/sailings")
+async def list_itinerary_sailings(itinerary_id: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/sailings", request)
+
+
+@app.post("/v1/itineraries/{itinerary_id}/sailings")
+async def create_sailing_from_itinerary(itinerary_id: str, request: Request):
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/sailings", request)
+
+
 @app.post("/v1/quote")
 async def create_quote(request: Request):
     """Website/mobile: get real-time pricing quote."""
