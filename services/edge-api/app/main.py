@@ -6,6 +6,7 @@ from datetime import datetime
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from urllib.parse import urlparse, urlunparse
 
 app = FastAPI(
     title="Edge API (BFF)",
@@ -30,6 +31,50 @@ BOOKING_SERVICE_URL = os.getenv("BOOKING_SERVICE_URL", "http://localhost:8005")
 PRICING_SERVICE_URL = os.getenv("PRICING_SERVICE_URL", "http://localhost:8004")
 NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8006")
 
+# Dev-friendly fallback:
+# If you run edge-api directly on your host (not in Docker), the docker-compose
+# service DNS names (e.g. http://pricing-service:8000) won't resolve.
+# In that scenario we can transparently fall back to the host-mapped ports.
+_DEV_DOCKER_DNS_FALLBACK: dict[str, str] = {
+    "ship-service": "http://localhost:8001",
+    "cruise-service": "http://localhost:8002",
+    "customer-service": "http://localhost:8003",
+    "pricing-service": "http://localhost:8004",
+    "booking-service": "http://localhost:8005",
+    "notification-service": "http://localhost:8006",
+}
+
+
+def _looks_like_dns_error(e: Exception) -> bool:
+    s = str(e).lower()
+    return (
+        "name or service not known" in s
+        or "nodename nor servname provided" in s
+        or "temporary failure in name resolution" in s
+        or "[errno -2]" in s
+        or "gaierror" in s
+    )
+
+
+def _fallback_url_if_docker_dns(url: str) -> str | None:
+    """
+    If url points at a docker-compose DNS hostname, return a localhost fallback url.
+    Otherwise returns None.
+    """
+    try:
+        p = urlparse(url)
+        host = (p.hostname or "").strip()
+        if not host:
+            return None
+        fb_base = _DEV_DOCKER_DNS_FALLBACK.get(host)
+        if not fb_base:
+            return None
+        fb = urlparse(fb_base)
+        # Preserve path + query; replace scheme/netloc.
+        return urlunparse((fb.scheme, fb.netloc, p.path, p.params, p.query, p.fragment))
+    except Exception:
+        return None
+
 
 @app.get("/health")
 def health():
@@ -51,8 +96,19 @@ async def _proxy(method: str, url: str, request: Request):
         try:
             r = await client.request(method, url, content=body, headers=headers)
         except httpx.RequestError as e:
-            # Usually indicates a missing upstream service (ship-service/postgres/etc)
-            raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
+            # Usually indicates a missing upstream service or a DNS/runtime mismatch.
+            # If running edge-api on the host, docker-compose service hostnames won't resolve; retry with localhost mapping.
+            if _looks_like_dns_error(e):
+                fb = _fallback_url_if_docker_dns(url)
+                if fb and fb != url:
+                    try:
+                        r = await client.request(method, fb, content=body, headers=headers)
+                    except httpx.RequestError as e2:
+                        raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url} (fallback {fb}): {e2}")
+                else:
+                    raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
+            else:
+                raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
 
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=r.text)

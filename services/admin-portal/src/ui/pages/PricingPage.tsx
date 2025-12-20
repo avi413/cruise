@@ -147,8 +147,7 @@ export function PricingPage(props: { apiBase: string }) {
         body: {
           category_code: catCode.trim().toUpperCase(),
           price_type: catPriceType.trim().toLowerCase() || 'regular',
-          currency: catCurrency.trim().toUpperCase() || 'USD',
-          currency: catCurrency.trim().toUpperCase() || defaultCurrency,
+          currency: (catCurrency.trim().toUpperCase() || defaultCurrency || 'USD').trim().toUpperCase(),
           min_guests: catMinGuests,
           price_per_person: pricePerPersonCents,
           effective_start_date: catStartDate.trim() || null,
