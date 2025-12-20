@@ -931,6 +931,34 @@ class PlatformLoginIn(BaseModel):
 
 def _load_or_create_user_prefs(tenant_engine, user_id: str) -> StaffUserPreference:
     with session(tenant_engine) as s:
+        # Platform admin tokens use a synthetic subject ("platform-admin") which may not
+        # exist in a tenant DB's `staff_users` table. In Postgres, `staff_user_preferences.user_id`
+        # has a FK to `staff_users.id`, so creating preferences would fail with a 500.
+        #
+        # To keep the starter repo dev-friendly, we auto-provision a disabled "shadow" user
+        # row when missing. This preserves FK integrity and still prevents direct login
+        # (random password hash, disabled=1).
+        if user_id:
+            existing_user = s.get(StaffUser, user_id)
+            if existing_user is None:
+                shadow_email = f"{user_id}@platform.local"
+                # Ensure email uniqueness within the tenant DB
+                dupe = s.query(StaffUser).filter(StaffUser.email == shadow_email).first()
+                if dupe is None:
+                    now = _now()
+                    s.add(
+                        StaffUser(
+                            id=user_id,
+                            created_at=now,
+                            updated_at=now,
+                            email=shadow_email,
+                            password_hash=_hash_password(secrets.token_urlsafe(24)),
+                            role="admin",
+                            disabled=1,
+                        )
+                    )
+                    s.commit()
+
         row = s.query(StaffUserPreference).filter(StaffUserPreference.user_id == user_id).first()
         if row is not None:
             return row
