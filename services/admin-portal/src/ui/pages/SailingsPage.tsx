@@ -66,14 +66,6 @@ export function SailingsPage(props: { apiBase: string }) {
   const [editById, setEditById] = useState<Record<string, RowEdit>>({})
   const [stopFormById, setStopFormById] = useState<Record<string, RowStopForm>>({})
 
-  // create form
-  const [code, setCode] = useState('')
-  const [shipId, setShipId] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [embark, setEmbark] = useState('')
-  const [debark, setDebark] = useState('')
-
   // create from itinerary
   const [newFromItineraryId, setNewFromItineraryId] = useState<string>('')
   const [newFromItineraryStart, setNewFromItineraryStart] = useState<string>('')
@@ -148,38 +140,6 @@ export function SailingsPage(props: { apiBase: string }) {
     setExpanded((prev) => ({ ...prev, [sid]: next }))
     if (next) {
       ensureRowLoaded(sid).catch((e) => setErr(String(e?.detail || e?.message || e)))
-    }
-  }
-
-  async function createSailing() {
-    setBusy(true)
-    setErr(null)
-    try {
-      await apiFetch(props.apiBase, `/v1/sailings`, {
-        method: 'POST',
-        body: {
-          code,
-          ship_id: shipId,
-          start_date: startDate,
-          end_date: endDate,
-          embark_port_code: embark,
-          debark_port_code: debark,
-          status: 'planned',
-        },
-        auth: true,
-        tenant: false,
-      })
-      setCode('')
-      setShipId('')
-      setStartDate('')
-      setEndDate('')
-      setEmbark('')
-      setDebark('')
-      await refresh()
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -308,28 +268,12 @@ export function SailingsPage(props: { apiBase: string }) {
 
       <TwoCol
         left={
-          <Panel title="Create sailing" subtitle="Create a sailing directly (dates + ports + ship).">
-            <div style={{ display: 'grid', gap: 10 }}>
-              <Input label="Sailing code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="S-2026-07-01-A" />
-              <Select label="Ship" value={shipId} onChange={(e) => setShipId(e.target.value)} hint={ships.length ? undefined : 'No fleet loaded yet. Create/select a company fleet first.'}>
-                <option value="">(select)</option>
-                {ships.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.code})
-                  </option>
-                ))}
-              </Select>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Input label="Start date" value={startDate} onChange={(e) => setStartDate(e.target.value)} type="date" />
-                <Input label="End date" value={endDate} onChange={(e) => setEndDate(e.target.value)} type="date" />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Input label="Embark port code" value={embark} onChange={(e) => setEmbark(e.target.value)} placeholder="BCN" />
-                <Input label="Debark port code" value={debark} onChange={(e) => setDebark(e.target.value)} placeholder="ROM" />
-              </div>
-              <Button variant="primary" disabled={busy || !code.trim() || !shipId.trim() || !startDate || !endDate || !embark.trim() || !debark.trim()} onClick={() => void createSailing()}>
-                {busy ? 'Saving…' : 'Create sailing'}
-              </Button>
+          <Panel
+            title="Create sailing"
+            subtitle="A sailing must be related to an itinerary. Use “Create from itinerary” to create it with the correct relation and derived dates/ports."
+          >
+            <div style={{ color: 'rgba(230,237,243,0.75)', fontSize: 13, lineHeight: 1.5 }}>
+              Direct sailings (without an itinerary) are not allowed.
             </div>
           </Panel>
         }
