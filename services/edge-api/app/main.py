@@ -136,6 +136,11 @@ async def patch_ship(ship_id: str, request: Request):
     return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
 
 
+@app.delete("/v1/ships/{ship_id}")
+async def delete_ship(ship_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
+
+
 @app.get("/v1/ships/{ship_id}/cabin-categories")
 async def list_ship_cabin_categories(ship_id: str, request: Request):
     return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request)
@@ -149,6 +154,11 @@ async def create_ship_cabin_category(ship_id: str, request: Request):
 @app.patch("/v1/cabin-categories/{category_id}")
 async def patch_ship_cabin_category(category_id: str, request: Request):
     return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request)
+
+
+@app.delete("/v1/cabin-categories/{category_id}")
+async def delete_ship_cabin_category(category_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request)
 
 
 @app.get("/v1/ships/{ship_id}/cabins")
@@ -175,6 +185,11 @@ async def bulk_create_ship_cabins(ship_id: str, request: Request):
 @app.patch("/v1/cabins/{cabin_id}")
 async def patch_ship_cabin(cabin_id: str, request: Request):
     return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request)
+
+
+@app.delete("/v1/cabins/{cabin_id}")
+async def delete_ship_cabin(cabin_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request)
 
 
 @app.post("/v1/staff/login")

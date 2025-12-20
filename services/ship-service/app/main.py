@@ -737,6 +737,59 @@ def patch_ship(
     return get_ship(ship_id)
 
 
+@app.delete("/ships/{ship_id}", status_code=204)
+def delete_ship(ship_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    """
+    Delete a ship and all of its ship-scoped data.
+
+    Notes:
+    - Cabins and cabin categories live in the same DB in this starter repo.
+    - We delete child rows first to avoid FK constraint failures.
+    """
+    with session() as s:
+        r = s.get(ShipRow, ship_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Ship not found")
+
+        # Delete cabins first (FK -> ships)
+        s.query(Cabin).filter(Cabin.ship_id == ship_id).delete(synchronize_session=False)
+        # Delete categories (FK -> ships)
+        s.query(CabinCategory).filter(CabinCategory.ship_id == ship_id).delete(synchronize_session=False)
+        # Finally delete ship
+        s.delete(r)
+        s.commit()
+    return None
+
+
+@app.delete("/cabin-categories/{category_id}", status_code=204)
+def delete_cabin_category(category_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    """
+    Delete a cabin category.
+
+    Any cabins referencing this category are set to NULL (no category).
+    """
+    with session() as s:
+        row = s.get(CabinCategory, category_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        s.query(Cabin).filter(Cabin.category_id == category_id).update({Cabin.category_id: None}, synchronize_session=False)
+        s.delete(row)
+        s.commit()
+    return None
+
+
+@app.delete("/cabins/{cabin_id}", status_code=204)
+def delete_cabin(cabin_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(Cabin, cabin_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cabin not found")
+        s.delete(row)
+        s.commit()
+    return None
+
+
 @app.post("/ships/{ship_id}/amenities", response_model=Ship)
 def add_amenity(
     ship_id: str,
