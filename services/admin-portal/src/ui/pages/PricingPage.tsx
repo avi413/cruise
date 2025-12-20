@@ -13,7 +13,6 @@ type OverridesOut = {
 
 export function PricingPage(props: { apiBase: string }) {
   const company = getCompany()
-  const [scope, setScope] = useState<'company' | 'global'>('company')
   const [items, setItems] = useState<OverridesOut[]>([])
 
   const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
@@ -33,15 +32,20 @@ export function PricingPage(props: { apiBase: string }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const companyId = scope === 'company' ? company?.id || null : null
+  const companyId = company?.id || null
   const listEndpoint = useMemo(() => `/v1/pricing/overrides`, [])
 
   async function refresh() {
     setBusy(true)
     setErr(null)
     try {
+      if (!companyId) {
+        setItems([])
+        return
+      }
       const r = await apiFetch<OverridesOut[]>(props.apiBase, listEndpoint)
-      setItems(r || [])
+      const rows = (r || []).filter((x) => x.company_id === companyId)
+      setItems(rows)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -85,9 +89,9 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function clearScopeOverrides() {
-    const key = scope === 'company' ? company?.id : '*'
-    if (!key) {
+  async function clearCompanyOverrides() {
+    const key = company?.id
+    if (!key?.trim()) {
       setErr('Select a company first.')
       return
     }
@@ -131,14 +135,14 @@ export function PricingPage(props: { apiBase: string }) {
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
         title="Pricing & Offers"
-        subtitle="Manage pricing (base fares, cabin multipliers, and cabin-category prices like CO3). Use company scope for negotiated agreements; global scope for default pricing."
+        subtitle="Manage company pricing (base fares, cabin multipliers, and cabin-category prices like CO3). Pricing is company-managed (tenant-scoped)."
         right={
           <>
             <Button disabled={busy} onClick={() => void refresh()}>
               {busy ? 'Refreshing…' : 'Refresh'}
             </Button>
-            <Button variant="danger" disabled={busy} onClick={() => void clearScopeOverrides()}>
-              Clear scope overrides
+            <Button variant="danger" disabled={busy} onClick={() => void clearCompanyOverrides()}>
+              Clear company overrides
             </Button>
           </>
         }
@@ -146,17 +150,11 @@ export function PricingPage(props: { apiBase: string }) {
 
       {err ? <ErrorBanner message={err} /> : null}
 
-      <Panel title="Scope" subtitle="Company scope uses the selected tenant; global scope applies to everyone (key ‘*’).">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Select value={scope} onChange={(e) => setScope(e.target.value as any)} label="Override scope">
-            <option value="company">Company</option>
-            <option value="global">Global</option>
-          </Select>
-          <div style={{ display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
-            <div>Effective company id</div>
-            <div>
-              <Mono>{scope === 'global' ? '*' : company?.id || '(no company selected)'}</Mono>
-            </div>
+      <Panel title="Company" subtitle="Pricing is stored per company (tenant). Select a company in the portal before editing pricing.">
+        <div style={{ display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+          <div>Effective company id</div>
+          <div>
+            <Mono>{company?.id || '(no company selected)'}</Mono>
           </div>
         </div>
       </Panel>
@@ -171,7 +169,7 @@ export function PricingPage(props: { apiBase: string }) {
               <option value="suite">suite</option>
             </Select>
             <Input label="Multiplier" type="number" step="0.05" min="0.1" value={multiplier} onChange={(e) => setMultiplier(Number(e.target.value))} />
-            <Button variant="primary" disabled={busy || (scope === 'company' && !company?.id)} onClick={() => void setCabinMultiplier()}>
+            <Button variant="primary" disabled={busy || !company?.id} onClick={() => void setCabinMultiplier()}>
               {busy ? 'Saving…' : 'Set multiplier'}
             </Button>
           </div>
@@ -184,7 +182,7 @@ export function PricingPage(props: { apiBase: string }) {
               <Input label="Child" type="number" min="0" step="1000" value={child} onChange={(e) => setChild(Number(e.target.value))} />
               <Input label="Infant" type="number" min="0" step="1000" value={infant} onChange={(e) => setInfant(Number(e.target.value))} />
             </div>
-            <Button variant="primary" disabled={busy || (scope === 'company' && !company?.id)} onClick={() => void setBaseFares()}>
+            <Button variant="primary" disabled={busy || !company?.id} onClick={() => void setBaseFares()}>
               {busy ? 'Saving…' : 'Set base fares'}
             </Button>
           </div>
@@ -203,7 +201,7 @@ export function PricingPage(props: { apiBase: string }) {
           <Input label="Cruise date end (optional)" type="date" value={catEndDate} onChange={(e) => setCatEndDate(e.target.value)} />
         </div>
         <div style={{ marginTop: 10 }}>
-          <Button variant="primary" disabled={busy || !catCode.trim() || (scope === 'company' && !company?.id)} onClick={() => void upsertCategoryPrice()}>
+          <Button variant="primary" disabled={busy || !catCode.trim() || !company?.id} onClick={() => void upsertCategoryPrice()}>
             {busy ? 'Saving…' : 'Save category price'}
           </Button>
         </div>
