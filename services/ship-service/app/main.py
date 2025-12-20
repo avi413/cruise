@@ -66,6 +66,10 @@ def _default_company_settings(company: CompanyRow) -> dict:
             "email_from_name": company.name,
             "email_from_address": None,
             "email_templates": {},  # future: {template_key: {subject, html, text}}
+            # UI Theme builder defaults (portal-level colors; independent of logo/background image).
+            # Built-in theme definitions live in the admin portal; server stores selection + custom themes.
+            "ui_theme_active_id": "dark",
+            "ui_themes": [],
         },
         "localization": {
             "default_locale": "en",
@@ -111,6 +115,10 @@ class CompanyBranding(BaseModel):
     email_from_name: str | None = None
     email_from_address: str | None = None
     email_templates: dict = Field(default_factory=dict)
+    # Admin-portal UI theme builder (stored per company; applied as CSS vars).
+    # Built-in themes ("dark"/"light") are defined client-side; `ui_themes` stores user-created themes.
+    ui_theme_active_id: str | None = None
+    ui_themes: list[dict] = Field(default_factory=list)
 
 
 class CompanyLocalization(BaseModel):
