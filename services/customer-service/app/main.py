@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated
 from uuid import uuid4
 
@@ -16,7 +16,16 @@ from sqlalchemy import func, or_
 
 from .consumer import start_consumer
 from .db import session
-from .models import AuditLog, BookingHistory, Customer, StaffGroup, StaffGroupMember, StaffUser, StaffUserPreference
+from .models import (
+    AuditLog,
+    BookingHistory,
+    Customer,
+    Passenger,
+    StaffGroup,
+    StaffGroupMember,
+    StaffUser,
+    StaffUserPreference,
+)
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
 
@@ -144,9 +153,23 @@ def health():
 
 class CustomerCreate(BaseModel):
     email: str
+    title: str | None = None
     first_name: str | None = None
     last_name: str | None = None
+    birth_date: date | None = None
     loyalty_tier: str | None = None
+    phone: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
+    national_id_number: str | None = None
+    national_id_country: str | None = None
+    passport_number: str | None = None
+    passport_country: str | None = None
+    passport_expiry: date | None = None
     preferences: dict = Field(default_factory=dict)
 
 
@@ -188,6 +211,9 @@ def list_customers(
                     func.lower(Customer.email).like(like),
                     func.lower(Customer.first_name).like(like),
                     func.lower(Customer.last_name).like(like),
+                    func.lower(Customer.phone).like(like),
+                    func.lower(Customer.national_id_number).like(like),
+                    func.lower(Customer.passport_number).like(like),
                 )
             )
         rows = qry.offset(offset).limit(limit).all()
@@ -198,10 +224,24 @@ def list_customers(
             created_at=r.created_at,
             updated_at=r.updated_at,
             email=r.email,
+            title=r.title,
             first_name=r.first_name,
             last_name=r.last_name,
+            birth_date=r.birth_date,
             loyalty_tier=r.loyalty_tier,
-            preferences=r.preferences,
+            phone=r.phone,
+            address_line1=r.address_line1,
+            address_line2=r.address_line2,
+            city=r.city,
+            state=r.state,
+            postal_code=r.postal_code,
+            country=r.country,
+            national_id_number=r.national_id_number,
+            national_id_country=r.national_id_country,
+            passport_number=r.passport_number,
+            passport_country=r.passport_country,
+            passport_expiry=r.passport_expiry,
+            preferences=r.preferences or {},
         )
         for r in rows
     ]
@@ -219,10 +259,24 @@ def create_customer(
         created_at=now,
         updated_at=now,
         email=payload.email.lower().strip(),
+        title=payload.title,
         first_name=payload.first_name,
         last_name=payload.last_name,
+        birth_date=payload.birth_date,
         loyalty_tier=payload.loyalty_tier,
-        preferences=payload.preferences,
+        phone=payload.phone,
+        address_line1=payload.address_line1,
+        address_line2=payload.address_line2,
+        city=payload.city,
+        state=payload.state,
+        postal_code=payload.postal_code,
+        country=payload.country,
+        national_id_number=payload.national_id_number,
+        national_id_country=payload.national_id_country,
+        passport_number=payload.passport_number,
+        passport_country=payload.passport_country,
+        passport_expiry=payload.passport_expiry,
+        preferences=payload.preferences or {},
     )
 
     with session(tenant_engine) as s:
@@ -241,7 +295,8 @@ def create_customer(
         meta={"request": payload.model_dump()},
     )
 
-    return CustomerOut(**payload.model_dump(), id=cust.id, created_at=cust.created_at, updated_at=cust.updated_at)
+    # Return the persisted row (normalized email, defaults applied).
+    return get_customer(cust.id, tenant_engine=tenant_engine)
 
 
 @app.get("/customers/{customer_id}", response_model=CustomerOut)
@@ -260,18 +315,46 @@ def get_customer(
         created_at=cust.created_at,
         updated_at=cust.updated_at,
         email=cust.email,
+        title=cust.title,
         first_name=cust.first_name,
         last_name=cust.last_name,
+        birth_date=cust.birth_date,
         loyalty_tier=cust.loyalty_tier,
-        preferences=cust.preferences,
+        phone=cust.phone,
+        address_line1=cust.address_line1,
+        address_line2=cust.address_line2,
+        city=cust.city,
+        state=cust.state,
+        postal_code=cust.postal_code,
+        country=cust.country,
+        national_id_number=cust.national_id_number,
+        national_id_country=cust.national_id_country,
+        passport_number=cust.passport_number,
+        passport_country=cust.passport_country,
+        passport_expiry=cust.passport_expiry,
+        preferences=cust.preferences or {},
     )
 
 
 class CustomerPatch(BaseModel):
+    title: str | None = None
     first_name: str | None = None
     last_name: str | None = None
+    birth_date: date | None = None
     loyalty_tier: str | None = None
     preferences: dict | None = None
+    phone: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
+    national_id_number: str | None = None
+    national_id_country: str | None = None
+    passport_number: str | None = None
+    passport_country: str | None = None
+    passport_expiry: date | None = None
 
 
 @app.patch("/customers/{customer_id}", response_model=CustomerOut)
@@ -287,29 +370,91 @@ def patch_customer(
             raise HTTPException(status_code=404, detail="Customer not found")
 
         before = {
+            "title": cust.title,
             "first_name": cust.first_name,
             "last_name": cust.last_name,
+            "birth_date": cust.birth_date.isoformat() if cust.birth_date else None,
             "loyalty_tier": cust.loyalty_tier,
+            "phone": cust.phone,
+            "address_line1": cust.address_line1,
+            "address_line2": cust.address_line2,
+            "city": cust.city,
+            "state": cust.state,
+            "postal_code": cust.postal_code,
+            "country": cust.country,
+            "national_id_number": cust.national_id_number,
+            "national_id_country": cust.national_id_country,
+            "passport_number": cust.passport_number,
+            "passport_country": cust.passport_country,
+            "passport_expiry": cust.passport_expiry.isoformat() if cust.passport_expiry else None,
             "preferences": cust.preferences,
         }
 
-        if payload.first_name is not None:
+        # Allow explicit nulls to clear values by checking which fields were provided.
+        fields = payload.model_fields_set
+
+        if "title" in fields:
+            cust.title = payload.title
+        if "first_name" in fields:
             cust.first_name = payload.first_name
-        if payload.last_name is not None:
+        if "last_name" in fields:
             cust.last_name = payload.last_name
-        if payload.loyalty_tier is not None:
+        if "birth_date" in fields:
+            cust.birth_date = payload.birth_date
+        if "loyalty_tier" in fields:
             cust.loyalty_tier = payload.loyalty_tier
-        if payload.preferences is not None:
-            cust.preferences = payload.preferences
+
+        if "phone" in fields:
+            cust.phone = payload.phone
+        if "address_line1" in fields:
+            cust.address_line1 = payload.address_line1
+        if "address_line2" in fields:
+            cust.address_line2 = payload.address_line2
+        if "city" in fields:
+            cust.city = payload.city
+        if "state" in fields:
+            cust.state = payload.state
+        if "postal_code" in fields:
+            cust.postal_code = payload.postal_code
+        if "country" in fields:
+            cust.country = payload.country
+
+        if "national_id_number" in fields:
+            cust.national_id_number = payload.national_id_number
+        if "national_id_country" in fields:
+            cust.national_id_country = payload.national_id_country
+        if "passport_number" in fields:
+            cust.passport_number = payload.passport_number
+        if "passport_country" in fields:
+            cust.passport_country = payload.passport_country
+        if "passport_expiry" in fields:
+            cust.passport_expiry = payload.passport_expiry
+
+        if "preferences" in fields:
+            cust.preferences = payload.preferences or {}
 
         cust.updated_at = _now()
         s.add(cust)
         s.commit()
 
         after = {
+            "title": cust.title,
             "first_name": cust.first_name,
             "last_name": cust.last_name,
+            "birth_date": cust.birth_date.isoformat() if cust.birth_date else None,
             "loyalty_tier": cust.loyalty_tier,
+            "phone": cust.phone,
+            "address_line1": cust.address_line1,
+            "address_line2": cust.address_line2,
+            "city": cust.city,
+            "state": cust.state,
+            "postal_code": cust.postal_code,
+            "country": cust.country,
+            "national_id_number": cust.national_id_number,
+            "national_id_country": cust.national_id_country,
+            "passport_number": cust.passport_number,
+            "passport_country": cust.passport_country,
+            "passport_expiry": cust.passport_expiry.isoformat() if cust.passport_expiry else None,
             "preferences": cust.preferences,
         }
 
@@ -323,6 +468,343 @@ def patch_customer(
     )
 
     return get_customer(customer_id)
+
+
+# ----------------------------
+# Passenger profiles (related to customer)
+# ----------------------------
+
+
+class PassengerCreate(BaseModel):
+    title: str | None = None
+    first_name: str
+    last_name: str
+    birth_date: date | None = None
+    gender: str | None = None
+    nationality: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
+    national_id_number: str | None = None
+    national_id_country: str | None = None
+    passport_number: str | None = None
+    passport_country: str | None = None
+    passport_expiry: date | None = None
+
+
+class PassengerOut(PassengerCreate):
+    id: str
+    customer_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PassengerPatch(BaseModel):
+    title: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    birth_date: date | None = None
+    gender: str | None = None
+    nationality: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address_line1: str | None = None
+    address_line2: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
+    national_id_number: str | None = None
+    national_id_country: str | None = None
+    passport_number: str | None = None
+    passport_country: str | None = None
+    passport_expiry: date | None = None
+
+
+@app.get("/customers/{customer_id}/passengers", response_model=list[PassengerOut])
+def list_customer_passengers(
+    customer_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
+        rows = s.query(Passenger).filter(Passenger.customer_id == customer_id).order_by(Passenger.updated_at.desc()).all()
+    return [
+        PassengerOut(
+            id=r.id,
+            customer_id=r.customer_id,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+            title=r.title,
+            first_name=r.first_name,
+            last_name=r.last_name,
+            birth_date=r.birth_date,
+            gender=r.gender,
+            nationality=r.nationality,
+            email=r.email,
+            phone=r.phone,
+            address_line1=r.address_line1,
+            address_line2=r.address_line2,
+            city=r.city,
+            state=r.state,
+            postal_code=r.postal_code,
+            country=r.country,
+            national_id_number=r.national_id_number,
+            national_id_country=r.national_id_country,
+            passport_number=r.passport_number,
+            passport_country=r.passport_country,
+            passport_expiry=r.passport_expiry,
+        )
+        for r in rows
+    ]
+
+
+@app.post("/customers/{customer_id}/passengers", response_model=PassengerOut)
+def create_passenger(
+    customer_id: str,
+    payload: PassengerCreate,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    now = _now()
+    row = Passenger(
+        id=str(uuid4()),
+        customer_id=customer_id,
+        created_at=now,
+        updated_at=now,
+        title=payload.title,
+        first_name=(payload.first_name or "").strip(),
+        last_name=(payload.last_name or "").strip(),
+        birth_date=payload.birth_date,
+        gender=payload.gender,
+        nationality=payload.nationality,
+        email=_normalize_email(payload.email) if payload.email else None,
+        phone=payload.phone,
+        address_line1=payload.address_line1,
+        address_line2=payload.address_line2,
+        city=payload.city,
+        state=payload.state,
+        postal_code=payload.postal_code,
+        country=payload.country,
+        national_id_number=payload.national_id_number,
+        national_id_country=payload.national_id_country,
+        passport_number=payload.passport_number,
+        passport_country=payload.passport_country,
+        passport_expiry=payload.passport_expiry,
+    )
+
+    with session(tenant_engine) as s:
+        cust = s.get(Customer, customer_id)
+        if cust is None:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="passenger.create",
+        entity_type="passenger",
+        entity_id=row.id,
+        meta={"customer_id": customer_id, "request": payload.model_dump()},
+    )
+
+    return PassengerOut(
+        id=row.id,
+        customer_id=row.customer_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        title=row.title,
+        first_name=row.first_name,
+        last_name=row.last_name,
+        birth_date=row.birth_date,
+        gender=row.gender,
+        nationality=row.nationality,
+        email=row.email,
+        phone=row.phone,
+        address_line1=row.address_line1,
+        address_line2=row.address_line2,
+        city=row.city,
+        state=row.state,
+        postal_code=row.postal_code,
+        country=row.country,
+        national_id_number=row.national_id_number,
+        national_id_country=row.national_id_country,
+        passport_number=row.passport_number,
+        passport_country=row.passport_country,
+        passport_expiry=row.passport_expiry,
+    )
+
+
+@app.patch("/passengers/{passenger_id}", response_model=PassengerOut)
+def patch_passenger(
+    passenger_id: str,
+    payload: PassengerPatch,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
+        row = s.get(Passenger, passenger_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Passenger not found")
+
+        before = {
+            "title": row.title,
+            "first_name": row.first_name,
+            "last_name": row.last_name,
+            "birth_date": row.birth_date.isoformat() if row.birth_date else None,
+            "gender": row.gender,
+            "nationality": row.nationality,
+            "email": row.email,
+            "phone": row.phone,
+            "address_line1": row.address_line1,
+            "address_line2": row.address_line2,
+            "city": row.city,
+            "state": row.state,
+            "postal_code": row.postal_code,
+            "country": row.country,
+            "national_id_number": row.national_id_number,
+            "national_id_country": row.national_id_country,
+            "passport_number": row.passport_number,
+            "passport_country": row.passport_country,
+            "passport_expiry": row.passport_expiry.isoformat() if row.passport_expiry else None,
+        }
+
+        fields = payload.model_fields_set
+        if "title" in fields:
+            row.title = payload.title
+        if "first_name" in fields:
+            row.first_name = (payload.first_name or "").strip()
+        if "last_name" in fields:
+            row.last_name = (payload.last_name or "").strip()
+        if "birth_date" in fields:
+            row.birth_date = payload.birth_date
+        if "gender" in fields:
+            row.gender = payload.gender
+        if "nationality" in fields:
+            row.nationality = payload.nationality
+        if "email" in fields:
+            row.email = _normalize_email(payload.email) if payload.email else None
+        if "phone" in fields:
+            row.phone = payload.phone
+
+        if "address_line1" in fields:
+            row.address_line1 = payload.address_line1
+        if "address_line2" in fields:
+            row.address_line2 = payload.address_line2
+        if "city" in fields:
+            row.city = payload.city
+        if "state" in fields:
+            row.state = payload.state
+        if "postal_code" in fields:
+            row.postal_code = payload.postal_code
+        if "country" in fields:
+            row.country = payload.country
+
+        if "national_id_number" in fields:
+            row.national_id_number = payload.national_id_number
+        if "national_id_country" in fields:
+            row.national_id_country = payload.national_id_country
+        if "passport_number" in fields:
+            row.passport_number = payload.passport_number
+        if "passport_country" in fields:
+            row.passport_country = payload.passport_country
+        if "passport_expiry" in fields:
+            row.passport_expiry = payload.passport_expiry
+
+        row.updated_at = _now()
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+
+        after = {
+            "title": row.title,
+            "first_name": row.first_name,
+            "last_name": row.last_name,
+            "birth_date": row.birth_date.isoformat() if row.birth_date else None,
+            "gender": row.gender,
+            "nationality": row.nationality,
+            "email": row.email,
+            "phone": row.phone,
+            "address_line1": row.address_line1,
+            "address_line2": row.address_line2,
+            "city": row.city,
+            "state": row.state,
+            "postal_code": row.postal_code,
+            "country": row.country,
+            "national_id_number": row.national_id_number,
+            "national_id_country": row.national_id_country,
+            "passport_number": row.passport_number,
+            "passport_country": row.passport_country,
+            "passport_expiry": row.passport_expiry.isoformat() if row.passport_expiry else None,
+        }
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="passenger.patch",
+        entity_type="passenger",
+        entity_id=passenger_id,
+        meta={"request": payload.model_dump(exclude_unset=True), "before": before, "after": after},
+    )
+
+    return PassengerOut(
+        id=row.id,
+        customer_id=row.customer_id,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        title=row.title,
+        first_name=row.first_name,
+        last_name=row.last_name,
+        birth_date=row.birth_date,
+        gender=row.gender,
+        nationality=row.nationality,
+        email=row.email,
+        phone=row.phone,
+        address_line1=row.address_line1,
+        address_line2=row.address_line2,
+        city=row.city,
+        state=row.state,
+        postal_code=row.postal_code,
+        country=row.country,
+        national_id_number=row.national_id_number,
+        national_id_country=row.national_id_country,
+        passport_number=row.passport_number,
+        passport_country=row.passport_country,
+        passport_expiry=row.passport_expiry,
+    )
+
+
+@app.delete("/passengers/{passenger_id}")
+def delete_passenger(
+    passenger_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    with session(tenant_engine) as s:
+        row = s.get(Passenger, passenger_id)
+        if row is None:
+            return {"status": "ok"}
+        customer_id = row.customer_id
+        s.delete(row)
+        s.commit()
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="passenger.delete",
+        entity_type="passenger",
+        entity_id=passenger_id,
+        meta={"customer_id": customer_id},
+    )
+
+    return {"status": "ok"}
 
 
 class AuditLogOut(BaseModel):

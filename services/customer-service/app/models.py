@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -99,12 +99,72 @@ class Customer(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    title: Mapped[str | None] = mapped_column(String)  # MR/MRS/MS/etc
     first_name: Mapped[str | None] = mapped_column(String)
     last_name: Mapped[str | None] = mapped_column(String)
+    birth_date: Mapped[date | None] = mapped_column(Date)
 
     loyalty_tier: Mapped[str | None] = mapped_column(String, index=True)
 
+    phone: Mapped[str | None] = mapped_column(String)
+
+    # Simple structured address (extend as needed)
+    address_line1: Mapped[str | None] = mapped_column(String)
+    address_line2: Mapped[str | None] = mapped_column(String)
+    city: Mapped[str | None] = mapped_column(String)
+    state: Mapped[str | None] = mapped_column(String)
+    postal_code: Mapped[str | None] = mapped_column(String)
+    country: Mapped[str | None] = mapped_column(String)
+
+    national_id_number: Mapped[str | None] = mapped_column(String)
+    national_id_country: Mapped[str | None] = mapped_column(String)
+
+    passport_number: Mapped[str | None] = mapped_column(String)
+    passport_country: Mapped[str | None] = mapped_column(String)
+    passport_expiry: Mapped[date | None] = mapped_column(Date)
+
     preferences: Mapped[dict] = mapped_column(JSON)  # e.g. dining, accessibility
+
+
+class Passenger(Base):
+    """
+    A passenger/traveler related to a customer (primary booker/contact).
+
+    This supports the "add related passenger" workflow for sales/booking.
+    """
+
+    __tablename__ = "passengers"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String, ForeignKey("customers.id"), index=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    title: Mapped[str | None] = mapped_column(String)
+    first_name: Mapped[str] = mapped_column(String)
+    last_name: Mapped[str] = mapped_column(String)
+    birth_date: Mapped[date | None] = mapped_column(Date)
+
+    gender: Mapped[str | None] = mapped_column(String)  # optional (M/F/X/...)
+    nationality: Mapped[str | None] = mapped_column(String)
+
+    email: Mapped[str | None] = mapped_column(String)
+    phone: Mapped[str | None] = mapped_column(String)
+
+    address_line1: Mapped[str | None] = mapped_column(String)
+    address_line2: Mapped[str | None] = mapped_column(String)
+    city: Mapped[str | None] = mapped_column(String)
+    state: Mapped[str | None] = mapped_column(String)
+    postal_code: Mapped[str | None] = mapped_column(String)
+    country: Mapped[str | None] = mapped_column(String)
+
+    national_id_number: Mapped[str | None] = mapped_column(String)
+    national_id_country: Mapped[str | None] = mapped_column(String)
+
+    passport_number: Mapped[str | None] = mapped_column(String)
+    passport_country: Mapped[str | None] = mapped_column(String)
+    passport_expiry: Mapped[date | None] = mapped_column(Date)
 
 
 class BookingHistory(Base):
