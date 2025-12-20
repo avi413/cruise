@@ -17,6 +17,7 @@ CRUISE_SERVICE_URL = os.getenv("CRUISE_SERVICE_URL", "http://localhost:8002")
 CUSTOMER_SERVICE_URL = os.getenv("CUSTOMER_SERVICE_URL", "http://localhost:8003")
 BOOKING_SERVICE_URL = os.getenv("BOOKING_SERVICE_URL", "http://localhost:8005")
 PRICING_SERVICE_URL = os.getenv("PRICING_SERVICE_URL", "http://localhost:8004")
+NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8006")
 
 
 @app.get("/health")
@@ -190,9 +191,29 @@ async def remove_staff_group_member(group_id: str, user_id: str, request: Reques
     return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members/{user_id}", request)
 
 
+@app.get("/v1/staff/audit")
+async def list_staff_audit(request: Request):
+    """Admin portal: staff action audit log (tenant-scoped)."""
+    q = request.url.query
+    url = f"{CUSTOMER_SERVICE_URL}/staff/audit"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
 @app.post("/v1/customers")
 async def create_customer(request: Request):
     return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers", request)
+
+
+@app.get("/v1/customers")
+async def list_customers(request: Request):
+    """Admin portal: search/list customers (supports query params)."""
+    q = request.url.query
+    url = f"{CUSTOMER_SERVICE_URL}/customers"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
 
 
 @app.patch("/v1/customers/{customer_id}")
@@ -227,6 +248,12 @@ async def list_sailings(request: Request):
 @app.get("/v1/sailings/{sailing_id}")
 async def get_sailing(sailing_id: str, request: Request):
     return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request)
+
+
+@app.patch("/v1/sailings/{sailing_id}")
+async def patch_sailing(sailing_id: str, request: Request):
+    """Admin portal: update sailing fields (status, dates, ports, etc)."""
+    return await _proxy("PATCH", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request)
 
 
 @app.get("/v1/sailings/{sailing_id}/itinerary")
@@ -276,6 +303,12 @@ async def confirm_booking(booking_id: str, request: Request):
     return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}/confirm", request)
 
 
+@app.get("/v1/bookings/{booking_id}")
+async def get_booking(booking_id: str, request: Request):
+    """Call-center: load booking details by id."""
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}", request)
+
+
 @app.get("/v1/customers/{customer_id}")
 async def get_customer(customer_id: str, request: Request):
     return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request)
@@ -312,3 +345,13 @@ async def mobile_agenda(customer_id: str, sailing_id: str):
             },
         ],
     }
+
+
+@app.get("/v1/notifications")
+async def list_notifications(request: Request):
+    """Portal: in-app notifications feed (consumes domain events)."""
+    q = request.url.query
+    url = f"{NOTIFICATION_SERVICE_URL}/notifications"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)

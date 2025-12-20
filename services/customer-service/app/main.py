@@ -11,10 +11,11 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import func, or_
 
 from .consumer import start_consumer
 from .db import session
-from .models import BookingHistory, Customer, StaffGroup, StaffGroupMember, StaffUser
+from .models import AuditLog, BookingHistory, Customer, StaffGroup, StaffGroupMember, StaffUser
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
 
@@ -27,6 +28,37 @@ app = FastAPI(
 
 def _now() -> datetime:
     return datetime.now(tz=timezone.utc)
+
+
+def _audit(
+    *,
+    tenant_engine,
+    principal: dict | None,
+    action: str,
+    entity_type: str,
+    entity_id: str | None,
+    meta: dict | None = None,
+) -> None:
+    """
+    Best-effort audit logging. Never blocks the main request.
+    """
+    try:
+        row = AuditLog(
+            id=str(uuid4()),
+            occurred_at=_now(),
+            actor_user_id=(principal or {}).get("sub"),
+            actor_role=(principal or {}).get("role"),
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            meta=meta or {},
+        )
+        with session(tenant_engine) as s:
+            s.add(row)
+            s.commit()
+    except Exception:
+        # Never fail the main request due to audit.
+        return
 
 
 # ----------------------------
@@ -123,11 +155,62 @@ class CustomerOut(CustomerCreate):
     updated_at: datetime
 
 
+@app.get("/customers", response_model=list[CustomerOut])
+def list_customers(
+    q: str | None = None,
+    email: str | None = None,
+    loyalty_tier: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    """
+    Search/list customers for call-center workflows.
+
+    - `email`: exact match
+    - `q`: case-insensitive partial match on email / first name / last name
+    """
+    limit = max(1, min(int(limit), 200))
+    offset = max(0, int(offset))
+
+    with session(tenant_engine) as s:
+        qry = s.query(Customer).order_by(Customer.updated_at.desc())
+        if email:
+            qry = qry.filter(Customer.email == _normalize_email(email))
+        if loyalty_tier:
+            qry = qry.filter(Customer.loyalty_tier == loyalty_tier)
+        if q:
+            like = f"%{q.strip().lower()}%"
+            qry = qry.filter(
+                or_(
+                    func.lower(Customer.email).like(like),
+                    func.lower(Customer.first_name).like(like),
+                    func.lower(Customer.last_name).like(like),
+                )
+            )
+        rows = qry.offset(offset).limit(limit).all()
+
+    return [
+        CustomerOut(
+            id=r.id,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+            email=r.email,
+            first_name=r.first_name,
+            last_name=r.last_name,
+            loyalty_tier=r.loyalty_tier,
+            preferences=r.preferences,
+        )
+        for r in rows
+    ]
+
+
 @app.post("/customers", response_model=CustomerOut)
 def create_customer(
     payload: CustomerCreate,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("agent", "staff", "admin")),
+    principal=Depends(require_roles("agent", "staff", "admin")),
 ):
     now = _now()
     cust = Customer(
@@ -147,6 +230,15 @@ def create_customer(
             raise HTTPException(status_code=409, detail="Customer email already exists")
         s.add(cust)
         s.commit()
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="customer.create",
+        entity_type="customer",
+        entity_id=cust.id,
+        meta={"request": payload.model_dump()},
+    )
 
     return CustomerOut(**payload.model_dump(), id=cust.id, created_at=cust.created_at, updated_at=cust.updated_at)
 
@@ -186,12 +278,19 @@ def patch_customer(
     customer_id: str,
     payload: CustomerPatch,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("agent", "staff", "admin")),
+    principal=Depends(require_roles("agent", "staff", "admin")),
 ):
     with session(tenant_engine) as s:
         cust = s.get(Customer, customer_id)
         if cust is None:
             raise HTTPException(status_code=404, detail="Customer not found")
+
+        before = {
+            "first_name": cust.first_name,
+            "last_name": cust.last_name,
+            "loyalty_tier": cust.loyalty_tier,
+            "preferences": cust.preferences,
+        }
 
         if payload.first_name is not None:
             cust.first_name = payload.first_name
@@ -206,7 +305,74 @@ def patch_customer(
         s.add(cust)
         s.commit()
 
+        after = {
+            "first_name": cust.first_name,
+            "last_name": cust.last_name,
+            "loyalty_tier": cust.loyalty_tier,
+            "preferences": cust.preferences,
+        }
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="customer.patch",
+        entity_type="customer",
+        entity_id=customer_id,
+        meta={"request": payload.model_dump(exclude_none=True), "before": before, "after": after},
+    )
+
     return get_customer(customer_id)
+
+
+class AuditLogOut(BaseModel):
+    id: str
+    occurred_at: datetime
+    actor_user_id: str | None
+    actor_role: str | None
+    action: str
+    entity_type: str
+    entity_id: str | None
+    meta: dict
+
+
+@app.get("/staff/audit", response_model=list[AuditLogOut])
+def list_audit_logs(
+    limit: int = 200,
+    offset: int = 0,
+    actor_user_id: str | None = None,
+    action: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("admin")),
+):
+    limit = max(1, min(int(limit), 500))
+    offset = max(0, int(offset))
+    with session(tenant_engine) as s:
+        qry = s.query(AuditLog).order_by(AuditLog.occurred_at.desc())
+        if actor_user_id:
+            qry = qry.filter(AuditLog.actor_user_id == actor_user_id)
+        if action:
+            qry = qry.filter(AuditLog.action == action)
+        if entity_type:
+            qry = qry.filter(AuditLog.entity_type == entity_type)
+        if entity_id:
+            qry = qry.filter(AuditLog.entity_id == entity_id)
+        rows = qry.offset(offset).limit(limit).all()
+
+    return [
+        AuditLogOut(
+            id=r.id,
+            occurred_at=r.occurred_at,
+            actor_user_id=r.actor_user_id,
+            actor_role=r.actor_role,
+            action=r.action,
+            entity_type=r.entity_type,
+            entity_id=r.entity_id,
+            meta=r.meta or {},
+        )
+        for r in rows
+    ]
 
 
 class BookingHistoryOut(BaseModel):
@@ -391,6 +557,15 @@ def create_staff_user(
         s.add(user)
         s.commit()
 
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_user.create",
+        entity_type="staff_user",
+        entity_id=user.id,
+        meta={"request": {"email": payload.email, "role": role, "disabled": payload.disabled}},
+    )
+
     return StaffUserOut(
         id=user.id,
         created_at=user.created_at,
@@ -406,12 +581,14 @@ def patch_staff_user(
     user_id: str,
     payload: StaffUserPatch,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("admin")),
+    principal=Depends(require_roles("admin")),
 ):
     with session(tenant_engine) as s:
         user = s.get(StaffUser, user_id)
         if user is None:
             raise HTTPException(status_code=404, detail="User not found")
+
+        before = {"email": user.email, "role": user.role, "disabled": bool(user.disabled)}
 
         if payload.password is not None:
             user.password_hash = _hash_password(payload.password)
@@ -426,6 +603,17 @@ def patch_staff_user(
         user.updated_at = _now()
         s.add(user)
         s.commit()
+
+        after = {"email": user.email, "role": user.role, "disabled": bool(user.disabled)}
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_user.patch",
+        entity_type="staff_user",
+        entity_id=user_id,
+        meta={"request": payload.model_dump(exclude_none=True, exclude={"password"}), "before": before, "after": after},
+    )
 
     return StaffUserOut(
         id=user.id,
@@ -462,7 +650,7 @@ def list_staff_groups(
 def create_staff_group(
     payload: StaffGroupCreate,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("admin")),
+    principal=Depends(require_roles("admin")),
 ):
     code = (payload.code or "").strip()
     if not code:
@@ -487,6 +675,15 @@ def create_staff_group(
         s.commit()
         s.refresh(g)
 
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_group.create",
+        entity_type="staff_group",
+        entity_id=g.id,
+        meta={"request": {"code": code, "name": payload.name, "description": payload.description, "permissions": perms}},
+    )
+
     return StaffGroupOut(
         id=g.id,
         created_at=g.created_at,
@@ -503,12 +700,14 @@ def patch_staff_group(
     group_id: str,
     payload: StaffGroupPatch,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("admin")),
+    principal=Depends(require_roles("admin")),
 ):
     with session(tenant_engine) as s:
         g = s.get(StaffGroup, group_id)
         if g is None:
             raise HTTPException(status_code=404, detail="Group not found")
+
+        before = {"name": g.name, "description": g.description, "permissions": list(g.permissions or [])}
 
         if payload.name is not None:
             g.name = payload.name
@@ -521,6 +720,17 @@ def patch_staff_group(
         s.add(g)
         s.commit()
         s.refresh(g)
+
+        after = {"name": g.name, "description": g.description, "permissions": list(g.permissions or [])}
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_group.patch",
+        entity_type="staff_group",
+        entity_id=group_id,
+        meta={"request": payload.model_dump(exclude_none=True), "before": before, "after": after},
+    )
 
     return StaffGroupOut(
         id=g.id,
@@ -552,7 +762,7 @@ def add_group_member(
     group_id: str,
     payload: GroupAddMemberIn,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("admin")),
+    principal=Depends(require_roles("admin")),
 ):
     with session(tenant_engine) as s:
         g = s.get(StaffGroup, group_id)
@@ -572,6 +782,15 @@ def add_group_member(
         m = StaffGroupMember(id=str(uuid4()), group_id=group_id, user_id=payload.user_id)
         s.add(m)
         s.commit()
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_group.member_add",
+        entity_type="staff_group",
+        entity_id=group_id,
+        meta={"user_id": payload.user_id},
+    )
     return GroupMemberOut(user_id=payload.user_id, group_id=group_id)
 
 
@@ -580,7 +799,7 @@ def remove_group_member(
     group_id: str,
     user_id: str,
     tenant_engine=Depends(get_tenant_engine),
-    _principal=Depends(require_roles("admin")),
+    principal=Depends(require_roles("admin")),
 ):
     with session(tenant_engine) as s:
         row = (
@@ -593,4 +812,13 @@ def remove_group_member(
             return {"status": "ok"}
         s.delete(row)
         s.commit()
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_group.member_remove",
+        entity_type="staff_group",
+        entity_id=group_id,
+        meta={"user_id": user_id},
+    )
     return {"status": "ok"}
