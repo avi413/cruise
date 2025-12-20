@@ -155,6 +155,7 @@ class QuoteRequestIn(BaseModel):
     sailing_date: date | None = None
     cabin_type: domain.CabinType = "inside"
     cabin_category_code: str | None = Field(default=None, description="Optional cabin category code (e.g. CO3). If priced, takes priority over cabin_type fares.")
+    price_type: str = Field(default="regular", min_length=1, description="Price type / rate plan for category pricing (e.g. regular, internet)")
     guests: list[GuestIn] = Field(min_length=1)
     coupon_code: str | None = None
     loyalty_tier: str | None = None
@@ -196,6 +197,7 @@ def create_quote(
             sailing_date=payload.sailing_date,
             cabin_type=payload.cabin_type,
             cabin_category_code=payload.cabin_category_code,
+            price_type=(payload.price_type or "regular"),
             guests=[domain.Guest(paxtype=g.paxtype) for g in payload.guests],
             coupon_code=payload.coupon_code,
             loyalty_tier=payload.loyalty_tier,
@@ -259,6 +261,7 @@ def list_overrides(_principal=Depends(require_roles("staff", "admin"))):
                 category_prices=[
                     {
                         "category_code": r.category_code,
+                        "price_type": (getattr(r, "price_type", None) or "regular"),
                         "currency": r.currency,
                         "min_guests": r.min_guests,
                         "price_per_person": r.price_per_person,
@@ -301,6 +304,7 @@ def set_cabin_multiplier(
         category_prices=[
             {
                 "category_code": r.category_code,
+                "price_type": (getattr(r, "price_type", None) or "regular"),
                 "currency": r.currency,
                 "min_guests": r.min_guests,
                 "price_per_person": r.price_per_person,
@@ -341,6 +345,7 @@ def set_base_fare(
         category_prices=[
             {
                 "category_code": r.category_code,
+                "price_type": (getattr(r, "price_type", None) or "regular"),
                 "currency": r.currency,
                 "min_guests": r.min_guests,
                 "price_per_person": r.price_per_person,
@@ -356,6 +361,7 @@ def set_base_fare(
 
 class CategoryPriceIn(BaseModel):
     category_code: str = Field(min_length=1, description="Cabin category code, e.g. CO3")
+    price_type: str = Field(default="regular", min_length=1, description="Price type / rate plan (e.g. regular, internet)")
     currency: str = Field(default="USD", min_length=3, max_length=3)
     min_guests: int = Field(default=2, ge=1, description="Minimum billable occupancy")
     price_per_person: int = Field(ge=0, description="Per-person price in cents")
@@ -378,6 +384,7 @@ def list_category_prices(_principal=Depends(require_roles("staff", "admin"))):
             items.append(
                 {
                     "category_code": r.category_code,
+                    "price_type": (getattr(r, "price_type", None) or "regular"),
                     "currency": r.currency,
                     "min_guests": r.min_guests,
                     "price_per_person": r.price_per_person,
@@ -403,9 +410,13 @@ def upsert_category_price(
     code = (payload.category_code or "").strip().upper()
     if not code:
         raise HTTPException(status_code=400, detail="category_code is required")
+    price_type = (payload.price_type or "regular").strip().lower()
+    if not price_type:
+        raise HTTPException(status_code=400, detail="price_type is required")
     curcy = (payload.currency or "USD").strip().upper()
     rule = domain.CategoryPriceRule(
         category_code=code,
+        price_type=price_type,
         currency=curcy,
         min_guests=int(payload.min_guests),
         price_per_person=int(payload.price_per_person),
@@ -414,12 +425,13 @@ def upsert_category_price(
     )
 
     rules = list(cur.category_prices or [])
-    # Upsert by (category_code, currency, min_guests, effective_start_date, effective_end_date)
+    # Upsert by (category_code, price_type, currency, min_guests, effective_start_date, effective_end_date)
     rules = [
         r
         for r in rules
         if not (
             r.category_code == rule.category_code
+            and (getattr(r, "price_type", None) or "regular") == rule.price_type
             and r.currency == rule.currency
             and int(r.min_guests) == int(rule.min_guests)
             and r.effective_start_date == rule.effective_start_date
@@ -431,6 +443,7 @@ def upsert_category_price(
         rules,
         key=lambda r: (
             r.category_code,
+            (getattr(r, "price_type", None) or "regular"),
             r.currency,
             r.effective_start_date or date.min,
             r.effective_end_date or date.max,
@@ -450,6 +463,7 @@ def upsert_category_price(
         items=[
             {
                 "category_code": r.category_code,
+                "price_type": (getattr(r, "price_type", None) or "regular"),
                 "currency": r.currency,
                 "min_guests": r.min_guests,
                 "price_per_person": r.price_per_person,

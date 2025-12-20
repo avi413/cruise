@@ -9,7 +9,15 @@ type OverridesOut = {
   base_by_pax: Record<string, number> | null
   cabin_multiplier: Record<string, number> | null
   demand_multiplier: number | null
-  category_prices?: { category_code: string; currency: string; min_guests: number; price_per_person: number; effective_start_date?: string | null; effective_end_date?: string | null }[] | null
+  category_prices?: {
+    category_code: string
+    price_type?: string | null
+    currency: string
+    min_guests: number
+    price_per_person: number
+    effective_start_date?: string | null
+    effective_end_date?: string | null
+  }[] | null
 }
 
 export function PricingPage(props: { apiBase: string }) {
@@ -24,10 +32,12 @@ export function PricingPage(props: { apiBase: string }) {
   const [infant, setInfant] = useState(10000)
 
   const [catCode, setCatCode] = useState('CO3')
+  const [catPriceType, setCatPriceType] = useState('regular')
   const [catCurrency, setCatCurrency] = useState('USD')
   const [defaultCurrency, setDefaultCurrency] = useState('USD')
   const [catMinGuests, setCatMinGuests] = useState(2)
-  const [catPricePerPerson, setCatPricePerPerson] = useState(120000)
+  // Display/edit in major currency units (e.g. 300.00 EUR), send cents to API.
+  const [catPricePerPerson, setCatPricePerPerson] = useState(1200)
   const [catStartDate, setCatStartDate] = useState('')
   const [catEndDate, setCatEndDate] = useState('')
 
@@ -131,13 +141,16 @@ export function PricingPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
+      const pricePerPersonCents = Math.max(0, Math.round(Number(catPricePerPerson) * 100))
       await apiFetch(props.apiBase, `/v1/pricing/category-prices`, {
         method: 'POST',
         body: {
           category_code: catCode.trim().toUpperCase(),
+          price_type: catPriceType.trim().toLowerCase() || 'regular',
+          currency: catCurrency.trim().toUpperCase() || 'USD',
           currency: catCurrency.trim().toUpperCase() || defaultCurrency,
           min_guests: catMinGuests,
-          price_per_person: catPricePerPerson,
+          price_per_person: pricePerPersonCents,
           effective_start_date: catStartDate.trim() || null,
           effective_end_date: catEndDate.trim() || null,
           company_id: companyId,
@@ -209,19 +222,37 @@ export function PricingPage(props: { apiBase: string }) {
         </Panel>
       </div>
 
-      <Panel title="Cabin category pricing" subtitle="Define per-person pricing for a cabin category code (e.g. CO3) with minimum billable guests (e.g. 2).">
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+      <Panel
+        title="Cabin category pricing (by category + price type)"
+        subtitle="Define per-person pricing for a cabin category code (e.g. CO3), with a price type/rate plan (regular, internet, etc) and minimum billable guests (e.g. 2)."
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
           <Input label="Category code" value={catCode} onChange={(e) => setCatCode(e.target.value)} />
+          <Input
+            label="Price type"
+            value={catPriceType}
+            onChange={(e) => setCatPriceType(e.target.value)}
+            placeholder="regular | internet | …"
+            hint="This lets you store multiple prices per category (e.g. regular vs internet)."
+          />
           <Input label="Currency" value={catCurrency} onChange={(e) => setCatCurrency(e.target.value)} />
           <Input label="Min guests" type="number" min="1" step="1" value={catMinGuests} onChange={(e) => setCatMinGuests(Number(e.target.value))} />
-          <Input label="Price / person (cents)" type="number" min="0" step="1000" value={catPricePerPerson} onChange={(e) => setCatPricePerPerson(Number(e.target.value))} />
+          <Input
+            label="Price / person"
+            type="number"
+            min="0"
+            step="0.01"
+            value={catPricePerPerson}
+            onChange={(e) => setCatPricePerPerson(Number(e.target.value))}
+            hint="Enter major units (e.g. 300.00 = €300.00). Saved as cents in API."
+          />
         </div>
         <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <Input label="Cruise date start (optional)" type="date" value={catStartDate} onChange={(e) => setCatStartDate(e.target.value)} />
           <Input label="Cruise date end (optional)" type="date" value={catEndDate} onChange={(e) => setCatEndDate(e.target.value)} />
         </div>
         <div style={{ marginTop: 10 }}>
-          <Button variant="primary" disabled={busy || !catCode.trim() || !company?.id} onClick={() => void upsertCategoryPrice()}>
+          <Button variant="primary" disabled={busy || !catCode.trim() || !catPriceType.trim() || !company?.id} onClick={() => void upsertCategoryPrice()}>
             {busy ? 'Saving…' : 'Save category price'}
           </Button>
         </div>
@@ -272,13 +303,24 @@ export function PricingPage(props: { apiBase: string }) {
                   <td style={tableStyles.td}>
                     {o.category_prices && o.category_prices.length ? (
                       <div style={tableStyles.wrap}>
-                        {o.category_prices.map((r) => (
-                          <div key={`${r.category_code}-${r.currency}-${r.min_guests}`}>
-                            <Mono>{r.category_code}</Mono> · {r.currency} · min {r.min_guests} · {(r.price_per_person / 100).toFixed(2)} / pax
-                            <span style={{ color: 'rgba(230,237,243,0.65)' }}>
-                              {' '}
-                              · date {r.effective_start_date || 'any'} → {r.effective_end_date || 'any'}
-                            </span>
+                        {groupCategoryPrices(o.category_prices).map((g) => (
+                          <div key={g.category_code} style={{ display: 'grid', gap: 6 }}>
+                            <div style={{ fontWeight: 900 }}>
+                              <Mono>{g.category_code}</Mono>
+                            </div>
+                            <div style={{ display: 'grid', gap: 4, paddingLeft: 10 }}>
+                              {g.items.map((r) => (
+                                <div
+                                  key={`${r.category_code}-${r.price_type || 'regular'}-${r.currency}-${r.min_guests}-${r.effective_start_date || 'any'}-${r.effective_end_date || 'any'}`}
+                                >
+                                  <Mono>{(r.price_type || 'regular').toLowerCase()}</Mono> · {r.currency} · min {r.min_guests} · {(r.price_per_person / 100).toFixed(2)} / pax
+                                  <span style={{ color: 'rgba(230,237,243,0.65)' }}>
+                                    {' '}
+                                    · date {r.effective_start_date || 'any'} → {r.effective_end_date || 'any'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -302,6 +344,39 @@ export function PricingPage(props: { apiBase: string }) {
       </Panel>
     </div>
   )
+}
+
+function groupCategoryPrices(
+  rows: NonNullable<OverridesOut['category_prices']>
+): { category_code: string; items: NonNullable<OverridesOut['category_prices']> }[] {
+  const by: Record<string, NonNullable<OverridesOut['category_prices']>> = {}
+  for (const r of rows) {
+    const k = (r.category_code || '').trim().toUpperCase()
+    if (!k) continue
+    if (!by[k]) by[k] = []
+    by[k].push(r)
+  }
+  const cats = Object.keys(by).sort()
+  return cats.map((category_code) => ({
+    category_code,
+    items: by[category_code].slice().sort((a, b) => {
+      const ap = (a.price_type || 'regular').toLowerCase()
+      const bp = (b.price_type || 'regular').toLowerCase()
+      if (ap !== bp) return ap.localeCompare(bp)
+      const ac = (a.currency || '').toUpperCase()
+      const bc = (b.currency || '').toUpperCase()
+      if (ac !== bc) return ac.localeCompare(bc)
+      const ag = Number(a.min_guests || 0)
+      const bg = Number(b.min_guests || 0)
+      if (ag !== bg) return ag - bg
+      const as = a.effective_start_date || ''
+      const bs = b.effective_start_date || ''
+      if (as !== bs) return as.localeCompare(bs)
+      const ae = a.effective_end_date || ''
+      const be = b.effective_end_date || ''
+      return ae.localeCompare(be)
+    }),
+  }))
 }
 
 const tableStyles: Record<string, React.CSSProperties> = {
