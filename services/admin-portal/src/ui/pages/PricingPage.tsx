@@ -8,6 +8,7 @@ type OverridesOut = {
   base_by_pax: Record<string, number> | null
   cabin_multiplier: Record<string, number> | null
   demand_multiplier: number | null
+  category_prices?: { category_code: string; currency: string; min_guests: number; price_per_person: number }[] | null
 }
 
 export function PricingPage(props: { apiBase: string }) {
@@ -21,6 +22,11 @@ export function PricingPage(props: { apiBase: string }) {
   const [adult, setAdult] = useState(100000)
   const [child, setChild] = useState(60000)
   const [infant, setInfant] = useState(10000)
+
+  const [catCode, setCatCode] = useState('CO3')
+  const [catCurrency, setCatCurrency] = useState('USD')
+  const [catMinGuests, setCatMinGuests] = useState(2)
+  const [catPricePerPerson, setCatPricePerPerson] = useState(120000)
 
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -95,11 +101,33 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
+  async function upsertCategoryPrice() {
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/pricing/category-prices`, {
+        method: 'POST',
+        body: {
+          category_code: catCode.trim().toUpperCase(),
+          currency: catCurrency.trim().toUpperCase() || 'USD',
+          min_guests: catMinGuests,
+          price_per_person: catPricePerPerson,
+          company_id: companyId,
+        },
+      })
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
         title="Pricing & Offers"
-        subtitle="Manage dynamic pricing overrides (base fares, cabin multipliers). Use company scope for negotiated agreements; global scope for default pricing."
+        subtitle="Manage pricing (base fares, cabin multipliers, and cabin-category prices like CO3). Use company scope for negotiated agreements; global scope for default pricing."
         right={
           <>
             <Button disabled={busy} onClick={() => void refresh()}>
@@ -159,6 +187,20 @@ export function PricingPage(props: { apiBase: string }) {
         </Panel>
       </div>
 
+      <Panel title="Cabin category pricing" subtitle="Define per-person pricing for a cabin category code (e.g. CO3) with minimum billable guests (e.g. 2).">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
+          <Input label="Category code" value={catCode} onChange={(e) => setCatCode(e.target.value)} />
+          <Input label="Currency" value={catCurrency} onChange={(e) => setCatCurrency(e.target.value)} />
+          <Input label="Min guests" type="number" min="1" step="1" value={catMinGuests} onChange={(e) => setCatMinGuests(Number(e.target.value))} />
+          <Input label="Price / person (cents)" type="number" min="0" step="1000" value={catPricePerPerson} onChange={(e) => setCatPricePerPerson(Number(e.target.value))} />
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <Button variant="primary" disabled={busy || !catCode.trim() || (scope === 'company' && !company?.id)} onClick={() => void upsertCategoryPrice()}>
+            {busy ? 'Saving…' : 'Save category price'}
+          </Button>
+        </div>
+      </Panel>
+
       <Panel title="Current overrides" subtitle="This service stores overrides in-memory (demo). In production, this would be persisted + versioned.">
         <div style={{ overflow: 'auto' }}>
           <table style={tableStyles.table}>
@@ -167,6 +209,7 @@ export function PricingPage(props: { apiBase: string }) {
                 <th style={tableStyles.th}>Company</th>
                 <th style={tableStyles.th}>Base fares</th>
                 <th style={tableStyles.th}>Cabin multipliers</th>
+                <th style={tableStyles.th}>Category prices</th>
                 <th style={tableStyles.th}>Demand</th>
               </tr>
             </thead>
@@ -200,12 +243,25 @@ export function PricingPage(props: { apiBase: string }) {
                       <span style={tableStyles.muted}>—</span>
                     )}
                   </td>
+                  <td style={tableStyles.td}>
+                    {o.category_prices && o.category_prices.length ? (
+                      <div style={tableStyles.wrap}>
+                        {o.category_prices.map((r) => (
+                          <div key={`${r.category_code}-${r.currency}-${r.min_guests}`}>
+                            <Mono>{r.category_code}</Mono> · {r.currency} · min {r.min_guests} · {(r.price_per_person / 100).toFixed(2)} / pax
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={tableStyles.muted}>—</span>
+                    )}
+                  </td>
                   <td style={tableStyles.tdMono}>{o.demand_multiplier ?? '—'}</td>
                 </tr>
               ))}
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={tableStyles.empty}>
+                  <td colSpan={5} style={tableStyles.empty}>
                     No overrides set.
                   </td>
                 </tr>

@@ -42,6 +42,7 @@ class HoldRequest(BaseModel):
     sailing_id: str
     sailing_date: datetime | None = None
     cabin_type: Literal["inside", "oceanview", "balcony", "suite"] = "inside"
+    cabin_category_code: str | None = Field(default=None, description="Optional cabin category code (e.g. CO3) for category-based pricing")
     guests: GuestCounts = Field(default_factory=GuestCounts)
     coupon_code: str | None = None
     loyalty_tier: str | None = None
@@ -217,13 +218,14 @@ async def create_hold(
     req = {
         "sailing_date": payload.sailing_date.date().isoformat() if payload.sailing_date else None,
         "cabin_type": payload.cabin_type,
+        "cabin_category_code": payload.cabin_category_code,
         "guests": payload.guests.as_guest_list(),
         "coupon_code": payload.coupon_code,
         "loyalty_tier": payload.loyalty_tier,
     }
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(f"{pricing_url}/quote", json=req)
+        r = await client.post(f"{pricing_url}/quote", json=req, headers={"X-Company-Id": company_id})
         if r.status_code >= 400:
             raise HTTPException(status_code=502, detail={"pricing_error": r.text})
         quote = r.json()

@@ -18,12 +18,14 @@ type BookingOut = {
 
 type Sailing = { id: string; code: string; ship_id: string; start_date: string; end_date: string; embark_port_code: string; debark_port_code: string; status: string }
 type Customer = { id: string; email: string; first_name?: string | null; last_name?: string | null; loyalty_tier?: string | null; updated_at?: string }
+type CabinCategory = { id: string; ship_id: string; code: string; name: string; view: string; cabin_class: string; max_occupancy: number; meta: any }
 
 export function SalesPage(props: { apiBase: string }) {
   const [searchParams] = useSearchParams()
   const [sailingId, setSailingId] = useState('')
   const [sailingDate, setSailingDate] = useState('')
   const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
+  const [cabinCategoryCode, setCabinCategoryCode] = useState('')
   const [adult, setAdult] = useState(2)
   const [child, setChild] = useState(0)
   const [infant, setInfant] = useState(0)
@@ -54,6 +56,8 @@ export function SalesPage(props: { apiBase: string }) {
   const [customerQ, setCustomerQ] = useState('')
   const [customerHits, setCustomerHits] = useState<Customer[]>([])
 
+  const [cabinCats, setCabinCats] = useState<CabinCategory[]>([])
+
   useEffect(() => {
     const sid = searchParams.get('sailing_id')
     const bid = searchParams.get('booking_id')
@@ -82,6 +86,19 @@ export function SalesPage(props: { apiBase: string }) {
         /* ignore; the module still works with manual IDs */
       })
   }, [props.apiBase])
+
+  useEffect(() => {
+    // Load cabin categories for the selected sailing's ship (for picklist).
+    const s = sailings.find((x) => x.id === sailingId)
+    const shipId = s?.ship_id
+    if (!shipId) {
+      setCabinCats([])
+      return
+    }
+    apiFetch<CabinCategory[]>(props.apiBase, `/v1/ships/${encodeURIComponent(shipId)}/cabin-categories`)
+      .then((r) => setCabinCats(r || []))
+      .catch(() => setCabinCats([]))
+  }, [props.apiBase, sailings, sailingId])
 
   useEffect(() => {
     if (!sailingId.trim()) return
@@ -131,12 +148,14 @@ export function SalesPage(props: { apiBase: string }) {
         body: {
           sailing_date: sailingDate || null,
           cabin_type: cabinType,
+          cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
           guests: guestsList(),
           coupon_code: coupon || null,
           loyalty_tier: tier || null,
         },
         auth: false,
-        tenant: false,
+        // Quote in the portal should be tenant-aware (company-specific rates)
+        tenant: true,
       })
       setQuote(r)
     } catch (e: any) {
@@ -157,6 +176,7 @@ export function SalesPage(props: { apiBase: string }) {
           sailing_id: sailingId,
           sailing_date: sailingDate ? `${sailingDate}T00:00:00Z` : null,
           cabin_type: cabinType,
+          cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
           guests: { adult, child, infant },
           coupon_code: coupon || null,
           loyalty_tier: tier || null,
@@ -298,7 +318,18 @@ export function SalesPage(props: { apiBase: string }) {
               <input style={styles.input} value={sailingDate} onChange={(e) => setSailingDate(e.target.value)} type="date" />
             </label>
             <label style={styles.label}>
-              Cabin type
+              Cabin category (pricing)
+              <select style={styles.input} value={cabinCategoryCode} onChange={(e) => setCabinCategoryCode(e.target.value)}>
+                <option value="">(none)</option>
+                {cabinCats.map((c) => (
+                  <option key={c.id} value={c.code}>
+                    {c.code} · {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.label}>
+              Cabin type (inventory)
               <select style={styles.input} value={cabinType} onChange={(e) => setCabinType(e.target.value as any)}>
                 <option value="inside">inside</option>
                 <option value="oceanview">oceanview</option>
@@ -359,7 +390,14 @@ export function SalesPage(props: { apiBase: string }) {
           <div style={styles.form}>
             <label style={styles.label}>
               Sailing id
-              <input style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder="(from Sailings)" />
+              <input list="sailing-ids" style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder="(pick from list)" />
+              <datalist id="sailing-ids">
+                {sailings.slice(0, 200).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.code} {s.start_date} {s.embark_port_code}→{s.debark_port_code}
+                  </option>
+                ))}
+              </datalist>
             </label>
             <label style={styles.label}>
               Customer search (email/name/id)
@@ -388,7 +426,14 @@ export function SalesPage(props: { apiBase: string }) {
             ) : null}
             <label style={styles.label}>
               Customer id (optional)
-              <input style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="UUID" />
+              <input list="customer-ids" style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="UUID" />
+              <datalist id="customer-ids">
+                {customerHits.slice(0, 10).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.email}
+                  </option>
+                ))}
+              </datalist>
             </label>
 
             <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void placeHold()}>

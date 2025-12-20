@@ -36,9 +36,11 @@ class GuestIn(BaseModel):
 class QuoteRequestIn(BaseModel):
     sailing_date: date | None = None
     cabin_type: domain.CabinType = "inside"
+    cabin_category_code: str | None = Field(default=None, description="Optional cabin category code (e.g. CO3). If priced, takes priority over cabin_type fares.")
     guests: list[GuestIn] = Field(min_length=1)
     coupon_code: str | None = None
     loyalty_tier: str | None = None
+    currency: str | None = Field(default=None, description="ISO currency (default USD)")
 
 
 class QuoteLineOut(BaseModel):
@@ -71,9 +73,11 @@ def create_quote(
         req = domain.QuoteRequest(
             sailing_date=payload.sailing_date,
             cabin_type=payload.cabin_type,
+            cabin_category_code=payload.cabin_category_code,
             guests=[domain.Guest(paxtype=g.paxtype) for g in payload.guests],
             coupon_code=payload.coupon_code,
             loyalty_tier=payload.loyalty_tier,
+            currency=(payload.currency or "USD"),
         )
         q = domain.quote_with_overrides(req, today=date.today(), overrides=_effective_overrides(x_company_id))
         return QuoteOut(
@@ -115,6 +119,7 @@ class OverridesOut(BaseModel):
     base_by_pax: dict[str, int] | None
     cabin_multiplier: dict[str, float] | None
     demand_multiplier: float | None
+    category_prices: list[dict] | None = None
 
 
 @app.get("/overrides", response_model=list[OverridesOut])
@@ -127,6 +132,12 @@ def list_overrides(_principal=Depends(require_roles("staff", "admin"))):
                 base_by_pax={p: int(a) for p, a in (v.base_by_pax or {}).items()} if v.base_by_pax else None,
                 cabin_multiplier={c: float(m) for c, m in (v.cabin_multiplier or {}).items()} if v.cabin_multiplier else None,
                 demand_multiplier=float(v.demand_multiplier) if v.demand_multiplier is not None else None,
+                category_prices=[
+                    {"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person}
+                    for r in (v.category_prices or [])
+                ]
+                if v.category_prices
+                else None,
             )
         )
     return items
@@ -142,6 +153,7 @@ def set_cabin_multiplier(payload: CabinMultiplierIn, _principal=Depends(require_
         base_by_pax=cur.base_by_pax,
         cabin_multiplier=cabin_multiplier,
         demand_multiplier=cur.demand_multiplier,
+        category_prices=cur.category_prices,
     )
     v = _OVERRIDES_BY_COMPANY[key]
     return OverridesOut(
@@ -149,6 +161,12 @@ def set_cabin_multiplier(payload: CabinMultiplierIn, _principal=Depends(require_
         base_by_pax={p: int(a) for p, a in (v.base_by_pax or {}).items()} if v.base_by_pax else None,
         cabin_multiplier={c: float(m) for c, m in (v.cabin_multiplier or {}).items()} if v.cabin_multiplier else None,
         demand_multiplier=float(v.demand_multiplier) if v.demand_multiplier is not None else None,
+        category_prices=[
+            {"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person}
+            for r in (v.category_prices or [])
+        ]
+        if v.category_prices
+        else None,
     )
 
 
@@ -162,6 +180,7 @@ def set_base_fare(payload: BaseFareIn, _principal=Depends(require_roles("staff",
         base_by_pax=base_by_pax,
         cabin_multiplier=cur.cabin_multiplier,
         demand_multiplier=cur.demand_multiplier,
+        category_prices=cur.category_prices,
     )
     v = _OVERRIDES_BY_COMPANY[key]
     return OverridesOut(
@@ -169,6 +188,71 @@ def set_base_fare(payload: BaseFareIn, _principal=Depends(require_roles("staff",
         base_by_pax={p: int(a) for p, a in (v.base_by_pax or {}).items()} if v.base_by_pax else None,
         cabin_multiplier={c: float(m) for c, m in (v.cabin_multiplier or {}).items()} if v.cabin_multiplier else None,
         demand_multiplier=float(v.demand_multiplier) if v.demand_multiplier is not None else None,
+        category_prices=[
+            {"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person}
+            for r in (v.category_prices or [])
+        ]
+        if v.category_prices
+        else None,
+    )
+
+
+class CategoryPriceIn(BaseModel):
+    category_code: str = Field(min_length=1, description="Cabin category code, e.g. CO3")
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    min_guests: int = Field(default=2, ge=1, description="Minimum billable occupancy")
+    price_per_person: int = Field(ge=0, description="Per-person price in cents")
+    company_id: str | None = Field(default=None, description="Optional: target company_id; omit for global")
+
+
+class CategoryPricesOut(BaseModel):
+    company_id: str
+    items: list[dict]
+
+
+@app.get("/category-prices", response_model=list[CategoryPricesOut])
+def list_category_prices(_principal=Depends(require_roles("staff", "admin"))):
+    out: list[CategoryPricesOut] = []
+    for k, v in sorted(_OVERRIDES_BY_COMPANY.items(), key=lambda kv: kv[0]):
+        items = []
+        for r in (v.category_prices or []):
+            items.append({"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person})
+        out.append(CategoryPricesOut(company_id=k, items=items))
+    return out
+
+
+@app.post("/category-prices", response_model=CategoryPricesOut)
+def upsert_category_price(payload: CategoryPriceIn, _principal=Depends(require_roles("staff", "admin"))):
+    key = _company_key(payload.company_id)
+    cur = _OVERRIDES_BY_COMPANY.get(key) or domain.PricingOverrides()
+
+    code = (payload.category_code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="category_code is required")
+    curcy = (payload.currency or "USD").strip().upper()
+    rule = domain.CategoryPriceRule(
+        category_code=code,
+        currency=curcy,
+        min_guests=int(payload.min_guests),
+        price_per_person=int(payload.price_per_person),
+    )
+
+    rules = list(cur.category_prices or [])
+    # Upsert by (category_code, currency, min_guests)
+    rules = [r for r in rules if not (r.category_code == rule.category_code and r.currency == rule.currency and int(r.min_guests) == int(rule.min_guests))]
+    rules.append(rule)
+    rules = sorted(rules, key=lambda r: (r.category_code, r.currency, int(r.min_guests)))
+
+    _OVERRIDES_BY_COMPANY[key] = domain.PricingOverrides(
+        base_by_pax=cur.base_by_pax,
+        cabin_multiplier=cur.cabin_multiplier,
+        demand_multiplier=cur.demand_multiplier,
+        category_prices=rules,
+    )
+    v = _OVERRIDES_BY_COMPANY[key]
+    return CategoryPricesOut(
+        company_id=key,
+        items=[{"category_code": r.category_code, "currency": r.currency, "min_guests": r.min_guests, "price_per_person": r.price_per_person} for r in (v.category_prices or [])],
     )
 
 
