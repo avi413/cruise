@@ -67,6 +67,7 @@ export function Companies(props: { apiBase: string; token: string }) {
               <tr>
                 <th style={styles.th}>Name</th>
                 <th style={styles.th}>Code</th>
+                <th style={styles.th}>Tenant DB</th>
                 <th style={styles.th}>ID</th>
               </tr>
             </thead>
@@ -75,12 +76,13 @@ export function Companies(props: { apiBase: string; token: string }) {
                 <tr key={c.id}>
                   <td style={styles.td}>{c.name}</td>
                   <td style={styles.tdMono}>{c.code}</td>
+                  <td style={styles.tdMono}>{c.tenant_db}</td>
                   <td style={styles.tdMono}>{c.id}</td>
                 </tr>
               ))}
               {items.length === 0 ? (
                 <tr>
-                  <td style={styles.tdMuted} colSpan={3}>
+                  <td style={styles.tdMuted} colSpan={4}>
                     No companies yet.
                   </td>
                 </tr>
