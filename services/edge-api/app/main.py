@@ -48,7 +48,11 @@ async def _proxy(method: str, url: str, request: Request):
     body = await request.body()
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        r = await client.request(method, url, content=body, headers=headers)
+        try:
+            r = await client.request(method, url, content=body, headers=headers)
+        except httpx.RequestError as e:
+            # Usually indicates a missing upstream service (ship-service/postgres/etc)
+            raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
 
     if r.status_code >= 400:
         raise HTTPException(status_code=r.status_code, detail=r.text)
@@ -64,8 +68,11 @@ async def _proxy(method: str, url: str, request: Request):
 async def list_cruises():
     """Website: browse sailings, with ship metadata."""
     async with httpx.AsyncClient(timeout=15.0) as client:
-        sailings = (await client.get(f"{CRUISE_SERVICE_URL}/sailings")).json()
-        ships = (await client.get(f"{SHIP_SERVICE_URL}/ships")).json()
+        try:
+            sailings = (await client.get(f"{CRUISE_SERVICE_URL}/sailings")).json()
+            ships = (await client.get(f"{SHIP_SERVICE_URL}/ships")).json()
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"Upstream unavailable: {e}")
 
     ships_by_id = {s["id"]: s for s in ships}
     items = []
