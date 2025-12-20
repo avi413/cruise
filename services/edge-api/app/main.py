@@ -5,11 +5,22 @@ from datetime import datetime
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
     title="Edge API (BFF)",
     version="0.1.0",
     description="Public website & mobile-facing API that aggregates/internal-proxies to core microservices.",
+)
+
+# CORS: admin portal (3000) calls Edge API (8000) from browser.
+# For this starter repo we allow all origins; lock this down in production.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
@@ -144,6 +155,12 @@ async def patch_ship_cabin(cabin_id: str, request: Request):
 @app.post("/v1/staff/login")
 async def staff_login(request: Request):
     return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/login", request)
+
+
+@app.post("/v1/platform/login")
+async def platform_login(request: Request):
+    """Platform admin login (cross-tenant)."""
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/platform/login", request)
 
 
 @app.get("/v1/staff/users")

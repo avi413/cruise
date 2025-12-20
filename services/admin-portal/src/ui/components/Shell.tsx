@@ -39,6 +39,11 @@ export function Shell(props: { apiBase: string }) {
     nav('/company')
   }
 
+  function switchCompany() {
+    setCompany(null)
+    nav('/company')
+  }
+
   return (
     <div style={{ ...styles.shell, gridTemplateColumns: isNarrow ? '1fr' : '320px 1fr' }}>
       {isNarrow ? (
@@ -123,6 +128,9 @@ export function Shell(props: { apiBase: string }) {
         <div style={styles.card}>
           <div style={styles.cardTitle}>Session</div>
           <div style={styles.muted}>Role: {role}</div>
+          <button style={styles.secondaryBtnFull} onClick={switchCompany}>
+            Switch company
+          </button>
           <div style={styles.muted}>
             API:{' '}
             <Link to={`${props.apiBase}/docs`} target="_blank" style={styles.inlineLink}>
@@ -234,6 +242,17 @@ const styles: Record<string, React.CSSProperties> = {
   cardTitle: { fontWeight: 800, marginBottom: 8 },
   muted: { color: 'rgba(230,237,243,0.7)', fontSize: 12, marginBottom: 8 },
   inlineLink: { color: '#9ecbff', textDecoration: 'none' },
+  secondaryBtnFull: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#e6edf3',
+    cursor: 'pointer',
+    fontWeight: 900,
+    marginBottom: 8,
+  },
   dangerBtn: {
     width: '100%',
     padding: '10px 12px',

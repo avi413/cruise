@@ -10,25 +10,28 @@ export function LoginPage(props: { apiBase: string }) {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [platformMode, setPlatformMode] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   async function submit() {
-    if (!company?.id) {
-      nav('/company')
-      return
-    }
     setBusy(true)
     setErr(null)
     try {
-      const r = await apiFetch<{ access_token: string }>(props.apiBase, '/v1/staff/login', {
+      if (!platformMode && !company?.id) {
+        nav('/company')
+        return
+      }
+
+      const r = await apiFetch<{ access_token: string }>(props.apiBase, platformMode ? '/v1/platform/login' : '/v1/staff/login', {
         method: 'POST',
         body: { email, password },
         auth: false,
-        tenant: true,
+        tenant: platformMode ? false : true,
       })
       setToken(r.access_token)
-      nav(loc?.state?.from || '/app/dashboard')
+      if (platformMode) nav('/company')
+      else nav(loc?.state?.from || '/app/dashboard')
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -40,11 +43,20 @@ export function LoginPage(props: { apiBase: string }) {
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.title}>Sign in</div>
-        <div style={styles.sub}>{company ? `${company.name} (${company.code})` : 'Select a company first'}</div>
+        <div style={styles.sub}>
+          {platformMode ? 'Platform admin (all companies)' : company ? `${company.name} (${company.code})` : 'Select a company first'}
+        </div>
 
         {err ? <div style={styles.error}>{err}</div> : null}
 
         <div style={styles.form}>
+          <label style={styles.label}>
+            Mode
+            <select style={styles.input} value={platformMode ? 'platform' : 'tenant'} onChange={(e) => setPlatformMode(e.target.value === 'platform')}>
+              <option value="tenant">Company staff login</option>
+              <option value="platform">Platform admin (all companies)</option>
+            </select>
+          </label>
           <label style={styles.label}>
             Email
             <input style={styles.input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="agent@company.com" />
@@ -58,7 +70,15 @@ export function LoginPage(props: { apiBase: string }) {
           </button>
 
           <div style={styles.help}>
-            If this tenant has no users yet, bootstrap by calling <code>/v1/staff/users</code> once (role: admin) then sign in.
+            {platformMode ? (
+              <>
+                Default platform admin is configured via <code>PLATFORM_ADMIN_EMAIL</code> / <code>PLATFORM_ADMIN_PASSWORD</code> in <code>customer-service</code>.
+              </>
+            ) : (
+              <>
+                If this tenant has no users yet, bootstrap by calling <code>/v1/staff/users</code> once (role: admin) then sign in.
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ export type JwtClaims = {
   iat?: number
   perms?: string[]
   groups?: { id: string; code: string; name: string }[]
+  platform?: boolean
 } & Record<string, unknown>
 
 function b64UrlDecode(input: string): string {

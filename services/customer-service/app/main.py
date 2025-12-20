@@ -4,6 +4,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import os
 import secrets
 from datetime import datetime, timezone
 from typing import Annotated
@@ -441,6 +442,11 @@ class StaffLoginIn(BaseModel):
     password: str
 
 
+class PlatformLoginIn(BaseModel):
+    email: str
+    password: str
+
+
 class StaffGroupCreate(BaseModel):
     code: str = Field(description="Stable identifier, e.g. sales_agents")
     name: str
@@ -497,6 +503,32 @@ def staff_login(payload: StaffLoginIn, tenant_engine=Depends(get_tenant_engine))
 
     return {
         "access_token": issue_token(sub=user.id, role=user.role, extra_claims={"groups": groups, "perms": perms_list}),
+        "token_type": "bearer",
+    }
+
+
+@app.post("/platform/login")
+def platform_login(payload: PlatformLoginIn):
+    """
+    Platform (cross-tenant) admin login.
+
+    This returns a JWT that can be used with any X-Company-Id header to manage any tenant.
+    In production, back this with a real IdP / central directory.
+    """
+    expected_email = os.getenv("PLATFORM_ADMIN_EMAIL", "admin@platform.local").strip().lower()
+    expected_password = os.getenv("PLATFORM_ADMIN_PASSWORD", "admin").strip()
+    email = _normalize_email(payload.email)
+    if email != expected_email or (payload.password or "") != expected_password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    perms_list = sorted(ALL_PERMISSIONS)
+    groups = [{"id": "platform", "code": "platform_admin", "name": "Platform Admin"}]
+    return {
+        "access_token": issue_token(
+            sub="platform-admin",
+            role="admin",
+            extra_claims={"platform": True, "groups": groups, "perms": perms_list},
+        ),
         "token_type": "bearer",
     }
 
