@@ -286,10 +286,11 @@ export function ItinerariesPage(props: { apiBase: string }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const [preferredLang, setPreferredLang] = useState('en')
-  const preferred = useMemo(() => [preferredLang, 'en', 'he'], [preferredLang])
   const [preferredLang, setPreferredLang] = useState('he')
-  const preferred = useMemo(() => [preferredLang, 'he', 'en'], [preferredLang])
+  const preferred = useMemo(() => {
+    const langs = [preferredLang, 'he', 'en']
+    return Array.from(new Set(langs.map((l) => String(l || '').trim()).filter(Boolean)))
+  }, [preferredLang])
 
   const [view, setView] = useState<'list' | 'create' | 'import'>('list')
   const [q, setQ] = useState('')
@@ -923,6 +924,10 @@ export function ItinerariesPage(props: { apiBase: string }) {
                       {String(i.code || i.id).slice(0, 18)} · {pickTitle(i.titles, preferred)}
                     </option>
                   ))}
+                </Select>
+              </div>
+            </Panel>
+
             <Panel
               title={selectedItinerary ? 'Details' : 'Details'}
               subtitle={selectedItinerary ? 'Preview stops and compute end date for a given start date.' : 'Select an itinerary from the list to see details.'}
@@ -954,21 +959,6 @@ export function ItinerariesPage(props: { apiBase: string }) {
                     </div>
                   </div>
 
-                <Panel
-                  title="Stops preview"
-                  subtitle="Ports shown here are resolved from the Ports screen by port code."
-                  right={
-                    <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
-                      <option value="en">en</option>
-                      <option value="he">he</option>
-                      <option value="ar">ar</option>
-                      <option value="fr">fr</option>
-                      <option value="es">es</option>
-                      <option value={preferredLang}>{preferredLang}</option>
-                    </Select>
-                  }
-                >
-                  {selectedItinerary ? (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
                     <Input label="Compute end date from start date" type="date" value={computeStartDate} onChange={(e) => setComputeStartDate(e.target.value)} />
                     <Button variant="primary" disabled={busy || !selectedId || !computeStartDate} onClick={() => void computeDates()}>
