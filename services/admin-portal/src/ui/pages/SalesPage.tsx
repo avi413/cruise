@@ -299,7 +299,8 @@ export function SalesPage(props: { apiBase: string }) {
     try {
       await apiFetch(props.apiBase, `/v1/pricing/overrides/cabin-multipliers`, {
         method: 'POST',
-        body: { cabin_type: rateCabinType, multiplier: rateMultiplier, company_id: null },
+        // Company-managed pricing (tenant-scoped via X-Company-Id)
+        body: { cabin_type: rateCabinType, multiplier: rateMultiplier },
       })
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
@@ -312,9 +313,10 @@ export function SalesPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'adult', amount: baseAdult, company_id: null } })
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'child', amount: baseChild, company_id: null } })
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'infant', amount: baseInfant, company_id: null } })
+      // Company-managed pricing (tenant-scoped via X-Company-Id)
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'adult', amount: baseAdult } })
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'child', amount: baseChild } })
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'infant', amount: baseInfant } })
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
