@@ -68,13 +68,13 @@ export function ItinerariesPage(props: { apiBase: string }) {
   const [err, setErr] = useState<string | null>(null)
 
   const [preferredLang, setPreferredLang] = useState('en')
-  const preferred = useMemo(() => [preferredLang, 'en'], [preferredLang])
+  const preferred = useMemo(() => [preferredLang, 'en', 'he'], [preferredLang])
 
   // create form
   const [code, setCode] = useState('')
   const [titles, setTitles] = useState<TitleRow[]>([
     { lang: 'en', text: '' },
-    { lang: 'ar', text: '' },
+    { lang: 'he', text: '' },
   ])
   const [stops, setStops] = useState<ItineraryStop[]>([
     { day_offset: 0, kind: 'port', image_url: '', port_code: '', port_name: '', arrival_time: '09:00', departure_time: '20:00', labels: { en: 'Embark' } },
@@ -146,7 +146,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
       setCode('')
       setTitles([
         { lang: 'en', text: '' },
-        { lang: 'ar', text: '' },
+        { lang: 'he', text: '' },
       ])
       setStops([{ day_offset: 0, kind: 'port', image_url: '', port_code: '', port_name: '', arrival_time: '09:00', departure_time: '20:00', labels: { en: 'Embark' } }])
       await refresh()
@@ -411,7 +411,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                 <Select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
                   {items.map((i) => (
                     <option key={i.id} value={i.id}>
-                      {String(i.code || i.id).slice(0, 18)} · {pickTitle(i.titles, ['en', 'ar'])}
+                      {String(i.code || i.id).slice(0, 18)} · {pickTitle(i.titles, preferred)}
                     </option>
                   ))}
                 </Select>
@@ -440,6 +440,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   right={
                     <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
                       <option value="en">en</option>
+                      <option value="he">he</option>
                       <option value="ar">ar</option>
                       <option value="fr">fr</option>
                       <option value="es">es</option>
