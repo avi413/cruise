@@ -114,6 +114,18 @@ export function Input(props: React.InputHTMLAttributes<HTMLInputElement> & { lab
   )
 }
 
+export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label?: string; hint?: string }) {
+  const ta = <textarea {...props} style={{ ...styles.input, ...(props.style || {}) }} />
+  if (!props.label) return ta
+  return (
+    <label style={styles.label}>
+      {props.label}
+      {ta}
+      {props.hint ? <div style={styles.hint}>{props.hint}</div> : null}
+    </label>
+  )
+}
+
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement> & { label?: string; hint?: string }) {
   const sel = <select {...props} style={{ ...styles.input, ...(props.style || {}) }} />
   if (!props.label) return sel
