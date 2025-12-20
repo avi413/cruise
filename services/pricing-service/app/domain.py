@@ -39,6 +39,13 @@ class Quote:
     lines: list[QuoteLine]
 
 
+@dataclass(frozen=True)
+class PricingOverrides:
+    base_by_pax: dict[Paxtype, int] | None = None
+    cabin_multiplier: dict[CabinType, float] | None = None
+    demand_multiplier: float | None = None
+
+
 _BASE_BY_PAX: dict[Paxtype, int] = {
     "adult": 100_000,
     "child": 60_000,
@@ -86,11 +93,25 @@ def _discount_rate(req: QuoteRequest, child_count: int) -> float:
 
 
 def quote(req: QuoteRequest, today: date) -> Quote:
+    return quote_with_overrides(req, today=today, overrides=None)
+
+
+def quote_with_overrides(req: QuoteRequest, today: date, overrides: PricingOverrides | None) -> Quote:
     if not req.guests:
         raise ValueError("At least one guest is required")
 
     cabin_mult = _CABIN_MULTIPLIER[req.cabin_type]
+    if overrides and overrides.cabin_multiplier and req.cabin_type in overrides.cabin_multiplier:
+        cabin_mult = float(overrides.cabin_multiplier[req.cabin_type])
+
     demand_mult = _demand_multiplier(req.sailing_date, today=today)
+    if overrides and overrides.demand_multiplier is not None:
+        demand_mult = float(overrides.demand_multiplier)
+
+    base_by_pax = _BASE_BY_PAX
+    if overrides and overrides.base_by_pax:
+        # merge with defaults
+        base_by_pax = {**_BASE_BY_PAX, **overrides.base_by_pax}
 
     pax_counts: dict[Paxtype, int] = {"adult": 0, "child": 0, "infant": 0}
     for g in req.guests:
@@ -102,7 +123,7 @@ def quote(req: QuoteRequest, today: date) -> Quote:
     for paxtype, count in pax_counts.items():
         if count == 0:
             continue
-        base = _BASE_BY_PAX[paxtype]
+        base = base_by_pax[paxtype]
         amount = int(round(base * cabin_mult * demand_mult)) * count
         subtotal += amount
         lines.append(

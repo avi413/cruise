@@ -1,0 +1,493 @@
+import React, { useState } from 'react'
+import { apiFetch } from '../api/client'
+
+type QuoteOut = { currency: string; subtotal: number; discounts: number; taxes_fees: number; total: number; lines: { code: string; description: string; amount: number }[] }
+type BookingOut = {
+  id: string
+  status: string
+  created_at: string
+  updated_at: string
+  hold_expires_at: string | null
+  customer_id: string | null
+  sailing_id: string
+  cabin_type: string
+  guests: any
+  quote: QuoteOut
+}
+
+export function SalesPage(props: { apiBase: string }) {
+  const [sailingId, setSailingId] = useState('')
+  const [sailingDate, setSailingDate] = useState('')
+  const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
+  const [adult, setAdult] = useState(2)
+  const [child, setChild] = useState(0)
+  const [infant, setInfant] = useState(0)
+  const [coupon, setCoupon] = useState('')
+  const [tier, setTier] = useState('')
+  const [customerId, setCustomerId] = useState('')
+
+  const [quote, setQuote] = useState<QuoteOut | null>(null)
+  const [bookingId, setBookingId] = useState('')
+  const [booking, setBooking] = useState<BookingOut | null>(null)
+
+  const [invCabinType, setInvCabinType] = useState('inside')
+  const [invCap, setInvCap] = useState(100)
+  const [inv, setInv] = useState<any[] | null>(null)
+
+  const [rateCabinType, setRateCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
+  const [rateMultiplier, setRateMultiplier] = useState(1.0)
+  const [baseAdult, setBaseAdult] = useState(100000)
+  const [baseChild, setBaseChild] = useState(60000)
+  const [baseInfant, setBaseInfant] = useState(10000)
+
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  function guestsList() {
+    const guests: any[] = []
+    for (let i = 0; i < adult; i++) guests.push({ paxtype: 'adult' })
+    for (let i = 0; i < child; i++) guests.push({ paxtype: 'child' })
+    for (let i = 0; i < infant; i++) guests.push({ paxtype: 'infant' })
+    return guests
+  }
+
+  async function doQuote() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await apiFetch<QuoteOut>(props.apiBase, `/v1/quote`, {
+        method: 'POST',
+        body: {
+          sailing_date: sailingDate || null,
+          cabin_type: cabinType,
+          guests: guestsList(),
+          coupon_code: coupon || null,
+          loyalty_tier: tier || null,
+        },
+        auth: false,
+        tenant: false,
+      })
+      setQuote(r)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function placeHold() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/holds`, {
+        method: 'POST',
+        body: {
+          customer_id: customerId || null,
+          sailing_id: sailingId,
+          sailing_date: sailingDate ? `${sailingDate}T00:00:00Z` : null,
+          cabin_type: cabinType,
+          guests: { adult, child, infant },
+          coupon_code: coupon || null,
+          loyalty_tier: tier || null,
+          hold_minutes: 15,
+        },
+      })
+      setBooking(r)
+      setBookingId(r.id)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function confirm() {
+    if (!bookingId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${bookingId}/confirm`, { method: 'POST', body: { payment_token: 'demo' } })
+      setBooking(r)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function loadBooking() {
+    if (!bookingId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${bookingId}`)
+      setBooking(r)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setInventory() {
+    if (!sailingId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/inventory/sailings/${sailingId}`, { method: 'POST', body: { cabin_type: invCabinType, capacity: invCap } })
+      const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
+      setInv(r)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function loadInventory() {
+    if (!sailingId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
+      setInv(r)
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setCabinMultiplier() {
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/cabin-multipliers`, {
+        method: 'POST',
+        body: { cabin_type: rateCabinType, multiplier: rateMultiplier, company_id: null },
+      })
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function setBaseFares() {
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'adult', amount: baseAdult, company_id: null } })
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'child', amount: baseChild, company_id: null } })
+      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'infant', amount: baseInfant, company_id: null } })
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={styles.wrap}>
+      <div style={styles.hTitle}>Sales</div>
+      <div style={styles.hSub}>Quote, place holds, confirm bookings, and manage per-sailing inventory capacity.</div>
+
+      {err ? <div style={styles.error}>{err}</div> : null}
+
+      <div style={styles.grid}>
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Quote</div>
+          <div style={styles.form}>
+            <label style={styles.label}>
+              Sailing date (optional)
+              <input style={styles.input} value={sailingDate} onChange={(e) => setSailingDate(e.target.value)} type="date" />
+            </label>
+            <label style={styles.label}>
+              Cabin type
+              <select style={styles.input} value={cabinType} onChange={(e) => setCabinType(e.target.value as any)}>
+                <option value="inside">inside</option>
+                <option value="oceanview">oceanview</option>
+                <option value="balcony">balcony</option>
+                <option value="suite">suite</option>
+              </select>
+            </label>
+            <div style={styles.row3}>
+              <label style={styles.label}>
+                Adults
+                <input style={styles.input} value={adult} onChange={(e) => setAdult(Number(e.target.value))} type="number" min={1} step={1} />
+              </label>
+              <label style={styles.label}>
+                Children
+                <input style={styles.input} value={child} onChange={(e) => setChild(Number(e.target.value))} type="number" min={0} step={1} />
+              </label>
+              <label style={styles.label}>
+                Infants
+                <input style={styles.input} value={infant} onChange={(e) => setInfant(Number(e.target.value))} type="number" min={0} step={1} />
+              </label>
+            </div>
+            <div style={styles.row2}>
+              <label style={styles.label}>
+                Coupon (optional)
+                <input style={styles.input} value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="WELCOME10" />
+              </label>
+              <label style={styles.label}>
+                Loyalty tier (optional)
+                <input style={styles.input} value={tier} onChange={(e) => setTier(e.target.value)} placeholder="GOLD" />
+              </label>
+            </div>
+            <button style={styles.primaryBtn} disabled={busy} onClick={() => void doQuote()}>
+              {busy ? 'Working…' : 'Get quote'}
+            </button>
+
+            {quote ? (
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>
+                  Total: {quote.currency} {(quote.total / 100).toFixed(2)}
+                </div>
+                <div style={styles.muted}>
+                  Subtotal {(quote.subtotal / 100).toFixed(2)} · Discounts {(quote.discounts / 100).toFixed(2)} · Taxes {(quote.taxes_fees / 100).toFixed(2)}
+                </div>
+                <ul style={styles.ul}>
+                  {quote.lines.map((l) => (
+                    <li key={l.code} style={styles.li}>
+                      <span style={styles.mono}>{l.code}</span> — {l.description} ({(l.amount / 100).toFixed(2)})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Hold / Confirm</div>
+          <div style={styles.form}>
+            <label style={styles.label}>
+              Sailing id
+              <input style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder="(from Sailings)" />
+            </label>
+            <label style={styles.label}>
+              Customer id (optional)
+              <input style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="(from Customers)" />
+            </label>
+
+            <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void placeHold()}>
+              {busy ? 'Working…' : 'Place hold'}
+            </button>
+
+            <div style={styles.row2}>
+              <button style={styles.secondaryBtn} disabled={busy || !bookingId.trim()} onClick={() => void loadBooking()}>
+                Load booking
+              </button>
+              <button style={styles.secondaryBtn} disabled={busy || !bookingId.trim()} onClick={() => void confirm()}>
+                Confirm booking
+              </button>
+            </div>
+
+            <label style={styles.label}>
+              Booking id
+              <input style={styles.input} value={bookingId} onChange={(e) => setBookingId(e.target.value)} placeholder="UUID" />
+            </label>
+
+            {booking ? (
+              <div style={styles.card}>
+                <div style={styles.cardTitle}>
+                  Booking {booking.id} · {booking.status}
+                </div>
+                <div style={styles.muted}>
+                  Sailing: <span style={styles.mono}>{booking.sailing_id}</span> · Cabin: <span style={styles.mono}>{booking.cabin_type}</span>
+                </div>
+                <div style={styles.muted}>Hold expires: {booking.hold_expires_at || '—'}</div>
+                <div style={styles.muted}>
+                  Total: {booking.quote.currency} {(booking.quote.total / 100).toFixed(2)}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      </div>
+
+      <div style={styles.grid}>
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Inventory capacity</div>
+          <div style={styles.form}>
+            <div style={styles.row2}>
+              <label style={styles.label}>
+                Cabin type
+                <input style={styles.input} value={invCabinType} onChange={(e) => setInvCabinType(e.target.value)} placeholder="inside" />
+              </label>
+              <label style={styles.label}>
+                Capacity
+                <input style={styles.input} value={invCap} onChange={(e) => setInvCap(Number(e.target.value))} type="number" min={0} step={1} />
+              </label>
+            </div>
+            <div style={styles.row2}>
+              <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void setInventory()}>
+                {busy ? 'Working…' : 'Set capacity'}
+              </button>
+              <button style={styles.secondaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void loadInventory()}>
+                Refresh inventory
+              </button>
+            </div>
+
+            {inv ? (
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Cabin type</th>
+                      <th style={styles.th}>Capacity</th>
+                      <th style={styles.th}>Held</th>
+                      <th style={styles.th}>Confirmed</th>
+                      <th style={styles.th}>Available</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inv.map((r) => (
+                      <tr key={r.cabin_type}>
+                        <td style={styles.tdMono}>{r.cabin_type}</td>
+                        <td style={styles.tdMono}>{r.capacity}</td>
+                        <td style={styles.tdMono}>{r.held}</td>
+                        <td style={styles.tdMono}>{r.confirmed}</td>
+                        <td style={styles.tdMono}>{r.available}</td>
+                      </tr>
+                    ))}
+                    {inv.length === 0 ? (
+                      <tr>
+                        <td style={styles.tdMuted} colSpan={5}>
+                          No inventory rows yet (place a hold or set capacity).
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section style={styles.panel}>
+          <div style={styles.panelTitle}>Rates (on-the-fly)</div>
+          <div style={styles.muted}>Admin/staff only. These overrides are in-memory (reset on service restart).</div>
+          <div style={styles.form}>
+            <label style={styles.label}>
+              Cabin type
+              <select style={styles.input} value={rateCabinType} onChange={(e) => setRateCabinType(e.target.value as any)}>
+                <option value="inside">inside</option>
+                <option value="oceanview">oceanview</option>
+                <option value="balcony">balcony</option>
+                <option value="suite">suite</option>
+              </select>
+            </label>
+            <label style={styles.label}>
+              Cabin multiplier
+              <input style={styles.input} value={rateMultiplier} onChange={(e) => setRateMultiplier(Number(e.target.value))} type="number" step="0.05" min="0.1" />
+            </label>
+            <button style={styles.primaryBtn} disabled={busy} onClick={() => void setCabinMultiplier()}>
+              {busy ? 'Working…' : 'Set cabin multiplier'}
+            </button>
+
+            <div style={styles.row3}>
+              <label style={styles.label}>
+                Base adult (cents)
+                <input style={styles.input} value={baseAdult} onChange={(e) => setBaseAdult(Number(e.target.value))} type="number" min={0} step={1000} />
+              </label>
+              <label style={styles.label}>
+                Base child (cents)
+                <input style={styles.input} value={baseChild} onChange={(e) => setBaseChild(Number(e.target.value))} type="number" min={0} step={1000} />
+              </label>
+              <label style={styles.label}>
+                Base infant (cents)
+                <input style={styles.input} value={baseInfant} onChange={(e) => setBaseInfant(Number(e.target.value))} type="number" min={0} step={1000} />
+              </label>
+            </div>
+            <button style={styles.primaryBtn} disabled={busy} onClick={() => void setBaseFares()}>
+              {busy ? 'Working…' : 'Set base fares'}
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  wrap: { display: 'grid', gap: 12 },
+  hTitle: { fontSize: 22, fontWeight: 900 },
+  hSub: { color: 'rgba(230,237,243,0.7)', fontSize: 13 },
+  grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' },
+  panel: {
+    border: '1px solid rgba(255,255,255,0.10)',
+    borderRadius: 14,
+    background: 'rgba(255,255,255,0.04)',
+    padding: 14,
+  },
+  panelTitle: { fontWeight: 900, marginBottom: 10 },
+  form: { display: 'grid', gap: 10 },
+  row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  row3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 },
+  label: { display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' },
+  input: {
+    padding: '10px 10px',
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(0,0,0,0.25)',
+    color: '#e6edf3',
+  },
+  primaryBtn: {
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(56,139,253,0.55)',
+    background: 'rgba(56,139,253,0.22)',
+    color: '#e6edf3',
+    cursor: 'pointer',
+    fontWeight: 900,
+  },
+  secondaryBtn: {
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.06)',
+    color: '#e6edf3',
+    cursor: 'pointer',
+    fontWeight: 900,
+  },
+  error: {
+    padding: 12,
+    borderRadius: 12,
+    background: 'rgba(248,81,73,0.12)',
+    border: '1px solid rgba(248,81,73,0.35)',
+    color: '#ffb4ae',
+    whiteSpace: 'pre-wrap',
+    fontSize: 13,
+  },
+  card: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.10)',
+    background: 'rgba(0,0,0,0.22)',
+  },
+  cardTitle: { fontWeight: 900, marginBottom: 6 },
+  muted: { color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.5 },
+  ul: { margin: '8px 0 0 0', paddingLeft: 18, color: 'rgba(230,237,243,0.85)', fontSize: 12, lineHeight: 1.55 },
+  li: { marginBottom: 4 },
+  mono: { fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12 },
+  tableWrap: { overflow: 'auto', marginTop: 10 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+  th: {
+    textAlign: 'left',
+    padding: '10px 8px',
+    borderBottom: '1px solid rgba(255,255,255,0.10)',
+    color: 'rgba(230,237,243,0.75)',
+    fontWeight: 900,
+  },
+  tdMono: {
+    padding: '10px 8px',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+    fontSize: 12,
+  },
+  tdMuted: { padding: '14px 8px', color: 'rgba(230,237,243,0.60)' },
+}
+

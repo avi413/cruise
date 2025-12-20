@@ -1,3 +1,6 @@
+// Legacy file kept for backwards compatibility. New code uses `src/ui/api/client.ts`.
+export {}
+
 export type Company = {
   id: string
   name: string
