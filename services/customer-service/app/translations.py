@@ -58,6 +58,19 @@ TRANSLATIONS = {
             "dashboard.no_notifications": "No notifications yet.",
             "dashboard.my_notes": "My notes",
             "dashboard.my_notes_desc": "Saved per user (Preferences → dashboard.notes).",
+
+            # Preferences
+            "preferences.title": "Preferences",
+            "preferences.subtitle": "Manage your personal settings.",
+            "preferences.locale_title": "Language & Region",
+            "preferences.locale_label": "Interface language",
+            "preferences.currency_label": "Default currency",
+            "preferences.saving": "Saving...",
+            "preferences.save": "Save",
+            "preferences.note": "Note: Some changes may require a page reload.",
+            "preferences.layout_title": "Dashboard Layout",
+            "preferences.layout_subtitle": "Advanced: Edit the raw JSON configuration for your dashboard widgets.",
+            "preferences.save_layout": "Save layout",
         }
     },
     "he": {
@@ -113,6 +126,19 @@ TRANSLATIONS = {
             "dashboard.no_notifications": "אין התראות עדיין.",
             "dashboard.my_notes": "ההערות שלי",
             "dashboard.my_notes_desc": "נשמר עבור כל משתמש (הגדרות -> dashboard.notes).",
+
+            # Preferences
+            "preferences.title": "הגדרות",
+            "preferences.subtitle": "ניהול הגדרות אישיות.",
+            "preferences.locale_title": "שפה ואזור",
+            "preferences.locale_label": "שפת ממשק",
+            "preferences.currency_label": "מטבע ברירת מחדל",
+            "preferences.saving": "שומר...",
+            "preferences.save": "שמור",
+            "preferences.note": "הערה: ייתכן שחלק מהשינויים ידרשו רענון עמוד.",
+            "preferences.layout_title": "פריסת לוח בקרה",
+            "preferences.layout_subtitle": "מתקדם: עריכת תצורת ה-JSON הגולמית עבור ווידג'טים בלוח הבקרה.",
+            "preferences.save_layout": "שמור פריסה",
         }
     }
 }
