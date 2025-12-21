@@ -201,6 +201,8 @@ export function Shell(props: { apiBase: string }) {
         style={{
           ...styles.sidebar,
           display: isNarrow ? (drawerOpen ? 'block' : 'none') : 'block',
+          position: isNarrow ? 'absolute' : 'relative',
+          height: isNarrow ? '100%' : undefined,
           width: isNarrow ? 272 : undefined,
         }}
       >
