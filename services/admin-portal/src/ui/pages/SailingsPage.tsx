@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
-import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, TwoCol } from '../components/ui'
+import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../components/ui'
 
 type Sailing = {
   id: string
@@ -41,6 +41,23 @@ function pickTitle(titles: Record<string, string> | undefined, preferred: string
   return Object.values(t)[0] || '—'
 }
 
+function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <tr
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...styles.tr,
+        background: hover ? 'var(--csp-border-strong, rgba(0,0,0,0.05))' : 'transparent',
+      }}
+    >
+      {children}
+    </tr>
+  )
+}
+
 export function SailingsPage(props: { apiBase: string }) {
   const company = getCompany()
 
@@ -59,8 +76,11 @@ export function SailingsPage(props: { apiBase: string }) {
     return map
   }, [ships])
 
+  // View state: 'list', 'create', 'edit'
+  const [view, setView] = useState<'list' | 'create' | 'edit'>('list')
+  const [editingId, setEditingId] = useState<string | null>(null)
+
   const [q, setQ] = useState('')
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [detailsById, setDetailsById] = useState<Record<string, Sailing>>({})
   const [stopsBySailingId, setStopsBySailingId] = useState<Record<string, PortStop[]>>({})
   const [editById, setEditById] = useState<Record<string, RowEdit>>({})
@@ -107,40 +127,38 @@ export function SailingsPage(props: { apiBase: string }) {
   async function ensureRowLoaded(sailingId: string) {
     const id = String(sailingId || '')
     if (!id) return
-    if (detailsById[id] && stopsBySailingId[id] && editById[id]) return
+    // Always fetch fresh data when entering edit mode
+    
+    try {
+      const [s, stops] = await Promise.all([
+        apiFetch<Sailing>(props.apiBase, `/v1/sailings/${encodeURIComponent(id)}`, { auth: false, tenant: false }),
+        apiFetch<PortStop[]>(props.apiBase, `/v1/sailings/${encodeURIComponent(id)}/itinerary`, { auth: false, tenant: false }).catch(() => []),
+      ])
 
-    const [s, stops] = await Promise.all([
-      detailsById[id] ? Promise.resolve(detailsById[id]) : apiFetch<Sailing>(props.apiBase, `/v1/sailings/${encodeURIComponent(id)}`, { auth: false, tenant: false }),
-      stopsBySailingId[id] ? Promise.resolve(stopsBySailingId[id]) : apiFetch<PortStop[]>(props.apiBase, `/v1/sailings/${encodeURIComponent(id)}/itinerary`, { auth: false, tenant: false }).catch(() => []),
-    ])
-
-    setDetailsById((prev) => ({ ...prev, [id]: s }))
-    setStopsBySailingId((prev) => ({ ...prev, [id]: stops || [] }))
-    setEditById((prev) => {
-      if (prev[id]) return prev
-      return {
-        ...prev,
-        [id]: {
-          code: s?.code || '',
-          ship_id: s?.ship_id || '',
-          start_date: s?.start_date || '',
-          end_date: s?.end_date || '',
-          embark_port_code: s?.embark_port_code || '',
-          debark_port_code: s?.debark_port_code || '',
-          status: ((s?.status as any) || 'planned') as RowEdit['status'],
-        },
-      }
-    })
-    setStopFormById((prev) => (prev[id] ? prev : { ...prev, [id]: { portCode: '', portName: '', arrival: '', departure: '' } }))
+      setDetailsById((prev) => ({ ...prev, [id]: s }))
+      setStopsBySailingId((prev) => ({ ...prev, [id]: stops || [] }))
+      setEditById((prev) => ({
+          ...prev,
+          [id]: {
+            code: s?.code || '',
+            ship_id: s?.ship_id || '',
+            start_date: s?.start_date || '',
+            end_date: s?.end_date || '',
+            embark_port_code: s?.embark_port_code || '',
+            debark_port_code: s?.debark_port_code || '',
+            status: ((s?.status as any) || 'planned') as RowEdit['status'],
+          },
+      }))
+      setStopFormById((prev) => (prev[id] ? prev : { ...prev, [id]: { portCode: '', portName: '', arrival: '', departure: '' } }))
+    } catch (e: any) {
+       setErr(String(e?.detail || e?.message || e))
+    }
   }
 
-  function toggleExpand(id: string) {
-    const sid = String(id)
-    const next = !expanded[sid]
-    setExpanded((prev) => ({ ...prev, [sid]: next }))
-    if (next) {
-      ensureRowLoaded(sid).catch((e) => setErr(String(e?.detail || e?.message || e)))
-    }
+  function startEdit(s: Sailing) {
+    setEditingId(s.id)
+    ensureRowLoaded(s.id)
+    setView('edit')
   }
 
   async function createFromItinerary() {
@@ -162,6 +180,7 @@ export function SailingsPage(props: { apiBase: string }) {
       setNewFromItineraryShipId('')
       setNewFromItineraryStart('')
       await refresh()
+      setView('list')
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -169,8 +188,9 @@ export function SailingsPage(props: { apiBase: string }) {
     }
   }
 
-  async function updateSailing(id: string) {
-    const sid = String(id)
+  async function updateSailing() {
+    if (!editingId) return
+    const sid = String(editingId)
     const e = editById[sid]
     if (!e) return
     setBusy(true)
@@ -191,9 +211,10 @@ export function SailingsPage(props: { apiBase: string }) {
         tenant: false,
       })
       await refresh()
-      // Reload details for the expanded row to keep the related hierarchy accurate.
-      const s = await apiFetch<Sailing>(props.apiBase, `/v1/sailings/${encodeURIComponent(sid)}`, { auth: false, tenant: false })
-      setDetailsById((prev) => ({ ...prev, [sid]: s }))
+      // Reload details 
+      await ensureRowLoaded(sid)
+      setView('list')
+      setEditingId(null)
     } catch (ex: any) {
       setErr(String(ex?.detail || ex?.message || ex))
     } finally {
@@ -252,394 +273,349 @@ export function SailingsPage(props: { apiBase: string }) {
     })
   }, [items, itinerariesById, q, shipsById])
 
+  function renderList() {
+    return (
+      <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--csp-surface-bg)', padding: 12, borderRadius: 8, border: '1px solid var(--csp-border)' }}>
+            <div style={{ flex: 1 }}>
+                <Input 
+                    value={q} 
+                    onChange={(e) => setQ(e.target.value)} 
+                    placeholder="Search sailings by code, ship, itinerary..." 
+                    style={{ width: '100%', maxWidth: 400 }}
+                />
+            </div>
+            <Button variant="primary" onClick={() => setView('create')}>New Sailing</Button>
+            <Button variant="secondary" onClick={() => void refresh()}>Refresh</Button>
+        </div>
+
+        <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                    <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
+                        <th style={styles.th}>Sailing</th>
+                        <th style={styles.th}>Dates</th>
+                        <th style={styles.th}>Ports</th>
+                        <th style={styles.th}>Ship</th>
+                        <th style={styles.th}>Itinerary</th>
+                        <th style={styles.th}>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {filtered.map(s => {
+                        const sid = String(s.id)
+                        const ship = shipsById[String(s.ship_id)]
+                        const it = itinerariesById[String(s.itinerary_id || '')]
+                        
+                        return (
+                            <HoverRow
+                                key={s.id} 
+                                onClick={() => startEdit(s)}
+                            >
+                                <td style={styles.td}>
+                                    <div style={{ fontWeight: 900 }}>{s.code || '—'}</div>
+                                    <div style={styles.sub}>id <Mono>{sid}</Mono></div>
+                                </td>
+                                <td style={styles.tdMono}>
+                                    {String(s.start_date || '—')} → {String(s.end_date || '—')}
+                                </td>
+                                <td style={styles.tdMono}>
+                                    {String(s.embark_port_code || '—')} → {String(s.debark_port_code || '—')}
+                                </td>
+                                <td style={styles.td}>
+                                    <div style={{ fontWeight: 800 }}>{ship?.name || '—'}</div>
+                                    <div style={styles.sub}><Mono>{String(ship?.code || s.ship_id || '—')}</Mono></div>
+                                </td>
+                                <td style={styles.td}>
+                                    <div style={{ fontWeight: 800 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</div>
+                                    <div style={styles.sub}>id <Mono>{String(s.itinerary_id || '—')}</Mono></div>
+                                </td>
+                                <td style={styles.td}>
+                                    <span style={badgeStyles[s.status as keyof typeof badgeStyles] || badgeStyles.default}>{s.status}</span>
+                                </td>
+                            </HoverRow>
+                        )
+                    })}
+                    {filtered.length === 0 && (
+                        <tr>
+                            <td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
+                                No sailings found.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+      </div>
+    )
+  }
+
+  function renderCreate() {
+    return (
+        <Panel 
+            title="Create Sailing" 
+            subtitle="Create a new sailing from an existing itinerary."
+            right={<Button variant="secondary" onClick={() => setView('list')}>Cancel</Button>}
+        >
+            <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
+                <Select label="Itinerary" value={newFromItineraryId} onChange={(e) => setNewFromItineraryId(e.target.value)}>
+                    {itineraries.map((i) => (
+                        <option key={i.id} value={i.id}>
+                        {(i.code || i.id).slice(0, 16)} · {pickTitle(i.titles, ['en', 'ar'])}
+                        </option>
+                    ))}
+                    {itineraries.length === 0 ? <option value="">(no itineraries)</option> : null}
+                </Select>
+                <Input label="Sailing code" value={newFromItineraryCode} onChange={(e) => setNewFromItineraryCode(e.target.value)} placeholder="S-2026-07-01-A" />
+                <Select label="Ship" value={newFromItineraryShipId} onChange={(e) => setNewFromItineraryShipId(e.target.value)}>
+                    <option value="">(select)</option>
+                    {ships.map((s) => (
+                        <option key={s.id} value={s.id}>
+                        {s.name} ({s.code})
+                        </option>
+                    ))}
+                </Select>
+                <Input label="Start date" value={newFromItineraryStart} onChange={(e) => setNewFromItineraryStart(e.target.value)} type="date" />
+                
+                <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)' }}>
+                    <Button
+                        variant="primary"
+                        disabled={busy || !newFromItineraryId || !newFromItineraryCode.trim() || !newFromItineraryShipId.trim() || !newFromItineraryStart}
+                        onClick={() => void createFromItinerary()}
+                    >
+                        {busy ? 'Creating...' : 'Create Sailing'}
+                    </Button>
+                </div>
+            </div>
+        </Panel>
+    )
+  }
+
+  function renderEdit() {
+    if (!editingId) return null
+    const sid = editingId
+    const rowEdit = editById[sid]
+    const rowDetails = detailsById[sid]
+    const rowStops = stopsBySailingId[sid] || []
+    const stopForm = stopFormById[sid]
+    const it = itinerariesById[String(rowDetails?.itinerary_id || '')]
+
+    return (
+        <div style={{ display: 'grid', gap: 24 }}>
+            <Panel 
+                title={`Edit Sailing: ${rowDetails?.code || sid}`} 
+                subtitle="Update sailing details."
+                right={<Button variant="secondary" onClick={() => { setView('list'); setEditingId(null); }}>Back to List</Button>}
+            >
+                {rowEdit ? (
+                <div style={{ maxWidth: 800, display: 'grid', gap: 20 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                        <Input
+                        label="Code"
+                        value={rowEdit.code}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], code: e.target.value } }))}
+                        />
+                        <Select
+                        label="Ship"
+                        value={rowEdit.ship_id}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], ship_id: e.target.value } }))}
+                        >
+                        <option value="">(select)</option>
+                        {ships.map((sh) => (
+                            <option key={sh.id} value={sh.id}>
+                            {sh.name} ({sh.code})
+                            </option>
+                        ))}
+                        </Select>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                        <Input
+                        label="Start date"
+                        type="date"
+                        value={rowEdit.start_date}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], start_date: e.target.value } }))}
+                        />
+                        <Input
+                        label="End date"
+                        type="date"
+                        value={rowEdit.end_date}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], end_date: e.target.value } }))}
+                        />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                        <Input
+                        label="Embark port"
+                        value={rowEdit.embark_port_code}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], embark_port_code: e.target.value } }))}
+                        />
+                        <Input
+                        label="Debark port"
+                        value={rowEdit.debark_port_code}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], debark_port_code: e.target.value } }))}
+                        />
+                    </div>
+                    <Select
+                        label="Status"
+                        value={rowEdit.status}
+                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], status: e.target.value as any } }))}
+                    >
+                        <option value="planned">planned</option>
+                        <option value="open">open</option>
+                        <option value="closed">closed</option>
+                        <option value="cancelled">cancelled</option>
+                    </Select>
+
+                    <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', justifyContent: 'flex-end' }}>
+                         <Button variant="primary" disabled={busy} onClick={() => void updateSailing()}>
+                            {busy ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                    </div>
+                </div>
+                ) : <div style={{ padding: 20 }}>Loading details...</div>}
+            </Panel>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
+                <Panel title="Related: Itinerary" subtitle="The parent’s related itinerary.">
+                    <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
+                    <div>
+                        Title: <span style={{ fontWeight: 900 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</span>
+                    </div>
+                    <div>
+                        Code: <Mono>{String(it?.code || '—')}</Mono>
+                    </div>
+                    <div>
+                        Id: <Mono>{String(rowDetails?.itinerary_id || '—')}</Mono>
+                    </div>
+                    </div>
+                </Panel>
+
+                <Panel title={`Related: Port stops (${rowStops.length})`} subtitle="Stops are shown below.">
+                     <div style={{ overflow: 'auto', marginBottom: 20 }}>
+                        <table style={styles.table}>
+                            <thead>
+                            <tr>
+                                <th style={styles.th}>Port</th>
+                                <th style={styles.th}>Arrival</th>
+                                <th style={styles.th}>Departure</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {rowStops.map((p, idx) => (
+                                <tr key={`${p.port_code}-${idx}`}>
+                                <td style={styles.td}>
+                                    <Mono>{p.port_code}</Mono> {p.port_name ? <span style={styles.sub}>({p.port_name})</span> : null}
+                                </td>
+                                <td style={styles.tdMono}>{p.arrival}</td>
+                                <td style={styles.tdMono}>{p.departure}</td>
+                                </tr>
+                            ))}
+                            {rowStops.length === 0 ? (
+                                <tr>
+                                <td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)' }}>
+                                    No port stops yet.
+                                </td>
+                                </tr>
+                            ) : null}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style={{ paddingTop: 16, borderTop: '1px solid var(--csp-border)' }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Add port stop</div>
+                        {stopForm ? (
+                            <div style={{ display: 'grid', gap: 10 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <Input
+                                    label="Port code"
+                                    value={stopForm.portCode}
+                                    onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], portCode: e.target.value } }))}
+                                    placeholder="PMI"
+                                />
+                                <Input
+                                    label="Port name (optional)"
+                                    value={stopForm.portName}
+                                    onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], portName: e.target.value } }))}
+                                    placeholder="Palma"
+                                />
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                                <Input
+                                    label="Arrival (ISO)"
+                                    value={stopForm.arrival}
+                                    onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], arrival: e.target.value } }))}
+                                    placeholder="2026-07-02T08:00:00Z"
+                                />
+                                <Input
+                                    label="Departure (ISO)"
+                                    value={stopForm.departure}
+                                    onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], departure: e.target.value } }))}
+                                    placeholder="2026-07-02T18:00:00Z"
+                                />
+                                </div>
+                                <Button
+                                variant="primary"
+                                disabled={busy || !stopForm.portCode.trim() || !stopForm.arrival.trim() || !stopForm.departure.trim()}
+                                onClick={() => void addStop(sid)}
+                                >
+                                {busy ? 'Saving...' : 'Add stop'}
+                                </Button>
+                            </div>
+                            ) : (
+                            <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>Loading…</div>
+                        )}
+                    </div>
+                </Panel>
+            </div>
+        </div>
+    )
+  }
+
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
-        title="Sailings"
-        subtitle="Salesforce-style hierarchy: each Sailing is a parent row; expand it to see Related records (Itinerary + Port Stops) directly underneath."
-        right={
-          <Button variant="secondary" disabled={busy} onClick={() => void refresh()}>
-            {busy ? 'Refreshing…' : 'Refresh'}
-          </Button>
-        }
+        title="Sailings Management"
+        subtitle="Manage sailings, their schedules, and port stops."
       />
 
       {err ? <ErrorBanner message={err} /> : null}
 
-      <TwoCol
-        left={
-          <Panel
-            title="Create sailing"
-            subtitle="A sailing must be related to an itinerary. Use “Create from itinerary” to create it with the correct relation and derived dates/ports."
-          >
-            <div style={{ color: 'rgba(230,237,243,0.75)', fontSize: 13, lineHeight: 1.5 }}>
-              Direct sailings (without an itinerary) are not allowed.
-            </div>
-          </Panel>
-        }
-        right={
-          <Panel title="Create from itinerary" subtitle="Generates a sailing and relates it to an itinerary (hierarchy shows up on the row).">
-            <div style={{ display: 'grid', gap: 10 }}>
-              <Select label="Itinerary" value={newFromItineraryId} onChange={(e) => setNewFromItineraryId(e.target.value)}>
-                {itineraries.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {(i.code || i.id).slice(0, 16)} · {pickTitle(i.titles, ['en', 'ar'])}
-                  </option>
-                ))}
-                {itineraries.length === 0 ? <option value="">(no itineraries)</option> : null}
-              </Select>
-              <Input label="Sailing code" value={newFromItineraryCode} onChange={(e) => setNewFromItineraryCode(e.target.value)} placeholder="S-2026-07-01-A" />
-              <Select label="Ship" value={newFromItineraryShipId} onChange={(e) => setNewFromItineraryShipId(e.target.value)}>
-                <option value="">(select)</option>
-                {ships.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.code})
-                  </option>
-                ))}
-              </Select>
-              <Input label="Start date" value={newFromItineraryStart} onChange={(e) => setNewFromItineraryStart(e.target.value)} type="date" />
-              <Button
-                variant="primary"
-                disabled={busy || !newFromItineraryId || !newFromItineraryCode.trim() || !newFromItineraryShipId.trim() || !newFromItineraryStart}
-                onClick={() => void createFromItinerary()}
-              >
-                {busy ? 'Saving…' : 'Create from itinerary'}
-              </Button>
-            </div>
-          </Panel>
-        }
-      />
-
-      <Panel
-        title={`Sailings (${filtered.length})`}
-        subtitle="Click ▸ to expand a row. The related records appear as sub-rows underneath (like Salesforce related lists)."
-        right={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap' }}>
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search sailings by code/date/ports/ship/itinerary…" />
-          </div>
-        }
-      >
-        <div style={{ overflow: 'auto' }}>
-          <table style={tableStyles.table}>
-            <thead>
-              <tr>
-                <th style={{ ...tableStyles.th, width: 44 }} />
-                <th style={tableStyles.th}>Sailing</th>
-                <th style={tableStyles.th}>Dates</th>
-                <th style={tableStyles.th}>Ports</th>
-                <th style={tableStyles.th}>Ship</th>
-                <th style={tableStyles.th}>Itinerary</th>
-                <th style={tableStyles.th}>Status</th>
-                <th style={tableStyles.th} />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((s) => {
-                const sid = String(s.id)
-                const isOpen = Boolean(expanded[sid])
-                const ship = shipsById[String(s.ship_id)]
-                const it = itinerariesById[String(s.itinerary_id || '')]
-                const rowDetails = detailsById[sid] || s
-                const rowEdit = editById[sid]
-                const rowStops = stopsBySailingId[sid] || []
-                const stopForm = stopFormById[sid]
-
-                return (
-                  <React.Fragment key={sid}>
-                    <tr>
-                      <td style={tableStyles.td}>
-                        <button
-                          style={tableStyles.expandBtn}
-                          onClick={() => toggleExpand(sid)}
-                          title={isOpen ? 'Collapse related records' : 'Expand related records'}
-                        >
-                          {isOpen ? '▾' : '▸'}
-                        </button>
-                      </td>
-                      <td style={tableStyles.td}>
-                        <div style={{ fontWeight: 900 }}>{s.code || '—'}</div>
-                        <div style={tableStyles.sub}>
-                          id <Mono>{sid}</Mono>
-                        </div>
-                      </td>
-                      <td style={tableStyles.tdMono}>
-                        {String(s.start_date || '—')} → {String(s.end_date || '—')}
-                      </td>
-                      <td style={tableStyles.tdMono}>
-                        {String(s.embark_port_code || '—')} → {String(s.debark_port_code || '—')}
-                      </td>
-                      <td style={tableStyles.td}>
-                        <div style={{ fontWeight: 800 }}>{ship?.name || '—'}</div>
-                        <div style={tableStyles.sub}>
-                          <Mono>{String(ship?.code || s.ship_id || '—')}</Mono>
-                        </div>
-                      </td>
-                      <td style={tableStyles.td}>
-                        <div style={{ fontWeight: 800 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</div>
-                        <div style={tableStyles.sub}>
-                          id <Mono>{String(s.itinerary_id || '—')}</Mono>
-                        </div>
-                      </td>
-                      <td style={tableStyles.td}>
-                        <span style={badgeStyles[s.status as keyof typeof badgeStyles] || badgeStyles.default}>{s.status}</span>
-                      </td>
-                      <td style={tableStyles.td}>
-                        <Button variant="secondary" disabled={busy} onClick={() => toggleExpand(sid)}>
-                          {isOpen ? 'Hide related' : 'Show related'}
-                        </Button>
-                      </td>
-                    </tr>
-
-                    {isOpen ? (
-                      <tr>
-                        <td style={tableStyles.relatedCell} colSpan={8}>
-                          <div style={tableStyles.relatedWrap}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-                              <Panel
-                                title="Sailing details"
-                                subtitle="Edit the parent record. Related records are shown on the right."
-                                right={
-                                  <Button
-                                    variant="primary"
-                                    disabled={
-                                      busy ||
-                                      !rowEdit ||
-                                      !rowEdit.code.trim() ||
-                                      !rowEdit.ship_id.trim() ||
-                                      !rowEdit.start_date ||
-                                      !rowEdit.end_date ||
-                                      !rowEdit.embark_port_code.trim() ||
-                                      !rowEdit.debark_port_code.trim()
-                                    }
-                                    onClick={() => void updateSailing(sid)}
-                                  >
-                                    {busy ? 'Saving…' : 'Update'}
-                                  </Button>
-                                }
-                              >
-                                {rowEdit ? (
-                                  <div style={{ display: 'grid', gap: 10 }}>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                      <Input
-                                        label="Code"
-                                        value={rowEdit.code}
-                                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], code: e.target.value } }))}
-                                      />
-                                      <Select
-                                        label="Ship"
-                                        value={rowEdit.ship_id}
-                                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], ship_id: e.target.value } }))}
-                                      >
-                                        <option value="">(select)</option>
-                                        {ships.map((sh) => (
-                                          <option key={sh.id} value={sh.id}>
-                                            {sh.name} ({sh.code})
-                                          </option>
-                                        ))}
-                                      </Select>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                      <Input
-                                        label="Start date"
-                                        type="date"
-                                        value={rowEdit.start_date}
-                                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], start_date: e.target.value } }))}
-                                      />
-                                      <Input
-                                        label="End date"
-                                        type="date"
-                                        value={rowEdit.end_date}
-                                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], end_date: e.target.value } }))}
-                                      />
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                      <Input
-                                        label="Embark port"
-                                        value={rowEdit.embark_port_code}
-                                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], embark_port_code: e.target.value } }))}
-                                      />
-                                      <Input
-                                        label="Debark port"
-                                        value={rowEdit.debark_port_code}
-                                        onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], debark_port_code: e.target.value } }))}
-                                      />
-                                    </div>
-                                    <Select
-                                      label="Status"
-                                      value={rowEdit.status}
-                                      onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], status: e.target.value as any } }))}
-                                    >
-                                      <option value="planned">planned</option>
-                                      <option value="open">open</option>
-                                      <option value="closed">closed</option>
-                                      <option value="cancelled">cancelled</option>
-                                    </Select>
-
-                                    <div style={{ display: 'grid', gap: 6, fontSize: 12, color: 'rgba(230,237,243,0.65)' }}>
-                                      <div>
-                                        Itinerary id: <Mono>{String(rowDetails?.itinerary_id || '—')}</Mono>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>Loading…</div>
-                                )}
-                              </Panel>
-
-                              <div style={{ display: 'grid', gap: 12 }}>
-                                <Panel title="Related: Itinerary" subtitle="The parent’s related itinerary (if any).">
-                                  <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
-                                    <div>
-                                      Title: <span style={{ fontWeight: 900 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</span>
-                                    </div>
-                                    <div>
-                                      Code: <Mono>{String(it?.code || '—')}</Mono>
-                                    </div>
-                                    <div>
-                                      Id: <Mono>{String(rowDetails?.itinerary_id || '—')}</Mono>
-                                    </div>
-                                  </div>
-                                </Panel>
-
-                                <Panel title={`Related: Port stops (${rowStops.length})`} subtitle="Stops are shown as child rows under this sailing.">
-                                  <div style={{ overflow: 'auto' }}>
-                                    <table style={tableStyles.innerTable}>
-                                      <thead>
-                                        <tr>
-                                          <th style={tableStyles.th}>Port</th>
-                                          <th style={tableStyles.th}>Arrival</th>
-                                          <th style={tableStyles.th}>Departure</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {rowStops.map((p, idx) => (
-                                          <tr key={`${p.port_code}-${idx}`}>
-                                            <td style={tableStyles.td}>
-                                              <Mono>{p.port_code}</Mono> {p.port_name ? <span style={tableStyles.sub}>({p.port_name})</span> : null}
-                                            </td>
-                                            <td style={tableStyles.tdMono}>{p.arrival}</td>
-                                            <td style={tableStyles.tdMono}>{p.departure}</td>
-                                          </tr>
-                                        ))}
-                                        {rowStops.length === 0 ? (
-                                          <tr>
-                                            <td colSpan={3} style={tableStyles.empty}>
-                                              No port stops yet.
-                                            </td>
-                                          </tr>
-                                        ) : null}
-                                      </tbody>
-                                    </table>
-                                  </div>
-
-                                  <div style={{ marginTop: 12 }}>
-                                    <Panel title="Add port stop" subtitle="Creates a new child record under this sailing.">
-                                      {stopForm ? (
-                                        <div style={{ display: 'grid', gap: 10 }}>
-                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                            <Input
-                                              label="Port code"
-                                              value={stopForm.portCode}
-                                              onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], portCode: e.target.value } }))}
-                                              placeholder="PMI"
-                                            />
-                                            <Input
-                                              label="Port name (optional)"
-                                              value={stopForm.portName}
-                                              onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], portName: e.target.value } }))}
-                                              placeholder="Palma"
-                                            />
-                                          </div>
-                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                                            <Input
-                                              label="Arrival (ISO datetime)"
-                                              value={stopForm.arrival}
-                                              onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], arrival: e.target.value } }))}
-                                              placeholder="2026-07-02T08:00:00Z"
-                                            />
-                                            <Input
-                                              label="Departure (ISO datetime)"
-                                              value={stopForm.departure}
-                                              onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], departure: e.target.value } }))}
-                                              placeholder="2026-07-02T18:00:00Z"
-                                            />
-                                          </div>
-                                          <Button
-                                            variant="primary"
-                                            disabled={busy || !stopForm.portCode.trim() || !stopForm.arrival.trim() || !stopForm.departure.trim()}
-                                            onClick={() => void addStop(sid)}
-                                          >
-                                            {busy ? 'Saving…' : 'Add stop'}
-                                          </Button>
-                                        </div>
-                                      ) : (
-                                        <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>Loading…</div>
-                                      )}
-                                    </Panel>
-                                  </div>
-                                </Panel>
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </React.Fragment>
-                )
-              })}
-
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={tableStyles.empty}>
-                    {busy ? 'Loading…' : 'No sailings yet.'}
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+      {view === 'list' && renderList()}
+      {view === 'create' && renderCreate()}
+      {view === 'edit' && renderEdit()}
     </div>
   )
 }
 
-const tableStyles: Record<string, React.CSSProperties> = {
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  innerTable: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'left',
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
-    color: 'var(--csp-muted, rgba(230,237,243,0.75))',
-    fontWeight: 900,
-    whiteSpace: 'nowrap',
-  },
-  td: { padding: '10px 8px', borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.06))', verticalAlign: 'top' },
-  tdMono: {
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.06))',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: 12,
-    verticalAlign: 'top',
-  },
-  sub: { marginTop: 4, color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.35 },
-  empty: { padding: '14px 8px', color: 'var(--csp-muted, rgba(230,237,243,0.60))' },
-  expandBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
-    background: 'color-mix(in srgb, var(--csp-surface-bg, rgba(255,255,255,0.06)) 88%, transparent)',
-    color: 'var(--csp-text, #e6edf3)',
-    cursor: 'pointer',
-    fontWeight: 900,
-  },
-  relatedCell: {
-    padding: 0,
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.06))',
-    background: 'var(--csp-surface-2-bg, rgba(0,0,0,0.10))',
-  },
-  relatedWrap: { padding: 12 },
+const styles = {
+    th: {
+        padding: '12px 16px',
+        fontWeight: 600,
+        fontSize: 12,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.05em',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-muted)'
+    },
+    td: {
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-text)',
+        verticalAlign: 'top'
+    },
+    tdMono: {
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-text)',
+        verticalAlign: 'top',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontSize: 12
+    },
+    tr: {
+        cursor: 'pointer',
+        transition: 'background 0.15s ease'
+    },
+    sub: { marginTop: 4, color: 'var(--csp-muted)', fontSize: 12, lineHeight: 1.35 },
+    table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
 }
 
 const badgeBase: React.CSSProperties = {
@@ -662,4 +638,3 @@ const badgeStyles: Record<string, React.CSSProperties> = {
   cancelled: { ...badgeBase, border: '1px solid rgba(220, 38, 38, 0.35)', background: 'rgba(220, 38, 38, 0.10)', color: 'rgb(185, 28, 28)' },
   default: badgeBase,
 }
-
