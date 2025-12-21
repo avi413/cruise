@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
+import { useTranslation, Trans } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, TwoCol } from '../components/ui'
 
@@ -286,6 +287,7 @@ function buildImportPreview(fileName: string, wb: XLSX.WorkBook): ImportPreview 
 }
 
 export function ItinerariesPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [items, setItems] = useState<Itinerary[]>([])
   const [ports, setPorts] = useState<Port[]>([])
   const [busy, setBusy] = useState(false)
@@ -469,7 +471,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
   }
 
   async function deleteItinerary() {
-    if (!selectedId || !confirm('Are you sure you want to delete this itinerary?')) return
+    if (!selectedId || !confirm(t('itineraries.details.confirm_delete'))) return
     setBusy(true)
     setErr(null)
     try {
@@ -613,7 +615,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
     if (importPreview.errors.length) return
     const its = importPreview.itineraries.filter((x) => x.stops.length)
     if (!its.length) {
-      setErr('Nothing to import (no itineraries with stops).')
+      setErr(t('itineraries.import.nothing_to_import'))
       return
     }
     setBusy(true)
@@ -645,23 +647,23 @@ export function ItinerariesPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Itineraries"
-        subtitle="Manage reusable itineraries (multilingual titles + day-by-day port/sea plan). Import from Excel, create new ones, and preview/compute dates."
+        title={t('itineraries.title')}
+        subtitle={t('itineraries.subtitle')}
         right={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={segWrap}>
               <button style={view === 'list' ? segActive : segBtn} onClick={() => setView('list')} disabled={busy}>
-                List
+                {t('itineraries.actions.list')}
               </button>
               <button style={view === 'create' ? segActive : segBtn} onClick={() => setView('create')} disabled={busy}>
-                New
+                {t('itineraries.actions.new')}
               </button>
               <button style={view === 'import' ? segActive : segBtn} onClick={() => setView('import')} disabled={busy}>
-                Import
+                {t('itineraries.actions.import')}
               </button>
             </div>
             <Button variant="secondary" disabled={busy} onClick={() => void refresh()}>
-              Refresh
+              {t('itineraries.actions.refresh')}
             </Button>
           </div>
         }
@@ -672,17 +674,17 @@ export function ItinerariesPage(props: { apiBase: string }) {
       <TwoCol
         left={
           view === 'create' || view === 'edit' ? (
-            <Panel title={view === 'create' ? 'New itinerary' : 'Edit itinerary'}
-              subtitle={view === 'create' ? 'Tip: start with titles (he/en), then add day-by-day stops.' : 'Update details and stops.'}
+            <Panel title={view === 'create' ? t('itineraries.form.title_new') : t('itineraries.form.title_edit')}
+              subtitle={view === 'create' ? t('itineraries.form.subtitle_new') : t('itineraries.form.subtitle_edit')}
             >
               <div style={{ display: 'grid', gap: 10 }}>
-                <Input label="Itinerary code (optional)" value={code} onChange={(e) => setCode(e.target.value)} placeholder="GREEK-7N" />
+                <Input label={t('itineraries.form.code_label')} value={code} onChange={(e) => setCode(e.target.value)} placeholder="GREEK-7N" />
                 <Input
-                  label="Map image URL"
+                  label={t('itineraries.form.map_label')}
                   value={mapImageUrl}
                   onChange={(e) => setMapImageUrl(e.target.value)}
                   placeholder="https://cdn.example.com/itineraries/greek-7n/map.jpg"
-                  hint="Required. This is the itinerary overview route/map image."
+                  hint={t('itineraries.form.map_hint')}
                 />
                 <Button
                   variant="primary"
@@ -696,17 +698,17 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   // UPDATE ONCLICK AND LABEL:
                   onClick={() => (view === 'create' ? void createItinerary() : void updateItinerary())}
                 >
-                  {busy ? 'Saving…' : view === 'create' ? 'Create itinerary' : 'Save changes'}
+                  {busy ? t('itineraries.form.btn_saving') : view === 'create' ? t('itineraries.form.btn_create') : t('itineraries.form.btn_save')}
                 </Button>
-                <Panel title="Titles" subtitle="Only he + en are supported for itinerary titles.">
+                <Panel title={t('itineraries.form.titles_title')} subtitle={t('itineraries.form.titles_subtitle')}>
                   <div style={{ display: 'grid', gap: 10 }}>
-                    {titles.map((t, idx) => (
+                    {titles.map((tRow, idx) => (
                       <div key={idx} style={{ display: 'grid', gap: 8 }}>
                         <Input
-                          label={`Title (${t.lang})`}
-                          value={t.text}
+                          label={t('itineraries.form.title_lang', { lang: tRow.lang })}
+                          value={tRow.text}
                           onChange={(e) => setTitleRow(idx, { text: e.target.value })}
-                          placeholder={t.lang === 'he' ? 'איי יוון' : 'Greek Isles'}
+                          placeholder={tRow.lang === 'he' ? 'איי יוון' : 'Greek Isles'}
                         />
                       </div>
                     ))}
@@ -714,15 +716,15 @@ export function ItinerariesPage(props: { apiBase: string }) {
                 </Panel>
 
                 <Panel
-                  title={`Stops (${stops.length} days)`}
-                  subtitle="Day offsets are saved contiguously starting at 0. Port days require port code and image URL."
+                  title={t('itineraries.form.stops_title', { count: stops.length })}
+                  subtitle={t('itineraries.form.stops_subtitle')}
                   right={
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <Button variant="secondary" disabled={busy} onClick={() => addStop('port')}>
-                        Add port day
+                        {t('itineraries.form.btn_add_port')}
                       </Button>
                       <Button variant="secondary" disabled={busy} onClick={() => addStop('sea')}>
-                        Add sea day
+                        {t('itineraries.form.btn_add_sea')}
                       </Button>
                     </div>
                   }
@@ -732,16 +734,18 @@ export function ItinerariesPage(props: { apiBase: string }) {
                       <div key={`${s.day_offset}-${idx}`} style={{ border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, padding: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
                           <div style={{ fontWeight: 900 }}>
-                            Day <Mono>{s.day_offset + 1}</Mono> · <Mono>{s.kind}</Mono>
+                            <Trans i18nKey="itineraries.form.stop_day_kind" values={{ day: s.day_offset + 1, kind: s.kind }}>
+                                Day <Mono>{s.day_offset + 1}</Mono> · <Mono>{s.kind}</Mono>
+                            </Trans>
                           </div>
                           <Button variant="danger" disabled={busy || stops.length <= 1} onClick={() => removeStop(idx)}>
-                            Remove day
+                            {t('itineraries.form.btn_remove_day')}
                           </Button>
                         </div>
 
                         <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
                           <Select
-                            label="Kind"
+                            label={t('itineraries.form.stop_kind')}
                             value={s.kind}
                             onChange={(e) => {
                               const kind = e.target.value as 'port' | 'sea'
@@ -752,12 +756,12 @@ export function ItinerariesPage(props: { apiBase: string }) {
                               }
                             }}
                           >
-                            <option value="port">port</option>
-                            <option value="sea">sea</option>
+                            <option value="port">{t('itineraries.form.kind_port')}</option>
+                            <option value="sea">{t('itineraries.form.kind_sea')}</option>
                           </Select>
 
                           <Input
-                            label="Image URL"
+                            label={t('itineraries.form.stop_image')}
                             value={s.image_url || ''}
                             onChange={(e) => setStop(idx, { image_url: e.target.value })}
                             placeholder="https://cdn.example.com/itineraries/day1.jpg"
@@ -767,10 +771,10 @@ export function ItinerariesPage(props: { apiBase: string }) {
                             <div style={{ display: 'grid', gap: 10 }}>
                               {ports.length ? (
                                 <Select
-                                  label="Port"
+                                  label={t('itineraries.form.stop_port')}
                                   value={String(s.port_code || '')}
                                   onChange={(e) => setStop(idx, { port_code: e.target.value, port_name: null })}
-                                  hint="Pick a managed port code (localized name/city/country come from Ports screen)."
+                                  hint={t('itineraries.form.port_hint_picker')}
                                 >
                                   <option value="">(select)</option>
                                   {ports.map((p) => (
@@ -781,23 +785,23 @@ export function ItinerariesPage(props: { apiBase: string }) {
                                 </Select>
                               ) : (
                                 <Input
-                                  label="Port code"
+                                  label={t('itineraries.form.stop_port_code')}
                                   value={String(s.port_code || '')}
                                   onChange={(e) => setStop(idx, { port_code: e.target.value, port_name: null })}
                                   placeholder="ATH"
-                                  hint="No managed ports yet. Create ports first to enable the picker."
+                                  hint={t('itineraries.form.port_hint_manual')}
                                 />
                               )}
 
                               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                 <Input
-                                  label="Arrival time (HH:MM)"
+                                  label={t('itineraries.form.stop_arrival')}
                                   value={String(s.arrival_time || '')}
                                   onChange={(e) => setStop(idx, { arrival_time: e.target.value })}
                                   placeholder="08:00"
                                 />
                                 <Input
-                                  label="Departure time (HH:MM)"
+                                  label={t('itineraries.form.stop_departure')}
                                   value={String(s.departure_time || '')}
                                   onChange={(e) => setStop(idx, { departure_time: e.target.value })}
                                   placeholder="18:00"
@@ -805,18 +809,18 @@ export function ItinerariesPage(props: { apiBase: string }) {
                               </div>
                             </div>
                           ) : (
-                            <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.35 }}>Sea day: no port code/time fields.</div>
+                            <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.35 }}>{t('itineraries.form.sea_day_note')}</div>
                           )}
 
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                             <Input
-                              label="Label (he) (optional)"
+                              label={t('itineraries.form.stop_label_he')}
                               value={String(s.labels?.he || '')}
                               onChange={(e) => setStop(idx, { labels: { ...(s.labels || {}), he: e.target.value } })}
                               placeholder={s.kind === 'sea' ? 'יום ים' : 'עלייה / ירידה'}
                             />
                             <Input
-                              label="Label (en) (optional)"
+                              label={t('itineraries.form.stop_label_en')}
                               value={String(s.labels?.en || '')}
                               onChange={(e) => setStop(idx, { labels: { ...(s.labels || {}), en: e.target.value } })}
                               placeholder={s.kind === 'sea' ? 'Sea day' : 'Embark / Debark'}
@@ -839,16 +843,16 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   }
                   onClick={() => void createItinerary()}
                 >
-                  {busy ? 'Saving…' : 'Create itinerary'}
+                  {busy ? t('itineraries.form.btn_saving') : t('itineraries.form.btn_create')}
                 </Button>
               </div>
             </Panel>
           ) : view === 'import' ? (
-            <Panel title="Import from Excel" subtitle="Download the template, fill it out, then upload to create itineraries in bulk.">
+            <Panel title={t('itineraries.import.title')} subtitle={t('itineraries.import.subtitle')}>
               <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Button variant="secondary" disabled={busy} onClick={downloadImportTemplate}>
-                    Download template
+                    {t('itineraries.import.btn_template')}
                   </Button>
                   <Button
                     variant="secondary"
@@ -857,7 +861,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                       if (fileRef.current) fileRef.current.click()
                     }}
                   >
-                    Choose file…
+                    {t('itineraries.import.btn_choose')}
                   </Button>
                   <input
                     ref={fileRef}
@@ -869,27 +873,32 @@ export function ItinerariesPage(props: { apiBase: string }) {
                 </div>
 
                 <div style={{ color: 'rgba(230,237,243,0.70)', fontSize: 12, lineHeight: 1.45 }}>
-                  Sheets required: <Mono>itineraries</Mono> and <Mono>stops</Mono>. Default languages are <Mono>he</Mono> + <Mono>en</Mono>.
+                    <Trans i18nKey="itineraries.import.note">
+                        Sheets required: <Mono>itineraries</Mono> and <Mono>stops</Mono>. Default languages are <Mono>he</Mono> + <Mono>en</Mono>.
+                    </Trans>
                 </div>
 
                 {importPreview ? (
                   <Panel
-                    title={`Preview: ${importPreview.fileName}`}
-                    subtitle={`${importPreview.itineraries.length} itineraries parsed · ${importPreview.errors.length} errors · ${importPreview.warnings.length} warnings`}
+                    title={t('itineraries.import.preview_title', { fileName: importPreview.fileName })}
+                    subtitle={t('itineraries.import.preview_subtitle', {
+                        count: importPreview.itineraries.length,
+                        errors: importPreview.errors.length,
+                        warnings: importPreview.warnings.length
+                    })}
                     right={
                       <Button variant="primary" disabled={busy || importPreview.errors.length > 0} onClick={() => void runImport()}>
-                        {busy ? 'Importing…' : 'Import'}
+                        {busy ? t('itineraries.import.btn_importing') : t('itineraries.import.btn_import')}
                       </Button>
                     }
                   >
                     <div style={{ display: 'grid', gap: 10 }}>
                       {importProgress ? (
                         <div style={{ fontSize: 13 }}>
-                          Progress: <Mono>{importProgress.done}</Mono>/<Mono>{importProgress.total}</Mono>
+                          {t('itineraries.import.progress', { done: importProgress.done, total: importProgress.total })}
                           {importProgress.current ? (
                             <span>
-                              {' '}
-                              · current: <Mono>{importProgress.current}</Mono>
+                                {t('itineraries.import.progress_current', { current: importProgress.current })}
                             </span>
                           ) : null}
                         </div>
@@ -913,9 +922,9 @@ export function ItinerariesPage(props: { apiBase: string }) {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                           <thead>
                             <tr>
-                              <th style={th}>Code</th>
-                              <th style={th}>Title (he/en)</th>
-                              <th style={th}>Days</th>
+                              <th style={th}>{t('itineraries.import.th_code')}</th>
+                              <th style={th}>{t('itineraries.import.th_title')}</th>
+                              <th style={th}>{t('itineraries.import.th_days')}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -938,7 +947,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                             {importPreview.itineraries.length > 50 ? (
                               <tr>
                                 <td colSpan={3} style={tdMuted}>
-                                  Showing first 50.
+                                    {t('itineraries.import.showing_first', { count: 50 })}
                                 </td>
                               </tr>
                             ) : null}
@@ -948,24 +957,24 @@ export function ItinerariesPage(props: { apiBase: string }) {
                     </div>
                   </Panel>
                 ) : (
-                  <div style={{ color: 'rgba(230,237,243,0.60)' }}>Upload an Excel file to see a preview.</div>
+                  <div style={{ color: 'rgba(230,237,243,0.60)' }}>{t('itineraries.import.empty_preview')}</div>
                 )}
               </div>
             </Panel>
           ) : (
-            <Panel title="List" subtitle="Search and select an itinerary to see details on the right.">
+            <Panel title={t('itineraries.list.panel_title')} subtitle={t('itineraries.list.panel_subtitle')}>
               <div style={{ display: 'grid', gap: 10 }}>
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by code / title / ports / id…" />
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('itineraries.list.search_placeholder')} />
                 <div style={{ overflow: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr>
-                        <th style={th}>Code</th>
-                        <th style={th}>Map</th>
-                        <th style={th}>Title</th>
-                        <th style={th}>Days</th>
-                        <th style={th}>Ports</th>
-                        <th style={th}>Updated</th>
+                        <th style={th}>{t('itineraries.list.th_code')}</th>
+                        <th style={th}>{t('itineraries.list.th_map')}</th>
+                        <th style={th}>{t('itineraries.list.th_title')}</th>
+                        <th style={th}>{t('itineraries.list.th_days')}</th>
+                        <th style={th}>{t('itineraries.list.th_ports')}</th>
+                        <th style={th}>{t('itineraries.list.th_updated')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1012,7 +1021,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                       {filtered.length === 0 ? (
                         <tr>
                           <td colSpan={6} style={tdMuted}>
-                            No itineraries match your search.
+                            {t('itineraries.list.empty_search')}
                           </td>
                         </tr>
                       ) : null}
@@ -1021,10 +1030,10 @@ export function ItinerariesPage(props: { apiBase: string }) {
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Button variant="primary" disabled={busy} onClick={() => setView('create')}>
-                    New itinerary
+                    {t('itineraries.list.btn_new')}
                   </Button>
                   <Button variant="secondary" disabled={busy} onClick={() => setView('import')}>
-                    Import from Excel
+                    {t('itineraries.list.btn_import')}
                   </Button>
                 </div>
               </div>
@@ -1033,7 +1042,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
         }
         right={
           <div style={{ display: 'grid', gap: 12 }}>
-            <Panel title={`Existing itineraries (${items.length})`} subtitle="Select one to compute dates or to use when creating sailings.">
+            <Panel title={t('itineraries.details.panel_title', { count: items.length })} subtitle={t('itineraries.details.panel_subtitle')}>
               <div style={{ display: 'grid', gap: 10 }}>
                 <Select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
                   {items.map((i) => (
@@ -1046,21 +1055,21 @@ export function ItinerariesPage(props: { apiBase: string }) {
             </Panel>
 
             <Panel
-              title={selectedItinerary ? 'Details' : 'Details'}
-              subtitle={selectedItinerary ? 'Preview stops and compute end date for a given start date.' : 'Select an itinerary from the list to see details.'}
+              title={selectedItinerary ? t('itineraries.details.sub_title') : t('itineraries.details.sub_title')}
+              subtitle={selectedItinerary ? t('itineraries.details.sub_subtitle_selected') : t('itineraries.details.sub_subtitle_none')}
               right={
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {selectedItinerary ? (
                     <>
                       <Button variant="secondary" disabled={busy} onClick={startEdit}>
-                        Edit
+                        {t('itineraries.details.btn_edit')}
                       </Button>
                       <Button variant="danger" disabled={busy} onClick={() => void deleteItinerary()}>
-                        Delete
+                        {t('itineraries.details.btn_delete')}
                       </Button>
                     </>
                   ) : null}
-                  <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
+                  <Select label={t('itineraries.details.display_lang')} value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
                     <option value="he">he</option>
                     <option value="en">en</option>
                   </Select>
@@ -1081,41 +1090,41 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   ) : null}
                   <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
                     <div>
-                      Code: <Mono>{String(selectedItinerary.code || '—')}</Mono>
+                      {t('itineraries.details.label_code')}: <Mono>{String(selectedItinerary.code || '—')}</Mono>
                     </div>
                     <div>
-                      Title: <Mono>{pickTitle(selectedItinerary.titles, preferred)}</Mono>
+                      {t('itineraries.details.label_title')}: <Mono>{pickTitle(selectedItinerary.titles, preferred)}</Mono>
                     </div>
                     <div>
-                      Map image: <Mono>{String(selectedItinerary.map_image_url || '—')}</Mono>
+                      {t('itineraries.details.label_map')}: <Mono>{String(selectedItinerary.map_image_url || '—')}</Mono>
                     </div>
                     <div>
-                      Id: <Mono>{selectedItinerary.id}</Mono>
+                      {t('itineraries.details.label_id')}: <Mono>{selectedItinerary.id}</Mono>
                     </div>
                     <div>
-                      Updated: <Mono>{String(selectedItinerary.updated_at || '—')}</Mono>
+                      {t('itineraries.details.label_updated')}: <Mono>{String(selectedItinerary.updated_at || '—')}</Mono>
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
-                    <Input label="Compute end date from start date" type="date" value={computeStartDate} onChange={(e) => setComputeStartDate(e.target.value)} />
+                    <Input label={t('itineraries.details.compute_label')} type="date" value={computeStartDate} onChange={(e) => setComputeStartDate(e.target.value)} />
                     <Button variant="primary" disabled={busy || !selectedId || !computeStartDate} onClick={() => void computeDates()}>
-                      Compute
+                      {t('itineraries.details.compute_btn')}
                     </Button>
                   </div>
 
                   {computed ? (
                     <div style={{ display: 'grid', gap: 6, fontSize: 13 }}>
                       <div>
-                        End date: <Mono>{computed.end_date}</Mono>
+                        {t('itineraries.details.computed_end')}: <Mono>{computed.end_date}</Mono>
                       </div>
                       <div>
-                        Nights: <Mono>{computed.nights}</Mono> · Days: <Mono>{computed.days}</Mono>
+                        {t('itineraries.details.computed_nights')}: <Mono>{computed.nights}</Mono> · {t('itineraries.details.computed_days')}: <Mono>{computed.days}</Mono>
                       </div>
                     </div>
                   ) : null}
 
-                  <Panel title="Stops preview" subtitle="Ports are resolved via Ports screen by port code.">
+                  <Panel title={t('itineraries.details.stops_title')} subtitle={t('itineraries.details.stops_subtitle')}>
                     <div style={{ display: 'grid', gap: 8 }}>
                       {(selectedItinerary.stops || []).map((s, idx) => (
                         <div
@@ -1139,7 +1148,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                               {s.kind === 'port' ? (
                                 <span style={{ marginLeft: 8 }}>{portDisplayForCode(s.port_code) || '—'}</span>
                               ) : (
-                                <span style={{ marginLeft: 8, color: 'rgba(230,237,243,0.70)' }}>Sea day</span>
+                                <span style={{ marginLeft: 8, color: 'rgba(230,237,243,0.70)' }}>{t('itineraries.stops.sea_day', { defaultValue: 'Sea day' })}</span>
                               )}
                             </div>
                             {s.kind === 'port' ? (
@@ -1155,12 +1164,12 @@ export function ItinerariesPage(props: { apiBase: string }) {
                           </div>
                         </div>
                       ))}
-                      {(!selectedItinerary.stops || selectedItinerary.stops.length === 0) ? <div style={{ color: 'rgba(230,237,243,0.60)' }}>No stops.</div> : null}
+                      {(!selectedItinerary.stops || selectedItinerary.stops.length === 0) ? <div style={{ color: 'rgba(230,237,243,0.60)' }}>{t('itineraries.details.no_stops')}</div> : null}
                     </div>
                   </Panel>
                 </div>
               ) : (
-                <div style={{ color: 'rgba(230,237,243,0.60)' }}>Select an itinerary to preview stops and compute dates.</div>
+                <div style={{ color: 'rgba(230,237,243,0.60)' }}>{t('itineraries.details.sub_subtitle_none')}</div>
               )}
             </Panel>
           </div>
@@ -1210,4 +1219,3 @@ const segActive: React.CSSProperties = {
   cursor: 'pointer',
   fontWeight: 900,
 }
-
