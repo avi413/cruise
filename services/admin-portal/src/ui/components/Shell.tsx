@@ -167,17 +167,19 @@ export function Shell(props: { apiBase: string }) {
 
         <div style={styles.topbarBrand} onClick={() => nav('/app/dashboard')} role="button" tabIndex={0} title="Go to dashboard">
           <span style={styles.logo} aria-hidden />
-          <div style={{ display: 'grid', lineHeight: 1.1 }}>
-            <div style={styles.brandTitle}>{String((getComputedStyle(document.documentElement).getPropertyValue('--csp-display-name') || '').trim() || 'Cruise Operations Portal')}</div>
-            <div style={styles.brandSub}>{company ? `${company.name} (${company.code})` : 'No company selected'}</div>
-          </div>
+          {!isNarrow && (
+            <div style={{ display: 'grid', lineHeight: 1.1 }}>
+              <div style={styles.brandTitle}>{String((getComputedStyle(document.documentElement).getPropertyValue('--csp-display-name') || '').trim() || 'Cruise Operations Portal')}</div>
+              <div style={styles.brandSub}>{company ? `${company.name} (${company.code})` : 'No company selected'}</div>
+            </div>
+          )}
         </div>
 
         <div style={styles.topbarSearchWrap}>
           <button style={styles.searchBtn} onClick={() => setPaletteOpen(true)} title="Search (Ctrl+K)">
             <Icon name="search" />
-            <span style={{ fontWeight: 800, opacity: 0.9 }}>Search…</span>
-            <span style={styles.kbd}>Ctrl K</span>
+            {!isNarrow && <span style={{ fontWeight: 800, opacity: 0.9 }}>Search…</span>}
+            {!isNarrow && <span style={styles.kbd}>Ctrl K</span>}
           </button>
         </div>
 
@@ -188,12 +190,16 @@ export function Shell(props: { apiBase: string }) {
           <Link to={`${props.apiBase}/docs`} target="_blank" style={styles.iconBtnLink} title="API docs">
             <Icon name="book" />
           </Link>
-          <button style={styles.primaryBtn} onClick={switchCompany} title="Switch company">
-            Switch
-          </button>
-          <button style={styles.dangerBtnSmall} onClick={logout} title="Sign out">
-            Sign out
-          </button>
+          {!isNarrow && (
+            <>
+              <button style={styles.primaryBtn} onClick={switchCompany} title="Switch company">
+                Switch
+              </button>
+              <button style={styles.dangerBtnSmall} onClick={logout} title="Sign out">
+                Sign out
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -261,6 +267,17 @@ export function Shell(props: { apiBase: string }) {
               <div style={styles.muted}>Company: {company ? `${company.code}` : '—'}</div>
             </div>
           ) : null}
+
+          {isNarrow && (
+            <div style={{ marginTop: 20, display: 'grid', gap: 10 }}>
+              <button style={styles.secondaryBtnFull} onClick={switchCompany}>
+                Switch Company
+              </button>
+              <button style={{ ...styles.dangerBtnSmall, width: '100%', justifyContent: 'center', display: 'flex' }} onClick={logout}>
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
