@@ -1728,25 +1728,29 @@ def get_translation_bundle(
     tenant_engine=Depends(get_tenant_engine),
 ):
     with session(tenant_engine) as s:
-        # Try exact match
-        rows = s.query(Translation).filter(
-            Translation.lang == lang,
+        # 1. Always load 'en' (base) for this namespace to ensure we have defaults
+        #    This implements "fall back to English for missing keys" server-side.
+        base_rows = s.query(Translation).filter(
+            Translation.lang == 'en',
             Translation.namespace == namespace
         ).all()
-        
-        # Fallback logic: if empty and lang has region (e.g. en-US), try base lang (e.g. en)
-        if not rows and "-" in lang:
-            base_lang = lang.split("-")[0]
-            rows = s.query(Translation).filter(
-                Translation.lang == base_lang,
+        base_map = {r.key: r.value for r in base_rows}
+
+        # 2. If requested lang is not 'en', load it and merge over base
+        if lang != 'en':
+            target_rows = s.query(Translation).filter(
+                Translation.lang == lang,
                 Translation.namespace == namespace
             ).all()
+            for r in target_rows:
+                base_map[r.key] = r.value
             
-    flat = {r.key: r.value for r in rows}
+            # If target was empty and had region (e.g. en-US), try base of target (e.g. en)
+            # (Skipping complex chain, just sticking to en-base + target-specific)
     
-    # Unflatten to support nested keys in i18next
+    # 3. Unflatten
     result = {}
-    for key, value in flat.items():
+    for key, value in base_map.items():
         parts = key.split(".")
         d = result
         for part in parts[:-1]:
