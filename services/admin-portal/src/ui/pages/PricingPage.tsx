@@ -88,7 +88,7 @@ export function PricingPage(props: { apiBase: string }) {
   const [priceCats, setPriceCats] = useState<PriceCategory[]>([])
   const [newCatCode, setNewCatCode] = useState('internet')
   const [newCatParentCode, setNewCatParentCode] = useState<string>('')
-  const [newCatNameJson, setNewCatNameJson] = useState('{"en":"Internet"}')
+  const [newCatName, setNewCatName] = useState('Internet')
   const [newCatDescJson, setNewCatDescJson] = useState('{"en":"Online-only pricing"}')
   const [newCatChannelsRaw, setNewCatChannelsRaw] = useState('website, api, mobile_app')
   const [newCatRoomSelIncluded, setNewCatRoomSelIncluded] = useState(false)
@@ -334,7 +334,7 @@ export function PricingPage(props: { apiBase: string }) {
           enabled_channels: parseChannels(newCatChannelsRaw),
           room_selection_included: newCatRoomSelIncluded,
           room_category_only: newCatRoomCatOnly,
-          name_i18n: safeJsonObj(newCatNameJson),
+          name_i18n: { en: newCatName },
           description_i18n: safeJsonObj(newCatDescJson),
           company_id: companyId,
         },
@@ -719,8 +719,12 @@ export function PricingPage(props: { apiBase: string }) {
               >
                 <div style={{ display: 'grid', gap: 10 }}>
                   <TwoCol
-                    left={<Input label="Code" value={newCatCode} onChange={(e) => setNewCatCode(e.target.value)} placeholder="internet" disabled={busy} />}
-                    right={
+                    left={<Input label="Code" value={newCatCode} onChange={(e) => setNewCatCode(e.target.value.toUpperCase())} placeholder="internet" disabled={busy} />}
+                    right={<Input label="Name" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Internet" disabled={busy} />}
+                  />
+
+                  <TwoCol
+                    left={
                       <Select label="Parent (optional)" value={newCatParentCode} onChange={(e) => setNewCatParentCode(e.target.value)} disabled={busy}>
                         <option value="">(none)</option>
                         {(priceCats || [])
@@ -733,27 +737,23 @@ export function PricingPage(props: { apiBase: string }) {
                           ))}
                       </Select>
                     }
-                  />
-
-                  <Input
-                    label="Enabled channels (comma-separated)"
-                    value={newCatChannelsRaw}
-                    onChange={(e) => setNewCatChannelsRaw(e.target.value)}
-                    placeholder="website, agent, api"
-                    disabled={busy}
-                  />
-
-                  <TwoCol
-                    left={<TextArea label="Name i18n (JSON)" value={newCatNameJson} onChange={(e) => setNewCatNameJson(e.target.value)} rows={3} disabled={busy} />}
                     right={
-                      <TextArea
-                        label="Description i18n (JSON)"
-                        value={newCatDescJson}
-                        onChange={(e) => setNewCatDescJson(e.target.value)}
-                        rows={3}
+                      <Input
+                        label="Enabled channels (comma-separated)"
+                        value={newCatChannelsRaw}
+                        onChange={(e) => setNewCatChannelsRaw(e.target.value)}
+                        placeholder="website, agent, api"
                         disabled={busy}
                       />
                     }
+                  />
+
+                  <TextArea
+                    label="Description i18n (JSON)"
+                    value={newCatDescJson}
+                    onChange={(e) => setNewCatDescJson(e.target.value)}
+                    rows={3}
+                    disabled={busy}
                   />
 
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
