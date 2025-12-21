@@ -3,8 +3,10 @@ import urllib.request
 import urllib.error
 import time
 
-# Default to edge-api URL, can be overridden if needed
-API_URL = "http://localhost:8000/v1/translations"
+# Base URL for the API
+BASE_URL = "http://localhost:8000"
+TRANSLATIONS_URL = f"{BASE_URL}/v1/translations"
+LOGIN_URL = f"{BASE_URL}/v1/platform/login"
 
 TRANSLATIONS = {
     "en": {
@@ -45,10 +47,46 @@ TRANSLATIONS = {
     }
 }
 
+def get_token():
+    print(f"Logging in to {LOGIN_URL}...")
+    data = {
+        "email": "admin@platform.local",
+        "password": "admin"
+    }
+    req = urllib.request.Request(
+        LOGIN_URL,
+        data=json.dumps(data).encode('utf-8'),
+        headers={'Content-Type': 'application/json', 'User-Agent': 'seed-script'}
+    )
+    try:
+        with urllib.request.urlopen(req) as f:
+            resp = json.loads(f.read().decode('utf-8'))
+            return resp.get('access_token')
+    except urllib.error.URLError as e:
+        print(f"Login failed: {e}")
+        try:
+            # Try to read error body if possible
+             if hasattr(e, 'read'):
+                print(e.read().decode('utf-8'))
+        except:
+            pass
+        return None
+
 def seed():
-    print(f"Seeding translations to {API_URL}...")
+    token = get_token()
+    if not token:
+        print("Cannot seed without authentication.")
+        return
+
+    print(f"Seeding translations to {TRANSLATIONS_URL}...")
     count = 0
     errors = 0
+    headers = {
+        'Content-Type': 'application/json', 
+        'User-Agent': 'seed-script',
+        'Authorization': f'Bearer {token}'
+    }
+
     for lang, items in TRANSLATIONS.items():
         for key, value in items.items():
             data = {
@@ -58,9 +96,9 @@ def seed():
                 "value": value
             }
             req = urllib.request.Request(
-                API_URL, 
+                TRANSLATIONS_URL, 
                 data=json.dumps(data).encode('utf-8'),
-                headers={'Content-Type': 'application/json', 'User-Agent': 'seed-script'}
+                headers=headers
             )
             try:
                 with urllib.request.urlopen(req) as f:
