@@ -108,7 +108,7 @@ export function FleetCabinsPage(props: { apiBase: string }) {
     const r = await apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
     setFleet(r)
     setShipId((prev) => {
-      const next = prev && r.items.some((s) => s.id === prev) ? prev : r.items[0]?.id || ''
+      const next = prev && r.some((s) => s.id === prev) ? prev : r[0]?.id || ''
       setSelectedShipId(next)
       return next
     })

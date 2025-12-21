@@ -87,8 +87,8 @@ export function FleetPage(props: { apiBase: string }) {
         setFleet(r)
         // Keep selection stable if possible; otherwise default to first ship (or clear).
         setShipId((prev) => {
-          if (prev && r.items.some((s) => s.id === prev)) return prev
-          return r.items[0]?.id || ''
+          if (prev && r.some((s) => s.id === prev)) return prev
+          return r[0]?.id || ''
         })
       })
       .catch((e) => setErr(String(e?.message || e)))
