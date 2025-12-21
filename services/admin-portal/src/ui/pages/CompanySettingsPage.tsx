@@ -385,7 +385,7 @@ export function CompanySettingsPage(props: { apiBase: string }) {
                 <option value="#ff7b72">#ff7b72 (coral)</option>
               </Select>
 
-              <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.45 }}>
+              <div style={{ color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.45 }}>
                 Saved settings are stored per company and are applied instantly in the UI. Next step is to use these values for localized master data (ports/cabins/tours/etc.)
                 and outbound email templates.
               </div>
