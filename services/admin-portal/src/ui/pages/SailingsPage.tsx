@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../components/ui'
@@ -59,6 +60,7 @@ function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: (
 }
 
 export function SailingsPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const company = getCompany()
 
   const [items, setItems] = useState<Sailing[]>([])
@@ -175,6 +177,7 @@ export function SailingsPage(props: { apiBase: string }) {
         },
         auth: true,
         tenant: false,
+        tenant: false,
       })
       setNewFromItineraryCode('')
       setNewFromItineraryShipId('')
@@ -281,24 +284,24 @@ export function SailingsPage(props: { apiBase: string }) {
                 <Input 
                     value={q} 
                     onChange={(e) => setQ(e.target.value)} 
-                    placeholder="Search sailings by code, ship, itinerary..." 
+                    placeholder={t('sailings.search_placeholder')}
                     style={{ width: '100%', maxWidth: 400 }}
                 />
             </div>
-            <Button variant="primary" onClick={() => setView('create')}>New Sailing</Button>
-            <Button variant="secondary" onClick={() => void refresh()}>Refresh</Button>
+            <Button variant="primary" onClick={() => setView('create')}>{t('sailings.new_sailing')}</Button>
+            <Button variant="secondary" onClick={() => void refresh()}>{t('sailings.refresh')}</Button>
         </div>
 
         <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                     <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
-                        <th style={styles.th}>Sailing</th>
-                        <th style={styles.th}>Dates</th>
-                        <th style={styles.th}>Ports</th>
-                        <th style={styles.th}>Ship</th>
-                        <th style={styles.th}>Itinerary</th>
-                        <th style={styles.th}>Status</th>
+                        <th style={styles.th}>{t('sailings.table_sailing')}</th>
+                        <th style={styles.th}>{t('sailings.table_dates')}</th>
+                        <th style={styles.th}>{t('sailings.table_ports')}</th>
+                        <th style={styles.th}>{t('sailings.table_ship')}</th>
+                        <th style={styles.th}>{t('sailings.table_itinerary')}</th>
+                        <th style={styles.th}>{t('sailings.table_status')}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -314,7 +317,7 @@ export function SailingsPage(props: { apiBase: string }) {
                             >
                                 <td style={styles.td}>
                                     <div style={{ fontWeight: 900 }}>{s.code || '—'}</div>
-                                    <div style={styles.sub}>id <Mono>{sid}</Mono></div>
+                                    <div style={styles.sub}>{t('sailings.label_id')} <Mono>{sid}</Mono></div>
                                 </td>
                                 <td style={styles.tdMono}>
                                     {String(s.start_date || '—')} → {String(s.end_date || '—')}
@@ -328,7 +331,7 @@ export function SailingsPage(props: { apiBase: string }) {
                                 </td>
                                 <td style={styles.td}>
                                     <div style={{ fontWeight: 800 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</div>
-                                    <div style={styles.sub}>id <Mono>{String(s.itinerary_id || '—')}</Mono></div>
+                                    <div style={styles.sub}>{t('sailings.label_id')} <Mono>{String(s.itinerary_id || '—')}</Mono></div>
                                 </td>
                                 <td style={styles.td}>
                                     <span style={badgeStyles[s.status as keyof typeof badgeStyles] || badgeStyles.default}>{s.status}</span>
@@ -339,7 +342,7 @@ export function SailingsPage(props: { apiBase: string }) {
                     {filtered.length === 0 && (
                         <tr>
                             <td colSpan={6} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
-                                No sailings found.
+                                {t('sailings.no_results')}
                             </td>
                         </tr>
                     )}
@@ -353,29 +356,29 @@ export function SailingsPage(props: { apiBase: string }) {
   function renderCreate() {
     return (
         <Panel 
-            title="Create Sailing" 
-            subtitle="Create a new sailing from an existing itinerary."
-            right={<Button variant="secondary" onClick={() => setView('list')}>Cancel</Button>}
+            title={t('sailings.create_title')}
+            subtitle={t('sailings.create_subtitle')}
+            right={<Button variant="secondary" onClick={() => setView('list')}>{t('common.cancel')}</Button>}
         >
             <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
-                <Select label="Itinerary" value={newFromItineraryId} onChange={(e) => setNewFromItineraryId(e.target.value)}>
+                <Select label={t('sailings.label_itinerary')} value={newFromItineraryId} onChange={(e) => setNewFromItineraryId(e.target.value)}>
                     {itineraries.map((i) => (
                         <option key={i.id} value={i.id}>
                         {(i.code || i.id).slice(0, 16)} · {pickTitle(i.titles, ['en', 'ar'])}
                         </option>
                     ))}
-                    {itineraries.length === 0 ? <option value="">(no itineraries)</option> : null}
+                    {itineraries.length === 0 ? <option value="">{t('sailings.no_itineraries')}</option> : null}
                 </Select>
-                <Input label="Sailing code" value={newFromItineraryCode} onChange={(e) => setNewFromItineraryCode(e.target.value)} placeholder="S-2026-07-01-A" />
-                <Select label="Ship" value={newFromItineraryShipId} onChange={(e) => setNewFromItineraryShipId(e.target.value)}>
-                    <option value="">(select)</option>
+                <Input label={t('sailings.label_code')} value={newFromItineraryCode} onChange={(e) => setNewFromItineraryCode(e.target.value)} placeholder="S-2026-07-01-A" />
+                <Select label={t('sailings.label_ship')} value={newFromItineraryShipId} onChange={(e) => setNewFromItineraryShipId(e.target.value)}>
+                    <option value="">{t('sailings.select_placeholder')}</option>
                     {ships.map((s) => (
                         <option key={s.id} value={s.id}>
                         {s.name} ({s.code})
                         </option>
                     ))}
                 </Select>
-                <Input label="Start date" value={newFromItineraryStart} onChange={(e) => setNewFromItineraryStart(e.target.value)} type="date" />
+                <Input label={t('sailings.label_start_date')} value={newFromItineraryStart} onChange={(e) => setNewFromItineraryStart(e.target.value)} type="date" />
                 
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)' }}>
                     <Button
@@ -383,7 +386,7 @@ export function SailingsPage(props: { apiBase: string }) {
                         disabled={busy || !newFromItineraryId || !newFromItineraryCode.trim() || !newFromItineraryShipId.trim() || !newFromItineraryStart}
                         onClick={() => void createFromItinerary()}
                     >
-                        {busy ? 'Creating...' : 'Create Sailing'}
+                        {busy ? t('sailings.creating') : t('sailings.create_button')}
                     </Button>
                 </div>
             </div>
@@ -403,24 +406,24 @@ export function SailingsPage(props: { apiBase: string }) {
     return (
         <div style={{ display: 'grid', gap: 24 }}>
             <Panel 
-                title={`Edit Sailing: ${rowDetails?.code || sid}`} 
-                subtitle="Update sailing details."
-                right={<Button variant="secondary" onClick={() => { setView('list'); setEditingId(null); }}>Back to List</Button>}
+                title={`${t('sailings.edit_title')}: ${rowDetails?.code || sid}`} 
+                subtitle={t('sailings.edit_subtitle')}
+                right={<Button variant="secondary" onClick={() => { setView('list'); setEditingId(null); }}>{t('sailings.back_to_list')}</Button>}
             >
                 {rowEdit ? (
                 <div style={{ maxWidth: 800, display: 'grid', gap: 20 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                         <Input
-                        label="Code"
+                        label={t('sailings.label_code')}
                         value={rowEdit.code}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], code: e.target.value } }))}
                         />
                         <Select
-                        label="Ship"
+                        label={t('sailings.label_ship')}
                         value={rowEdit.ship_id}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], ship_id: e.target.value } }))}
                         >
-                        <option value="">(select)</option>
+                        <option value="">{t('sailings.select_placeholder')}</option>
                         {ships.map((sh) => (
                             <option key={sh.id} value={sh.id}>
                             {sh.name} ({sh.code})
@@ -430,13 +433,13 @@ export function SailingsPage(props: { apiBase: string }) {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                         <Input
-                        label="Start date"
+                        label={t('sailings.label_start_date')}
                         type="date"
                         value={rowEdit.start_date}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], start_date: e.target.value } }))}
                         />
                         <Input
-                        label="End date"
+                        label={t('sailings.label_end_date')}
                         type="date"
                         value={rowEdit.end_date}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], end_date: e.target.value } }))}
@@ -444,59 +447,59 @@ export function SailingsPage(props: { apiBase: string }) {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
                         <Input
-                        label="Embark port"
+                        label={t('sailings.label_embark_port')}
                         value={rowEdit.embark_port_code}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], embark_port_code: e.target.value } }))}
                         />
                         <Input
-                        label="Debark port"
+                        label={t('sailings.label_debark_port')}
                         value={rowEdit.debark_port_code}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], debark_port_code: e.target.value } }))}
                         />
                     </div>
                     <Select
-                        label="Status"
+                        label={t('sailings.label_status')}
                         value={rowEdit.status}
                         onChange={(e) => setEditById((prev) => ({ ...prev, [sid]: { ...prev[sid], status: e.target.value as any } }))}
                     >
-                        <option value="planned">planned</option>
-                        <option value="open">open</option>
-                        <option value="closed">closed</option>
-                        <option value="cancelled">cancelled</option>
+                        <option value="planned">{t('sailings.status_planned')}</option>
+                        <option value="open">{t('sailings.status_open')}</option>
+                        <option value="closed">{t('sailings.status_closed')}</option>
+                        <option value="cancelled">{t('sailings.status_cancelled')}</option>
                     </Select>
 
                     <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', justifyContent: 'flex-end' }}>
                          <Button variant="primary" disabled={busy} onClick={() => void updateSailing()}>
-                            {busy ? 'Saving...' : 'Save Changes'}
+                            {busy ? t('sailings.saving') : t('common.save')}
                         </Button>
                     </div>
                 </div>
-                ) : <div style={{ padding: 20 }}>Loading details...</div>}
+                ) : <div style={{ padding: 20 }}>{t('sailings.loading_details')}</div>}
             </Panel>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, alignItems: 'start' }}>
-                <Panel title="Related: Itinerary" subtitle="The parent’s related itinerary.">
+                <Panel title={t('sailings.related_itinerary')} subtitle={t('sailings.related_itinerary_subtitle')}>
                     <div style={{ display: 'grid', gap: 8, fontSize: 13 }}>
                     <div>
-                        Title: <span style={{ fontWeight: 900 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</span>
+                        {t('sailings.label_title')}: <span style={{ fontWeight: 900 }}>{it ? pickTitle(it.titles, ['en', 'ar']) : '—'}</span>
                     </div>
                     <div>
-                        Code: <Mono>{String(it?.code || '—')}</Mono>
+                        {t('sailings.label_code_inline')}: <Mono>{String(it?.code || '—')}</Mono>
                     </div>
                     <div>
-                        Id: <Mono>{String(rowDetails?.itinerary_id || '—')}</Mono>
+                        {t('sailings.label_id')}: <Mono>{String(rowDetails?.itinerary_id || '—')}</Mono>
                     </div>
                     </div>
                 </Panel>
 
-                <Panel title={`Related: Port stops (${rowStops.length})`} subtitle="Stops are shown below.">
+                <Panel title={`${t('sailings.related_stops')} (${rowStops.length})`} subtitle={t('sailings.related_stops_subtitle')}>
                      <div style={{ overflow: 'auto', marginBottom: 20 }}>
                         <table style={styles.table}>
                             <thead>
                             <tr>
-                                <th style={styles.th}>Port</th>
-                                <th style={styles.th}>Arrival</th>
-                                <th style={styles.th}>Departure</th>
+                                <th style={styles.th}>{t('sailings.stops_table_port')}</th>
+                                <th style={styles.th}>{t('sailings.stops_table_arrival')}</th>
+                                <th style={styles.th}>{t('sailings.stops_table_departure')}</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -512,7 +515,7 @@ export function SailingsPage(props: { apiBase: string }) {
                             {rowStops.length === 0 ? (
                                 <tr>
                                 <td colSpan={3} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)' }}>
-                                    No port stops yet.
+                                    {t('sailings.no_stops')}
                                 </td>
                                 </tr>
                             ) : null}
@@ -521,18 +524,18 @@ export function SailingsPage(props: { apiBase: string }) {
                     </div>
 
                     <div style={{ paddingTop: 16, borderTop: '1px solid var(--csp-border)' }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Add port stop</div>
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>{t('sailings.add_stop_title')}</div>
                         {stopForm ? (
                             <div style={{ display: 'grid', gap: 10 }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                 <Input
-                                    label="Port code"
+                                    label={t('sailings.label_port_code')}
                                     value={stopForm.portCode}
                                     onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], portCode: e.target.value } }))}
                                     placeholder="PMI"
                                 />
                                 <Input
-                                    label="Port name (optional)"
+                                    label={t('sailings.label_port_name')}
                                     value={stopForm.portName}
                                     onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], portName: e.target.value } }))}
                                     placeholder="Palma"
@@ -540,13 +543,13 @@ export function SailingsPage(props: { apiBase: string }) {
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                                 <Input
-                                    label="Arrival (ISO)"
+                                    label={t('sailings.label_arrival')}
                                     value={stopForm.arrival}
                                     onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], arrival: e.target.value } }))}
                                     placeholder="2026-07-02T08:00:00Z"
                                 />
                                 <Input
-                                    label="Departure (ISO)"
+                                    label={t('sailings.label_departure')}
                                     value={stopForm.departure}
                                     onChange={(e) => setStopFormById((prev) => ({ ...prev, [sid]: { ...prev[sid], departure: e.target.value } }))}
                                     placeholder="2026-07-02T18:00:00Z"
@@ -557,11 +560,11 @@ export function SailingsPage(props: { apiBase: string }) {
                                 disabled={busy || !stopForm.portCode.trim() || !stopForm.arrival.trim() || !stopForm.departure.trim()}
                                 onClick={() => void addStop(sid)}
                                 >
-                                {busy ? 'Saving...' : 'Add stop'}
+                                {busy ? t('sailings.saving') : t('sailings.add_stop_button')}
                                 </Button>
                             </div>
                             ) : (
-                            <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>Loading…</div>
+                            <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>{t('sailings.loading')}</div>
                         )}
                     </div>
                 </Panel>
@@ -573,8 +576,8 @@ export function SailingsPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
-        title="Sailings Management"
-        subtitle="Manage sailings, their schedules, and port stops."
+        title={t('sailings.page_title')}
+        subtitle={t('sailings.page_subtitle')}
       />
 
       {err ? <ErrorBanner message={err} /> : null}
