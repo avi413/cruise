@@ -656,10 +656,10 @@ const badgeBase: React.CSSProperties = {
 }
 
 const badgeStyles: Record<string, React.CSSProperties> = {
-  planned: { ...badgeBase, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)' },
-  open: { ...badgeBase, border: '1px solid rgba(56,139,253,0.55)', background: 'rgba(56,139,253,0.20)' },
+  planned: { ...badgeBase },
+  open: { ...badgeBase, border: '1px solid var(--csp-primary-border)', background: 'var(--csp-primary-soft)' },
   closed: { ...badgeBase, border: '1px solid rgba(63,185,80,0.55)', background: 'rgba(63,185,80,0.18)' },
-  cancelled: { ...badgeBase, border: '1px solid rgba(248,81,73,0.45)', background: 'rgba(248,81,73,0.14)', color: '#ffb4ae' },
+  cancelled: { ...badgeBase, border: '1px solid rgba(220, 38, 38, 0.35)', background: 'rgba(220, 38, 38, 0.10)', color: 'rgb(185, 28, 28)' },
   default: badgeBase,
 }
 
