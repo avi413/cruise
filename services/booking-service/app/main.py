@@ -43,6 +43,7 @@ class HoldRequest(BaseModel):
     sailing_date: datetime | None = None
     cabin_type: Literal["inside", "oceanview", "balcony", "suite"] = "inside"
     cabin_category_code: str | None = Field(default=None, description="Optional cabin category code (e.g. CO3) for category-based pricing")
+    cabin_id: str | None = Field(default=None, description="Optional specific cabin ID")
     price_type: str = Field(default="regular", min_length=1, description="Price type / rate plan for category pricing (e.g. regular, internet)")
     guests: GuestCounts = Field(default_factory=GuestCounts)
     coupon_code: str | None = None
@@ -69,6 +70,7 @@ class BookingOut(BaseModel):
     sailing_id: str
     cabin_type: str
     cabin_category_code: str | None = None
+    cabin_id: str | None = None
     guests: dict
     quote: QuoteOut
 
@@ -291,6 +293,27 @@ def upsert_category_inventory(
     )
 
 
+@app.get("/inventory/sailings/{sailing_id}/unavailable-cabins", response_model=list[str])
+def list_unavailable_cabins(
+    sailing_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    _principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    """
+    Returns a list of cabin IDs that are currently held or confirmed for this sailing.
+    Used by frontend to visualize unavailable cabins on the deck plan.
+    """
+    with session(tenant_engine) as s:
+        rows = (
+            s.query(Booking.cabin_id)
+            .filter(Booking.sailing_id == sailing_id)
+            .filter(Booking.status.in_(["held", "confirmed"]))
+            .filter(Booking.cabin_id.isnot(None))
+            .all()
+        )
+    return [r[0] for r in rows]
+
+
 @app.post("/holds", response_model=BookingOut)
 async def create_hold(
     payload: HoldRequest,
@@ -334,7 +357,7 @@ async def create_hold(
         sailing_id=payload.sailing_id,
         cabin_type=payload.cabin_type,
         cabin_category_code=(payload.cabin_category_code.strip().upper() if payload.cabin_category_code else None),
-        cabin_id=None,
+        cabin_id=payload.cabin_id,
         guests=payload.guests.model_dump(),
         currency=quote.get("currency", "USD"),
         quote_total=int(quote["total"]),
@@ -344,6 +367,18 @@ async def create_hold(
     )
 
     with session(tenant_engine) as s:
+        # Check specific cabin availability
+        if booking.cabin_id:
+            existing_cabin = (
+                s.query(Booking)
+                .filter(Booking.sailing_id == booking.sailing_id)
+                .filter(Booking.cabin_id == booking.cabin_id)
+                .filter(Booking.status.in_(["held", "confirmed"]))
+                .first()
+            )
+            if existing_cabin:
+                raise HTTPException(status_code=409, detail="Cabin already booked")
+
         # If a category code was provided, allocate inventory from that bucket.
         if booking.cabin_category_code:
             cinv = _ensure_category_inventory_row(s, sailing_id=booking.sailing_id, category_code=booking.cabin_category_code)
@@ -385,6 +420,7 @@ async def create_hold(
         sailing_id=booking.sailing_id,
         cabin_type=booking.cabin_type,
         cabin_category_code=booking.cabin_category_code,
+        cabin_id=booking.cabin_id,
         guests=booking.guests,
         quote=QuoteOut(
             currency=booking.currency,
@@ -418,6 +454,7 @@ def get_booking(
         sailing_id=booking.sailing_id,
         cabin_type=booking.cabin_type,
         cabin_category_code=getattr(booking, "cabin_category_code", None),
+        cabin_id=booking.cabin_id,
         guests=booking.guests,
         quote=QuoteOut(
             currency=booking.currency,
@@ -515,6 +552,7 @@ async def confirm_booking(
         sailing_id=booking.sailing_id,
         cabin_type=booking.cabin_type,
         cabin_category_code=getattr(booking, "cabin_category_code", None),
+        cabin_id=booking.cabin_id,
         guests=booking.guests,
         quote=QuoteOut(
             currency=booking.currency,
