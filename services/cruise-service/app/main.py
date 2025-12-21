@@ -437,6 +437,23 @@ def replace_itinerary(
         if payload.code is not None:
             code = payload.code.strip()
             if not code:
+                # If code was explicitly sent as empty string/null but we want to allow removing it?
+                # The model says `code: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)`
+                # payload.code is Optional[str].
+                # If the user wants to remove code, they might send null.
+                # But here we strip() and check if not code.
+                # If payload.code is "", stripped is "".
+                # Then we raise 400.
+                # But maybe we should allow clearing the code?
+                # If payload.code is None, we skip this block.
+                # If the user sends `code: ""` in JSON, pydantic makes it "".
+                # Then we raise 400.
+                # If the user wants to clear it, they should send `null`.
+                # If they send `null`, pydantic makes it None.
+                # Then we skip this block.
+                # And later: `existing.code = payload.code`.
+                # So if payload.code is None, we set existing.code to None.
+                # This seems correct for clearing.
                 raise HTTPException(status_code=400, detail="code cannot be blank")
             # Ensure unique code across itineraries (excluding self)
             conflict = s.query(ItineraryRow).filter(ItineraryRow.code == code).filter(ItineraryRow.id != itinerary_id).first()
@@ -465,6 +482,22 @@ def replace_itinerary(
             stops=[ItineraryStop(**stop) for stop in (existing.stops or [])]
         )
         return _enrich_itinerary(updated, s, lang="en", fallback_langs=None)
+
+@app.delete("/itineraries/{itinerary_id}")
+def delete_itinerary(itinerary_id: str, _principal=Depends(require_roles("staff", "admin"))):
+    with session() as s:
+        row = s.get(ItineraryRow, itinerary_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Itinerary not found")
+            
+        # Check usage
+        usage = s.query(SailingRow).filter(SailingRow.itinerary_id == itinerary_id).first()
+        if usage:
+             raise HTTPException(status_code=409, detail="Cannot delete itinerary used by sailings")
+             
+        s.delete(row)
+        s.commit()
+    return {"status": "ok"}
 
 @app.get("/itineraries/{itinerary_id}/compute", response_model=ItineraryDates)
 def compute_itinerary_dates(itinerary_id: str, start_date: date):
@@ -686,7 +719,7 @@ def create_sailing_from_itinerary(
             embark_port_code=embark_port_code,
             debark_port_code=debark_port_code,
             status=payload.status,
-            port_stops=[ps.model_dump() for ps in port_stops],
+            port_stops=[ps.model_dump(mode='json') for ps in port_stops],
             itinerary_id=itinerary_id,
         )
         s.add(sailing)

@@ -1,6 +1,7 @@
 import pathlib
 import sys
 
+from uuid import uuid4
 import jwt
 from fastapi.testclient import TestClient
 
@@ -17,8 +18,9 @@ def _auth_headers(role: str = "admin") -> dict[str, str]:
 def test_itinerary_entity_compute_dates_and_related_sailings():
     client = TestClient(app)
 
+    code = f"TEST-{uuid4().hex[:6]}"
     create_itinerary_payload = {
-        "code": "TEST-3D",
+        "code": code,
         "titles": {"en": "Test Itinerary", "ar": "مسار تجريبي"},
         "map_image_url": "https://example.com/itineraries/test-3d/map.jpg",
         "stops": [
@@ -93,3 +95,51 @@ def test_itinerary_entity_compute_dates_and_related_sailings():
     assert len(by_filter) == 1
     assert by_filter[0]["id"] == sailing["id"]
 
+
+def test_itinerary_update_and_delete():
+    client = TestClient(app)
+    
+    # Create
+    payload = {
+        "code": "UPD-DEL-TEST",
+        "titles": {"en": "Original Title"},
+        "stops": [
+             {
+                "day_offset": 0,
+                "kind": "port",
+                "image_url": "img.jpg",
+                "port_code": "P1",
+             }
+        ]
+    }
+    r = client.post("/itineraries", json=payload, headers=_auth_headers())
+    assert r.status_code == 200, r.text
+    it_id = r.json()["id"]
+    
+    # Update
+    update_payload = {
+        "code": "UPD-DEL-TEST-V2",
+        "titles": {"en": "Updated Title"},
+        "map_image_url": "http://map.jpg",
+        "stops": [
+             {
+                "day_offset": 0,
+                "kind": "port",
+                "image_url": "img2.jpg",
+                "port_code": "P1",
+             }
+        ]
+    }
+    r = client.put(f"/itineraries/{it_id}", json=update_payload, headers=_auth_headers())
+    assert r.status_code == 200, r.text
+    updated = r.json()
+    assert updated["code"] == "UPD-DEL-TEST-V2"
+    assert updated["titles"]["en"] == "Updated Title"
+    
+    # Delete
+    r = client.delete(f"/itineraries/{it_id}", headers=_auth_headers())
+    assert r.status_code == 200, r.text
+    
+    # Verify deleted
+    r = client.get(f"/itineraries/{it_id}")
+    assert r.status_code == 404
