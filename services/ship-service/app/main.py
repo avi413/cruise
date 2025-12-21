@@ -18,7 +18,7 @@ from .models import (
     ShoreExcursion,
     ShoreExcursionPrice,
 )
-from .security import require_roles
+from .security import get_principal_optional, require_roles
 from .tenancy import ensure_tenant_database, tenant_db_name_from_code
 
 app = FastAPI(
@@ -182,7 +182,16 @@ def health():
 
 
 @app.post("/companies", response_model=Company)
-def create_company(payload: CompanyCreate, _principal=Depends(require_roles("staff", "admin"))):
+def create_company(payload: CompanyCreate, principal=Depends(get_principal_optional)):
+    # Bootstrapping: allow creating the first company without auth.
+    with session() as s:
+        existing_count = s.query(CompanyRow).count()
+    
+    if existing_count > 0:
+        role = (principal or {}).get("role")
+        if role not in ("staff", "admin"):
+            raise HTTPException(status_code=403, detail="Forbidden")
+
     tenant_db = tenant_db_name_from_code(payload.code)
     try:
         ensure_tenant_database(tenant_db)

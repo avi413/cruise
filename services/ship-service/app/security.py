@@ -26,6 +26,14 @@ def get_principal(
     return decode_token(creds.credentials)
 
 
+def get_principal_optional(
+    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)],
+) -> dict | None:
+    if creds is None:
+        return None
+    return decode_token(creds.credentials)
+
+
 def require_roles(*allowed_roles: str):
     allowed = set(allowed_roles)
 

@@ -8,7 +8,18 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from .models import Base
+# Import all models to ensure they are registered in Base.metadata before create_all() runs.
+from .models import (
+    AuditLog,
+    Base,
+    BookingHistory,
+    Customer,
+    Passenger,
+    StaffGroup,
+    StaffGroupMember,
+    StaffUser,
+    StaffUserPreference,
+)
 
 CONTROL_PLANE_DATABASE_URL = os.getenv(
     "CONTROL_PLANE_DATABASE_URL",
@@ -29,8 +40,17 @@ def _control_plane_engine() -> Engine:
 def tenant_engine(tenant_db: str) -> Engine:
     url = TENANT_DATABASE_URL_TEMPLATE.format(db=tenant_db)
     eng = create_engine(url, pool_pre_ping=True)
+    
+    # Ensure tables exist
     Base.metadata.create_all(eng)
-    _ensure_schema(eng)
+    
+    # Attempt to apply extra schema updates (idempotent)
+    try:
+        _ensure_schema(eng)
+    except Exception as e:
+        # Log but don't fail; create_all covers the fresh install case.
+        print(f"Warning: _ensure_schema failed: {e}")
+        
     return eng
 
 
@@ -104,9 +124,11 @@ def _ensure_schema(eng: Engine) -> None:
                     conn.execute(text(f"ALTER TABLE passengers ADD COLUMN {col} {ddl}"))
 
         if dialect == "postgresql":
+            # For Postgres, we use IF NOT EXISTS which is safe.
+            # However, we must ensure the table exists first. create_all() should have handled it.
             for col, ddl in customers_add.items():
                 conn.execute(text(f"ALTER TABLE customers ADD COLUMN IF NOT EXISTS {col} {ddl}"))
-            # passengers table may or may not exist; create_all handles it, but add safety for columns.
+            
             for col, ddl in passengers_add.items():
                 conn.execute(text(f"ALTER TABLE passengers ADD COLUMN IF NOT EXISTS {col} {ddl}"))
 

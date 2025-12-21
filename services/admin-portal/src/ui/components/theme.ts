@@ -91,6 +91,8 @@ export function resetThemeToDefaults() {
   root.style.removeProperty('--csp-input-bg')
   root.style.removeProperty('--csp-input-border')
   root.style.removeProperty('--csp-chip-bg')
+  root.style.removeProperty('--csp-radius-sm')
+  root.style.removeProperty('--csp-radius-md')
 }
 
 export type PortalThemeTokens = {
@@ -104,6 +106,8 @@ export type PortalThemeTokens = {
   input_bg: string
   input_border: string
   chip_bg: string
+  radius_sm: string
+  radius_md: string
 }
 
 export type PortalTheme = { id: string; name: string; builtIn: boolean; tokens: PortalThemeTokens }
@@ -114,16 +118,18 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
     name: 'Dark',
     builtIn: true,
     tokens: {
-      shell_bg_base: '#0b1220',
-      surface_bg: 'rgba(255,255,255,0.04)',
-      surface_2_bg: 'rgba(0,0,0,0.18)',
-      border: 'rgba(255,255,255,0.10)',
-      border_strong: 'rgba(255,255,255,0.12)',
-      text: '#e6edf3',
-      muted: 'rgba(230,237,243,0.70)',
-      input_bg: 'rgba(0,0,0,0.25)',
-      input_border: 'rgba(255,255,255,0.12)',
-      chip_bg: 'rgba(0,0,0,0.18)',
+      shell_bg_base: '#0f172a', // Slate 900
+      surface_bg: '#1e293b',    // Slate 800
+      surface_2_bg: '#334155',  // Slate 700
+      border: '#334155',        // Slate 700
+      border_strong: '#475569', // Slate 600
+      text: '#f8fafc',          // Slate 50
+      muted: '#94a3b8',         // Slate 400
+      input_bg: '#1e293b',      // Slate 800
+      input_border: '#475569',  // Slate 600
+      chip_bg: '#334155',       // Slate 700
+      radius_sm: '6px',
+      radius_md: '8px',
     },
   },
   {
@@ -131,18 +137,19 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
     name: 'Light',
     builtIn: true,
     tokens: {
-      // Inspired by popular ColorHunt light palettes (soft off-white + blue + deep navy).
-      // Base: #F9F7F7, tint: #DBE2EF, accent: #3F72AF, ink: #112D4E
-      shell_bg_base: '#F9F7F7',
-      surface_bg: 'rgba(255,255,255,0.96)',
-      surface_2_bg: 'rgba(63,114,175,0.08)',
-      border: 'rgba(17,45,78,0.14)',
-      border_strong: 'rgba(17,45,78,0.22)',
-      text: '#112D4E',
-      muted: 'rgba(17,45,78,0.68)',
-      input_bg: 'rgba(255,255,255,0.98)',
-      input_border: 'rgba(17,45,78,0.22)',
-      chip_bg: 'rgba(63,114,175,0.10)',
+      // Plusadmin style: Clean white/gray with blue accents
+      shell_bg_base: '#f3f4f6', // Gray 100
+      surface_bg: '#ffffff',
+      surface_2_bg: '#f8fafc',  // Slate 50
+      border: '#e2e8f0',        // Slate 200
+      border_strong: '#cbd5e1', // Slate 300
+      text: '#1e293b',          // Slate 800
+      muted: '#64748b',         // Slate 500
+      input_bg: '#ffffff',
+      input_border: '#e2e8f0',  // Slate 200
+      chip_bg: '#f1f5f9',       // Slate 100
+      radius_sm: '6px',
+      radius_md: '8px',
     },
   },
   {
@@ -150,16 +157,18 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
     name: 'Ocean',
     builtIn: true,
     tokens: {
-      shell_bg_base: '#f0f8ff',
-      surface_bg: 'rgba(255,255,255,0.90)',
-      surface_2_bg: 'rgba(0, 119, 255, 0.08)',
-      border: 'rgba(0, 51, 102, 0.15)',
-      border_strong: 'rgba(0, 51, 102, 0.25)',
-      text: '#003366',
-      muted: 'rgba(0, 51, 102, 0.65)',
-      input_bg: 'rgba(255,255,255,0.95)',
-      input_border: 'rgba(0, 51, 102, 0.20)',
-      chip_bg: 'rgba(0, 119, 255, 0.12)',
+      shell_bg_base: '#f0f9ff', // Sky 50
+      surface_bg: '#ffffff',
+      surface_2_bg: '#e0f2fe',  // Sky 100
+      border: '#bae6fd',        // Sky 200
+      border_strong: '#7dd3fc', // Sky 300
+      text: '#0c4a6e',          // Sky 900
+      muted: '#0369a1',         // Sky 700
+      input_bg: '#ffffff',
+      input_border: '#bae6fd',
+      chip_bg: '#e0f2fe',
+      radius_sm: '6px',
+      radius_md: '8px',
     },
   },
   {
@@ -167,23 +176,25 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
     name: 'Forest',
     builtIn: true,
     tokens: {
-      shell_bg_base: '#f0fff4',
-      surface_bg: 'rgba(255,255,255,0.92)',
-      surface_2_bg: 'rgba(0, 128, 0, 0.08)',
-      border: 'rgba(0, 77, 38, 0.15)',
-      border_strong: 'rgba(0, 77, 38, 0.25)',
-      text: '#004d26',
-      muted: 'rgba(0, 77, 38, 0.65)',
-      input_bg: 'rgba(255,255,255,0.95)',
-      input_border: 'rgba(0, 77, 38, 0.20)',
-      chip_bg: 'rgba(0, 128, 0, 0.12)',
+      shell_bg_base: '#f0fdf4', // Green 50
+      surface_bg: '#ffffff',
+      surface_2_bg: '#dcfce7',  // Green 100
+      border: '#bbf7d0',        // Green 200
+      border_strong: '#86efac', // Green 300
+      text: '#14532d',          // Green 900
+      muted: '#15803d',         // Green 700
+      input_bg: '#ffffff',
+      input_border: '#bbf7d0',
+      chip_bg: '#dcfce7',
+      radius_sm: '6px',
+      radius_md: '8px',
     },
   },
 ]
 
 export function generateThemeFromPalette(name: string, primary: string): PortalTheme {
   // Generate a light theme based on the primary color
-  const p = primary || '#388bfd'
+  const p = primary || '#2563eb'
   
   // Background: very light tint of primary (95% white)
   const shellBg = mix(p, '#ffffff', 0.96)
@@ -204,15 +215,17 @@ export function generateThemeFromPalette(name: string, primary: string): PortalT
     builtIn: false,
     tokens: {
       shell_bg_base: shellBg,
-      surface_bg: 'rgba(255,255,255,0.94)',
+      surface_bg: '#ffffff',
       surface_2_bg: rgba(p, 0.08) || 'rgba(0,0,0,0.05)',
       border: border,
       border_strong: borderStrong,
       text: text,
       muted: rgba(text, 0.65) || 'rgba(0,0,0,0.65)',
-      input_bg: 'rgba(255,255,255,0.98)',
+      input_bg: '#ffffff',
       input_border: borderStrong,
       chip_bg: rgba(p, 0.12) || 'rgba(0,0,0,0.1)',
+      radius_sm: '6px',
+      radius_md: '8px',
     }
   }
 }
@@ -243,6 +256,8 @@ export function resolvePortalTheme(settings: CompanySettings | null | undefined)
         input_bg: String(tokens.input_bg || base.input_bg),
         input_border: String(tokens.input_border || base.input_border),
         chip_bg: String(tokens.chip_bg || base.chip_bg),
+        radius_sm: String(tokens.radius_sm || base.radius_sm),
+        radius_md: String(tokens.radius_md || base.radius_md),
       }
       return { id, name, builtIn: false, tokens: merged } as PortalTheme
     })
@@ -267,6 +282,8 @@ export function applyPortalTheme(theme: PortalTheme | PortalThemeTokens | null |
   root.style.setProperty('--csp-input-bg', tokens.input_bg)
   root.style.setProperty('--csp-input-border', tokens.input_border)
   root.style.setProperty('--csp-chip-bg', tokens.chip_bg)
+  root.style.setProperty('--csp-radius-sm', tokens.radius_sm)
+  root.style.setProperty('--csp-radius-md', tokens.radius_md)
 }
 
 export function applyCompanyTheme(settings: CompanySettings | null | undefined) {
@@ -288,32 +305,32 @@ export function applyCompanyTheme(settings: CompanySettings | null | undefined) 
     root.style.removeProperty('--csp-display-name')
     
     // Fallback to the portal theme's base background.
-    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #f4f6fa)')
+    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #f3f4f6)')
     return
   }
 
   const branding = settings.branding || {}
 
-  const primary = String(branding.primary_color || '#388bfd')
-  const secondary = String(branding.secondary_color || '#9ecbff')
+  const primary = String(branding.primary_color || '#2563eb')
+  const secondary = String(branding.secondary_color || '#60a5fa')
   root.style.setProperty('--csp-primary', primary)
   root.style.setProperty('--csp-secondary', secondary)
 
-  root.style.setProperty('--csp-primary-soft', rgba(primary, 0.22) || 'rgba(56,139,253,0.22)')
-  root.style.setProperty('--csp-primary-border', rgba(primary, 0.55) || 'rgba(56,139,253,0.55)')
-  root.style.setProperty('--csp-secondary-soft', rgba(secondary, 0.18) || 'rgba(158,203,255,0.18)')
-  root.style.setProperty('--csp-secondary-border', rgba(secondary, 0.42) || 'rgba(158,203,255,0.42)')
+  root.style.setProperty('--csp-primary-soft', rgba(primary, 0.22) || 'rgba(37, 99, 235, 0.22)')
+  root.style.setProperty('--csp-primary-border', rgba(primary, 0.55) || 'rgba(37, 99, 235, 0.55)')
+  root.style.setProperty('--csp-secondary-soft', rgba(secondary, 0.18) || 'rgba(96, 165, 250, 0.18)')
+  root.style.setProperty('--csp-secondary-border', rgba(secondary, 0.42) || 'rgba(96, 165, 250, 0.42)')
 
   const bgUrl = (branding.background_url || '').trim()
   if (bgUrl) {
     // Keep an overlay so the portal remains readable regardless of image.
     root.style.setProperty(
       '--csp-shell-bg',
-      `linear-gradient(180deg, color-mix(in srgb, var(--csp-shell-bg-base, #f4f6fa) 92%, transparent) 0%, color-mix(in srgb, var(--csp-shell-bg-base, #f4f6fa) 92%, transparent) 100%), url("${bgUrl}") center/cover fixed`,
+      `linear-gradient(180deg, color-mix(in srgb, var(--csp-shell-bg-base, #f3f4f6) 92%, transparent) 0%, color-mix(in srgb, var(--csp-shell-bg-base, #f3f4f6) 92%, transparent) 100%), url("${bgUrl}") center/cover fixed`,
     )
   } else {
     // Fallback to the portal theme's base background.
-    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #f4f6fa)')
+    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #f3f4f6)')
   }
 
   const logoUrl = (branding.logo_url || '').trim()
