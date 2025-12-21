@@ -1,17 +1,15 @@
+from __future__ import annotations
+
 import json
 import os
 import time
-from datetime import date
-from typing import Annotated
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-from __future__ import annotations
-
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Annotated, Literal
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from . import domain
@@ -25,6 +23,12 @@ app = FastAPI(
 
 _OVERRIDES_BY_COMPANY: dict[str, domain.PricingOverrides] = {}  # company_id -> overrides; "*" for global
 _FX_RATES_BY_COMPANY: dict[str, dict[tuple[str, str], dict]] = {}  # company_id -> {(base, quote) -> row}
+
+# Flexible pricing model (tenant-scoped, in-memory for this starter repo):
+# - price categories: admin-defined list (unlimited) with ordering + flags + i18n
+# - cruise (sailing) price table: per sailing, per cabin category, per price category
+_PRICE_CATEGORIES_BY_COMPANY: dict[str, list[dict]] = {}  # company_id -> ordered list of categories
+_CRUISE_PRICE_TABLES_BY_COMPANY: dict[str, dict[str, dict[tuple[str, str], dict]]] = {}  # company_id -> sailing_id -> {(cabin_cat, price_cat)->cell}
 
 SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
 _DEFAULT_CURRENCY_CACHE: dict[str, tuple[str, float]] = {}  # company_id -> (currency, expires_at_epoch_s)
@@ -82,6 +86,57 @@ def _normalize_currency(code: str | None, *, field: str = "currency") -> str:
     if len(c) != 3 or not c.isalpha():
         raise HTTPException(status_code=400, detail=f"{field} must be a 3-letter ISO currency code")
     return c
+
+
+def _ensure_company_key(x_company_id: str | None, payload_company_id: str | None = None) -> str:
+    key = _company_key(payload_company_id) or _company_key(x_company_id)
+    if not key or key == "*":
+        raise HTTPException(status_code=400, detail="Company-managed pricing requires X-Company-Id (or company_id). Global data is not supported.")
+    return key
+
+
+def _get_or_init_price_categories(company_id: str) -> list[dict]:
+    cats = _PRICE_CATEGORIES_BY_COMPANY.get(company_id)
+    if cats is None:
+        # Seed a safe default "regular" category so the system works out-of-the-box.
+        cats = [
+            {
+                "code": "regular",
+                "active": True,
+                "order": 1000,
+                "enabled_channels": ["website", "contact_center", "agent", "api", "mobile_app"],
+                "room_selection_included": False,
+                "room_category_only": False,
+                "name_i18n": {"en": "Regular"},
+                "description_i18n": {"en": "Standard pricing"},
+                "created_at": datetime.now(tz=timezone.utc).isoformat(),
+                "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+            }
+        ]
+        _PRICE_CATEGORIES_BY_COMPANY[company_id] = cats
+    return cats
+
+
+def _find_price_category(company_id: str, code: str) -> dict | None:
+    code_n = (code or "").strip().lower()
+    if not code_n:
+        return None
+    for c in _get_or_init_price_categories(company_id):
+        if (c.get("code") or "").strip().lower() == code_n:
+            return c
+    return None
+
+
+def _active_price_categories(company_id: str) -> list[dict]:
+    cats = [c for c in _get_or_init_price_categories(company_id) if bool(c.get("active", True))]
+    return sorted(cats, key=lambda c: int(c.get("order", 10_000)))
+
+
+def _csv_escape(x: str) -> str:
+    s = str(x)
+    if any(ch in s for ch in [",", "\n", "\r", '"']):
+        return '"' + s.replace('"', '""') + '"'
+    return s
 
 
 def _money_convert_cents(amount_cents: int, *, rate: float, op: Literal["mul", "div"]) -> int:
@@ -152,6 +207,7 @@ class GuestIn(BaseModel):
 
 
 class QuoteRequestIn(BaseModel):
+    sailing_id: str | None = Field(default=None, description="Optional sailing id (cruise). If provided, cruise price tables can apply.")
     sailing_date: date | None = None
     cabin_type: domain.CabinType = "inside"
     cabin_category_code: str | None = Field(default=None, description="Optional cabin category code (e.g. CO3). If priced, takes priority over cabin_type fares.")
@@ -203,7 +259,44 @@ def create_quote(
             loyalty_tier=payload.loyalty_tier,
             currency=cur,
         )
-        q = domain.quote_with_overrides(req, today=date.today(), overrides=_effective_overrides(x_company_id))
+
+        # Flexible model: if a per-sailing cruise price table exists, prefer it.
+        overrides = _effective_overrides(x_company_id)
+        sid = (payload.sailing_id or "").strip()
+        cabin_code = (payload.cabin_category_code or "").strip().upper()
+        pt = (payload.price_type or "regular").strip().lower() or "regular"
+        if company_id and sid and cabin_code:
+            cell = ((_CRUISE_PRICE_TABLES_BY_COMPANY.get(company_id) or {}).get(sid) or {}).get((cabin_code, pt))
+            if cell:
+                cell_cur = str(cell.get("currency") or cur).strip().upper() or cur
+                rule = domain.CategoryPriceRule(
+                    category_code=cabin_code,
+                    price_type=pt,
+                    currency=cell_cur,
+                    min_guests=int(cell.get("min_guests") or 2),
+                    price_per_person=int(cell.get("price_per_person") or 0),
+                )
+                # Place the cruise-table rule first so ties prefer the explicit table.
+                merged_rules = [rule] + list((overrides.category_prices or []) if overrides else [])
+                overrides = domain.PricingOverrides(
+                    base_by_pax=(overrides.base_by_pax if overrides else None),
+                    cabin_multiplier=(overrides.cabin_multiplier if overrides else None),
+                    demand_multiplier=(overrides.demand_multiplier if overrides else None),
+                    category_prices=merged_rules,
+                )
+                # Ensure request currency matches the cell currency so category pricing is selected.
+                req = domain.QuoteRequest(
+                    sailing_date=req.sailing_date,
+                    cabin_type=req.cabin_type,
+                    cabin_category_code=cabin_code,
+                    price_type=pt,
+                    guests=req.guests,
+                    coupon_code=req.coupon_code,
+                    loyalty_tier=req.loyalty_tier,
+                    currency=cell_cur,
+                )
+
+        q = domain.quote_with_overrides(req, today=date.today(), overrides=overrides)
         if payload.currency and company_id:
             q = _convert_quote_currency(company_id, q, payload.currency)
         return QuoteOut(
@@ -275,6 +368,330 @@ def list_overrides(_principal=Depends(require_roles("staff", "admin"))):
             )
         )
     return items
+
+
+class PriceCategoryIn(BaseModel):
+    code: str = Field(min_length=1, description="Unique code (e.g. internet, regular-pl)")
+    active: bool = Field(default=True)
+    enabled_channels: list[str] = Field(default_factory=list, description="Sales channels where this category is available")
+    room_selection_included: bool = Field(default=False, description="Protected/guaranteed room selection included")
+    room_category_only: bool = Field(default=False, description="Random assignment within room category only")
+    name_i18n: dict[str, str] = Field(default_factory=dict, description="Localized display names by language tag (e.g. en, pl-PL)")
+    description_i18n: dict[str, str] = Field(default_factory=dict, description="Localized descriptions by language tag")
+    company_id: str | None = Field(default=None, description="Optional: target company_id (tenant). If omitted, X-Company-Id is used.")
+
+
+class PriceCategoryPatch(BaseModel):
+    active: bool | None = None
+    enabled_channels: list[str] | None = None
+    room_selection_included: bool | None = None
+    room_category_only: bool | None = None
+    name_i18n: dict[str, str] | None = None
+    description_i18n: dict[str, str] | None = None
+
+
+class PriceCategoryOut(BaseModel):
+    company_id: str
+    code: str
+    active: bool
+    order: int
+    enabled_channels: list[str]
+    room_selection_included: bool
+    room_category_only: bool
+    name_i18n: dict[str, str]
+    description_i18n: dict[str, str]
+    created_at: str
+    updated_at: str
+
+
+@app.get("/price-categories", response_model=list[PriceCategoryOut])
+def list_price_categories(
+    channel: str | None = None,
+    active_only: bool = False,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, None)
+    cats = _get_or_init_price_categories(key)
+    rows = cats
+    if active_only:
+        rows = [c for c in rows if bool(c.get("active", True))]
+    if channel:
+        ch = channel.strip()
+        rows = [c for c in rows if (ch in (c.get("enabled_channels") or []))]
+    rows = sorted(rows, key=lambda c: int(c.get("order", 10_000)))
+    return [
+        PriceCategoryOut(
+            company_id=key,
+            code=str(c.get("code") or ""),
+            active=bool(c.get("active", True)),
+            order=int(c.get("order", 10_000)),
+            enabled_channels=list(c.get("enabled_channels") or []),
+            room_selection_included=bool(c.get("room_selection_included", False)),
+            room_category_only=bool(c.get("room_category_only", False)),
+            name_i18n=dict(c.get("name_i18n") or {}),
+            description_i18n=dict(c.get("description_i18n") or {}),
+            created_at=str(c.get("created_at") or ""),
+            updated_at=str(c.get("updated_at") or ""),
+        )
+        for c in rows
+    ]
+
+
+@app.post("/price-categories", response_model=PriceCategoryOut)
+def create_price_category(
+    payload: PriceCategoryIn,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, payload.company_id)
+    code = (payload.code or "").strip().lower()
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    if any(ch.isspace() for ch in code):
+        raise HTTPException(status_code=400, detail="code must not contain whitespace")
+    if _find_price_category(key, code):
+        raise HTTPException(status_code=409, detail="Price category code already exists")
+
+    if payload.room_selection_included and payload.room_category_only:
+        raise HTTPException(status_code=400, detail="room_selection_included and room_category_only are mutually exclusive")
+
+    now = datetime.now(tz=timezone.utc).isoformat()
+    cats = _get_or_init_price_categories(key)
+    max_order = max([int(c.get("order", 10_000)) for c in cats] or [0])
+    row = {
+        "code": code,
+        "active": bool(payload.active),
+        "order": max_order + 10,
+        "enabled_channels": list(payload.enabled_channels or []),
+        "room_selection_included": bool(payload.room_selection_included),
+        "room_category_only": bool(payload.room_category_only),
+        "name_i18n": dict(payload.name_i18n or {}),
+        "description_i18n": dict(payload.description_i18n or {}),
+        "created_at": now,
+        "updated_at": now,
+    }
+    cats.append(row)
+    _PRICE_CATEGORIES_BY_COMPANY[key] = cats
+    return PriceCategoryOut(company_id=key, **row)  # type: ignore[arg-type]
+
+
+@app.patch("/price-categories/{code}", response_model=PriceCategoryOut)
+def patch_price_category(
+    code: str,
+    payload: PriceCategoryPatch,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, None)
+    row = _find_price_category(key, code)
+    if not row:
+        raise HTTPException(status_code=404, detail="Price category not found")
+
+    if payload.room_selection_included is not None:
+        row["room_selection_included"] = bool(payload.room_selection_included)
+    if payload.room_category_only is not None:
+        row["room_category_only"] = bool(payload.room_category_only)
+    if row.get("room_selection_included") and row.get("room_category_only"):
+        raise HTTPException(status_code=400, detail="room_selection_included and room_category_only are mutually exclusive")
+
+    if payload.active is not None:
+        row["active"] = bool(payload.active)
+    if payload.enabled_channels is not None:
+        row["enabled_channels"] = list(payload.enabled_channels or [])
+    if payload.name_i18n is not None:
+        row["name_i18n"] = dict(payload.name_i18n or {})
+    if payload.description_i18n is not None:
+        row["description_i18n"] = dict(payload.description_i18n or {})
+    row["updated_at"] = datetime.now(tz=timezone.utc).isoformat()
+    return PriceCategoryOut(company_id=key, **row)  # type: ignore[arg-type]
+
+
+@app.delete("/price-categories/{code}")
+def delete_price_category(
+    code: str,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, None)
+    code_n = (code or "").strip().lower()
+    cats = _get_or_init_price_categories(key)
+    before = len(cats)
+    cats = [c for c in cats if (c.get("code") or "").strip().lower() != code_n]
+    if len(cats) == before:
+        raise HTTPException(status_code=404, detail="Price category not found")
+    _PRICE_CATEGORIES_BY_COMPANY[key] = cats
+    # Also remove any cruise price cells for that price category
+    tables = _CRUISE_PRICE_TABLES_BY_COMPANY.get(key) or {}
+    for sailing_id, cells in list(tables.items()):
+        to_del = [k for k in cells.keys() if (k[1] or "").strip().lower() == code_n]
+        for k in to_del:
+            cells.pop(k, None)
+        tables[sailing_id] = cells
+    _CRUISE_PRICE_TABLES_BY_COMPANY[key] = tables
+    return {"status": "ok"}
+
+
+class PriceCategoryReorderIn(BaseModel):
+    codes: list[str] = Field(min_length=1, description="Ordered list of category codes")
+
+
+@app.post("/price-categories/reorder", response_model=list[PriceCategoryOut])
+def reorder_price_categories(
+    payload: PriceCategoryReorderIn,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, None)
+    cats = _get_or_init_price_categories(key)
+    by_code = {(c.get("code") or "").strip().lower(): c for c in cats}
+    ordered = []
+    for c in payload.codes:
+        k = (c or "").strip().lower()
+        if not k:
+            continue
+        if k not in by_code:
+            raise HTTPException(status_code=400, detail=f"Unknown category code in reorder list: {c}")
+        ordered.append(k)
+    # Keep any categories not mentioned at the end, preserving existing order.
+    tail = [k for k in [((c.get("code") or "").strip().lower()) for c in cats] if k and k not in ordered]
+    final = ordered + tail
+    now = datetime.now(tz=timezone.utc).isoformat()
+    for idx, k in enumerate(final):
+        by_code[k]["order"] = (idx + 1) * 10
+        by_code[k]["updated_at"] = now
+    _PRICE_CATEGORIES_BY_COMPANY[key] = sorted(cats, key=lambda c: int(c.get("order", 10_000)))
+    return list_price_categories(x_company_id=key)  # reuse serialization
+
+
+class CruisePriceCellIn(BaseModel):
+    sailing_id: str = Field(min_length=1, description="Cruise/sailing id")
+    cabin_category_code: str = Field(min_length=1, description="Cabin category code (e.g. CO3)")
+    price_category_code: str = Field(min_length=1, description="Price category code (e.g. internet)")
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    min_guests: int = Field(default=2, ge=1)
+    price_per_person: int = Field(ge=0, description="Per-person price in cents")
+    company_id: str | None = Field(default=None, description="Optional: target company_id (tenant). If omitted, X-Company-Id is used.")
+
+
+class CruisePriceCellOut(BaseModel):
+    company_id: str
+    sailing_id: str
+    cabin_category_code: str
+    price_category_code: str
+    currency: str
+    min_guests: int
+    price_per_person: int
+    updated_at: str
+
+
+@app.get("/cruise-prices", response_model=list[CruisePriceCellOut])
+def list_cruise_prices(
+    sailing_id: str,
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, None)
+    sid = (sailing_id or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="sailing_id is required")
+    table = (_CRUISE_PRICE_TABLES_BY_COMPANY.get(key) or {}).get(sid) or {}
+    rows = list(table.values())
+    rows = sorted(rows, key=lambda r: (r["cabin_category_code"], r["price_category_code"], r["currency"], int(r["min_guests"])))
+    return [
+        CruisePriceCellOut(
+            company_id=key,
+            sailing_id=sid,
+            cabin_category_code=str(r["cabin_category_code"]),
+            price_category_code=str(r["price_category_code"]),
+            currency=str(r["currency"]),
+            min_guests=int(r["min_guests"]),
+            price_per_person=int(r["price_per_person"]),
+            updated_at=str(r["updated_at"]),
+        )
+        for r in rows
+    ]
+
+
+@app.post("/cruise-prices/bulk", response_model=list[CruisePriceCellOut])
+def upsert_cruise_prices_bulk(
+    payload: list[CruisePriceCellIn],
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    if not payload:
+        raise HTTPException(status_code=400, detail="payload must be a non-empty list")
+    key = _ensure_company_key(x_company_id, payload[0].company_id)
+    for p in payload:
+        if p.company_id is not None and _company_key(p.company_id) != key:
+            raise HTTPException(status_code=400, detail="Bulk upsert must target exactly one company_id")
+
+    tables = _CRUISE_PRICE_TABLES_BY_COMPANY.get(key) or {}
+    now = datetime.now(tz=timezone.utc).isoformat()
+
+    for p in payload:
+        sid = (p.sailing_id or "").strip()
+        if not sid:
+            raise HTTPException(status_code=400, detail="sailing_id is required")
+        cabin = (p.cabin_category_code or "").strip().upper()
+        if not cabin:
+            raise HTTPException(status_code=400, detail="cabin_category_code is required")
+        pc = (p.price_category_code or "").strip().lower()
+        if not pc:
+            raise HTTPException(status_code=400, detail="price_category_code is required")
+        cur = _normalize_currency(p.currency, field="currency")
+        if not _find_price_category(key, pc):
+            # Allow writing even if category was deleted? No: keep referential sanity.
+            raise HTTPException(status_code=400, detail=f"Unknown price_category_code: {pc}")
+
+        cell = {
+            "cabin_category_code": cabin,
+            "price_category_code": pc,
+            "currency": cur,
+            "min_guests": int(p.min_guests),
+            "price_per_person": int(p.price_per_person),
+            "updated_at": now,
+        }
+        t = tables.get(sid) or {}
+        t[(cabin, pc)] = cell
+        tables[sid] = t
+
+    _CRUISE_PRICE_TABLES_BY_COMPANY[key] = tables
+    # Return the whole table for the first sailing in the payload (admin UI uses one sailing at a time).
+    return list_cruise_prices(sailing_id=payload[0].sailing_id, x_company_id=key)
+
+
+@app.get("/cruise-prices/export")
+def export_cruise_prices(
+    sailing_id: str,
+    format: str = "json",
+    x_company_id: Annotated[str | None, Header()] = None,
+    _principal=Depends(require_roles("staff", "admin")),
+):
+    key = _ensure_company_key(x_company_id, None)
+    rows = list_cruise_prices(sailing_id=sailing_id, x_company_id=key)
+    fmt = (format or "json").strip().lower()
+    if fmt == "json":
+        return {"company_id": key, "sailing_id": sailing_id, "items": [r.model_dump() for r in rows]}
+    if fmt == "csv":
+        header = ["sailing_id", "cabin_category_code", "price_category_code", "currency", "min_guests", "price_per_person"]
+        lines = [",".join(header)]
+        for r in rows:
+            lines.append(
+                ",".join(
+                    [
+                        _csv_escape(r.sailing_id),
+                        _csv_escape(r.cabin_category_code),
+                        _csv_escape(r.price_category_code),
+                        _csv_escape(r.currency),
+                        _csv_escape(str(r.min_guests)),
+                        _csv_escape(str(r.price_per_person)),
+                    ]
+                )
+            )
+        content = "\n".join(lines) + "\n"
+        return Response(content=content, media_type="text/csv")
+    raise HTTPException(status_code=400, detail="format must be json or csv")
 
 
 @app.post("/overrides/cabin-multipliers", response_model=OverridesOut)
