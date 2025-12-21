@@ -1051,9 +1051,9 @@ export function PricingPage(props: { apiBase: string }) {
                                       width: 140,
                                       padding: '8px 10px',
                                       borderRadius: 10,
-                                      border: '1px solid rgba(255,255,255,0.12)',
-                                      background: 'rgba(0,0,0,0.25)',
-                                      color: '#e6edf3',
+                                      border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
+                                      background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
+                                      color: 'var(--csp-text, #e6edf3)',
                                     }}
                                     type="number"
                                     min={0}

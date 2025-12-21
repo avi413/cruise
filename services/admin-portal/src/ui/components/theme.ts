@@ -115,16 +115,18 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
     name: 'Light',
     builtIn: true,
     tokens: {
-      shell_bg_base: '#f6f8fa',
-      surface_bg: 'rgba(255,255,255,0.92)',
-      surface_2_bg: 'rgba(0,0,0,0.04)',
-      border: 'rgba(27,31,36,0.14)',
-      border_strong: 'rgba(27,31,36,0.22)',
-      text: '#24292f',
-      muted: 'rgba(36,41,47,0.70)',
-      input_bg: 'rgba(255,255,255,0.95)',
-      input_border: 'rgba(27,31,36,0.22)',
-      chip_bg: 'rgba(0,0,0,0.04)',
+      // Inspired by popular ColorHunt light palettes (soft off-white + blue + deep navy).
+      // Base: #F9F7F7, tint: #DBE2EF, accent: #3F72AF, ink: #112D4E
+      shell_bg_base: '#F9F7F7',
+      surface_bg: 'rgba(255,255,255,0.96)',
+      surface_2_bg: 'rgba(63,114,175,0.08)',
+      border: 'rgba(17,45,78,0.14)',
+      border_strong: 'rgba(17,45,78,0.22)',
+      text: '#112D4E',
+      muted: 'rgba(17,45,78,0.68)',
+      input_bg: 'rgba(255,255,255,0.98)',
+      input_border: 'rgba(17,45,78,0.22)',
+      chip_bg: 'rgba(63,114,175,0.10)',
     },
   },
 ]
