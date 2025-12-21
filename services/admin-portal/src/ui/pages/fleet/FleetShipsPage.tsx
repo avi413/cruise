@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../../api/client'
 import { getCompany } from '../../components/storage'
+import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../../components/ui'
 
 type Ship = {
   id: string
@@ -24,26 +25,49 @@ function setSelectedShipId(shipId: string) {
   }
 }
 
+function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <tr
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...styles.tr,
+        background: hover ? 'var(--csp-border-strong, rgba(0,0,0,0.05))' : 'transparent',
+      }}
+    >
+      {children}
+    </tr>
+  )
+}
+
 export function FleetShipsPage(props: { apiBase: string }) {
   const nav = useNavigate()
   const company = getCompany()
   const companyId = company?.id || ''
 
   const [fleet, setFleet] = useState<Ship[]>([])
+  const [q, setQ] = useState('')
+  
+  // View state: 'list', 'create', 'edit'
+  const [view, setView] = useState<'list' | 'create' | 'edit'>('list')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
+  // create
   const [shipName, setShipName] = useState('')
   const [shipCode, setShipCode] = useState('')
   const [shipOperator, setShipOperator] = useState('')
   const [shipDecks, setShipDecks] = useState(0)
 
+  // edit
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editOperator, setEditOperator] = useState('')
   const [editDecks, setEditDecks] = useState(0)
   const [editStatus, setEditStatus] = useState<Ship['status']>('active')
-
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [editCode, setEditCode] = useState('') // Code is usually immutable but useful to see
 
   const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/ships` : null), [companyId])
 
@@ -53,13 +77,32 @@ export function FleetShipsPage(props: { apiBase: string }) {
       return
     }
     const r = await apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
-    setFleet(r)
+    setFleet(r || [])
+    
+    // If we were editing and the ship is no longer there, switch to list
+    if (view === 'edit' && editingId) {
+      if (r && !r.find(s => s.id === editingId)) {
+         setView('list')
+         setEditingId(null)
+      }
+    }
   }
 
   useEffect(() => {
     refreshFleet().catch((e) => setErr(String(e?.message || e)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fleetEndpoint, props.apiBase])
+
+  // Filter fleet based on search
+  const filteredFleet = useMemo(() => {
+    const term = q.trim().toLowerCase()
+    if (!term) return fleet
+    return fleet.filter(s => 
+        s.name.toLowerCase().includes(term) || 
+        s.code.toLowerCase().includes(term) ||
+        (s.operator || '').toLowerCase().includes(term)
+    )
+  }, [fleet, q])
 
   async function createShip() {
     setBusy(true)
@@ -74,6 +117,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
       setShipCode('')
       setShipOperator('')
       setShipDecks(0)
+      setView('list')
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -84,24 +128,19 @@ export function FleetShipsPage(props: { apiBase: string }) {
   function startEdit(s: Ship) {
     setEditingId(s.id)
     setEditName(s.name)
+    setEditCode(s.code)
     setEditOperator(s.operator || '')
     setEditDecks(s.decks || 0)
     setEditStatus(s.status)
+    setView('edit')
   }
 
-  function cancelEdit() {
-    setEditingId(null)
-    setEditName('')
-    setEditOperator('')
-    setEditDecks(0)
-    setEditStatus('active')
-  }
-
-  async function saveEdit(shipId: string) {
+  async function saveEdit() {
+    if (!editingId) return
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/ships/${shipId}`, {
+      await apiFetch(props.apiBase, `/v1/ships/${editingId}`, {
         method: 'PATCH',
         body: {
           name: editName,
@@ -111,7 +150,8 @@ export function FleetShipsPage(props: { apiBase: string }) {
         },
       })
       await refreshFleet()
-      cancelEdit()
+      setView('list')
+      setEditingId(null)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -119,14 +159,16 @@ export function FleetShipsPage(props: { apiBase: string }) {
     }
   }
 
-  async function deleteShip(shipId: string, shipLabel: string) {
-    if (!confirm(`Delete ship "${shipLabel}"?\n\nThis will also delete its cabins and categories.`)) return
+  async function deleteShip() {
+    if (!editingId) return
+    if (!confirm(`Delete ship?`)) return
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/ships/${shipId}`, { method: 'DELETE' })
+      await apiFetch(props.apiBase, `/v1/ships/${editingId}`, { method: 'DELETE' })
       await refreshFleet()
-      cancelEdit()
+      setView('list')
+      setEditingId(null)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -134,233 +176,192 @@ export function FleetShipsPage(props: { apiBase: string }) {
     }
   }
 
-  function goManageCabins(shipId: string) {
-    setSelectedShipId(shipId)
+  function goManageCabins() {
+    if (!editingId) return
+    setSelectedShipId(editingId)
     nav('/app/fleet/cabins')
   }
 
   if (!companyId) {
-    return <div style={styles.error}>No company selected. Please select a company and sign in again.</div>
+    return (
+        <div style={{ padding: 24 }}>
+            <ErrorBanner message="No company selected. Please select a company and sign in again." />
+        </div>
+    )
+  }
+
+  function renderList() {
+    return (
+      <div style={{ display: 'grid', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--csp-surface-bg)', padding: 12, borderRadius: 8, border: '1px solid var(--csp-border)' }}>
+            <div style={{ flex: 1 }}>
+                <Input 
+                    value={q} 
+                    onChange={(e) => setQ(e.target.value)} 
+                    placeholder="Search ships by name, code, operator..." 
+                    style={{ width: '100%', maxWidth: 400 }}
+                />
+            </div>
+            <Button variant="primary" onClick={() => setView('create')}>New Ship</Button>
+            <Button variant="secondary" onClick={() => void refreshFleet()}>Refresh</Button>
+        </div>
+
+        <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                    <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
+                        <th style={styles.th}>Name</th>
+                        <th style={styles.th}>Code</th>
+                        <th style={styles.th}>Operator</th>
+                        <th style={styles.th}>Decks</th>
+                        <th style={styles.th}>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {filteredFleet.map(s => (
+                        <HoverRow
+                            key={s.id} 
+                            onClick={() => startEdit(s)}
+                        >
+                            <td style={styles.td}>{s.name}</td>
+                            <td style={styles.td}><Mono>{s.code}</Mono></td>
+                            <td style={styles.td}>{s.operator || '—'}</td>
+                            <td style={styles.td}><Mono>{s.decks}</Mono></td>
+                            <td style={styles.td}>{s.status}</td>
+                        </HoverRow>
+                    ))}
+                    {filteredFleet.length === 0 && (
+                        <tr>
+                            <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
+                                No ships found.
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+      </div>
+    )
+  }
+
+  function renderCreate() {
+    return (
+        <Panel 
+            title="Create New Ship" 
+            subtitle={`Add a new ship to ${company?.name || 'fleet'}.`}
+            right={<Button variant="secondary" onClick={() => setView('list')}>Cancel</Button>}
+        >
+            <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
+                <Input label="Ship Name" value={shipName} onChange={(e) => setShipName(e.target.value)} placeholder="e.g. MV Horizon" />
+                <Input label="Ship Code (Unique)" value={shipCode} onChange={(e) => setShipCode(e.target.value)} placeholder="e.g. HORIZON" />
+                <Input label="Operator (Optional)" value={shipOperator} onChange={(e) => setShipOperator(e.target.value)} placeholder="e.g. Oceanic" />
+                <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>Decks</div>
+                    <Input 
+                        value={shipDecks} 
+                        onChange={(e) => setShipDecks(Number(e.target.value))} 
+                        type="number" 
+                        min={0} 
+                        step={1} 
+                    />
+                </div>
+
+                <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)' }}>
+                    <Button variant="primary" disabled={busy || !shipName.trim() || !shipCode.trim()} onClick={() => void createShip()}>
+                        {busy ? 'Creating...' : 'Create Ship'}
+                    </Button>
+                </div>
+            </div>
+        </Panel>
+    )
+  }
+
+  function renderEdit() {
+    return (
+        <Panel 
+            title={`Edit Ship: ${editName}`} 
+            subtitle="Update ship details or manage cabins."
+            right={<Button variant="secondary" onClick={() => setView('list')}>Back to List</Button>}
+        >
+             <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
+                <Input label="Ship Name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                <div style={{ opacity: 0.7 }}>
+                     <Input label="Ship Code" value={editCode} disabled />
+                </div>
+                <Input label="Operator" value={editOperator} onChange={(e) => setEditOperator(e.target.value)} />
+                
+                <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>Decks</div>
+                    <Input 
+                        value={editDecks} 
+                        onChange={(e) => setEditDecks(Number(e.target.value))} 
+                        type="number" 
+                        min={0} 
+                        step={1} 
+                    />
+                </div>
+
+                <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>Status</div>
+                    <Select value={editStatus} onChange={(e) => setEditStatus(e.target.value as Ship['status'])}>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="maintenance">Maintenance</option>
+                    </Select>
+                </div>
+
+                <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                         <Button variant="danger" disabled={busy} onClick={() => void deleteShip()}>
+                            Delete Ship
+                        </Button>
+                        <Button variant="secondary" onClick={goManageCabins}>
+                            Manage Cabins
+                        </Button>
+                    </div>
+                   
+                    <Button variant="primary" disabled={busy} onClick={() => void saveEdit()}>
+                        {busy ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                </div>
+            </div>
+        </Panel>
+    )
   }
 
   return (
-    <div style={styles.wrap}>
-      {err ? <div style={styles.error}>{err}</div> : null}
+    <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
+      <PageHeader
+        title="Fleet Management"
+        subtitle={`Manage ships for ${company?.name || 'company'}.`}
+      />
 
-      <div style={styles.grid}>
-        <section style={styles.panel}>
-          <div style={styles.panelTitle}>Create ship</div>
-          <div style={styles.form}>
-            <label style={styles.label}>
-              Company
-              <input style={styles.input} value={company ? `${company.name} (${company.code})` : companyId} readOnly />
-            </label>
-            <label style={styles.label}>
-              Ship name
-              <input style={styles.input} value={shipName} onChange={(e) => setShipName(e.target.value)} placeholder="MV Horizon" />
-            </label>
-            <label style={styles.label}>
-              Ship code
-              <input style={styles.input} value={shipCode} onChange={(e) => setShipCode(e.target.value)} placeholder="HORIZON" />
-            </label>
-            <label style={styles.label}>
-              Operator (optional)
-              <input style={styles.input} value={shipOperator} onChange={(e) => setShipOperator(e.target.value)} placeholder="Oceanic" />
-            </label>
-            <label style={styles.label}>
-              Decks
-              <input style={styles.input} value={shipDecks} onChange={(e) => setShipDecks(Number(e.target.value))} type="number" min={0} step={1} />
-            </label>
-            <button style={styles.primaryBtn} disabled={busy || !companyId || !shipName.trim() || !shipCode.trim()} onClick={() => void createShip()}>
-              {busy ? 'Saving…' : 'Create ship'}
-            </button>
-          </div>
-        </section>
+      {err ? <ErrorBanner message={err} /> : null}
 
-        <section style={styles.panel}>
-          <div style={styles.panelTitle}>Ships</div>
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Name</th>
-                  <th style={styles.th}>Code</th>
-                  <th style={styles.th}>Operator</th>
-                  <th style={styles.th}>Decks</th>
-                  <th style={styles.th}>Status</th>
-                  <th style={styles.th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fleet.map((s) => {
-                  const isEditing = editingId === s.id
-                  return (
-                    <tr key={s.id}>
-                      <td style={styles.td}>
-                        {isEditing ? <input style={styles.inputInline} value={editName} onChange={(e) => setEditName(e.target.value)} /> : s.name}
-                      </td>
-                      <td style={styles.tdMono}>{s.code}</td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.inputInline} value={editOperator} onChange={(e) => setEditOperator(e.target.value)} placeholder="(optional)" />
-                        ) : (
-                          s.operator || '—'
-                        )}
-                      </td>
-                      <td style={styles.tdMono}>
-                        {isEditing ? (
-                          <input style={styles.inputInline} value={editDecks} onChange={(e) => setEditDecks(Number(e.target.value))} type="number" min={0} step={1} />
-                        ) : (
-                          s.decks
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <select style={styles.inputInline} value={editStatus} onChange={(e) => setEditStatus(e.target.value as Ship['status'])}>
-                            <option value="active">active</option>
-                            <option value="inactive">inactive</option>
-                            <option value="maintenance">maintenance</option>
-                          </select>
-                        ) : (
-                          s.status
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <div style={styles.actions}>
-                            <button style={styles.primaryBtnSm} disabled={busy || !editName.trim()} onClick={() => void saveEdit(s.id)}>
-                              Save
-                            </button>
-                            <button style={styles.secondaryBtnSm} disabled={busy} onClick={cancelEdit}>
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={styles.actions}>
-                            <button style={styles.secondaryBtnSm} disabled={busy} onClick={() => startEdit(s)}>
-                              Edit
-                            </button>
-                            <button style={styles.secondaryBtnSm} disabled={busy} onClick={() => goManageCabins(s.id)}>
-                              Manage cabins
-                            </button>
-                            <button style={styles.dangerBtnSm} disabled={busy} onClick={() => void deleteShip(s.id, `${s.name} (${s.code})`)}>
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-                {fleet.length === 0 ? (
-                  <tr>
-                    <td style={styles.tdMuted} colSpan={6}>
-                      No ships yet.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+      {view === 'list' && renderList()}
+      {view === 'create' && renderCreate()}
+      {view === 'edit' && renderEdit()}
     </div>
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  wrap: { display: 'grid', gap: 12 },
-  grid: { display: 'grid', gridTemplateColumns: '420px 1fr', gap: 12, alignItems: 'start' },
-  panel: {
-    border: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
-    borderRadius: 14,
-    background: 'var(--csp-surface-bg, rgba(255,255,255,0.04))',
-    padding: 14,
-    color: 'var(--csp-text, #e6edf3)',
-  },
-  panelTitle: { fontWeight: 900, marginBottom: 10 },
-  form: { display: 'grid', gap: 10 },
-  label: { display: 'grid', gap: 6, fontSize: 13, color: 'var(--csp-text, rgba(230,237,243,0.85))' },
-  input: {
-    padding: '10px 10px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
-    background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
-    color: 'var(--csp-text, #e6edf3)',
-  },
-  inputInline: {
-    width: '100%',
-    padding: '8px 8px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
-    background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
-    color: 'var(--csp-text, #e6edf3)',
-  },
-  primaryBtn: {
-    padding: '10px 12px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
-    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
-    color: 'var(--csp-text, #e6edf3)',
-    cursor: 'pointer',
-    fontWeight: 900,
-  },
-  primaryBtnSm: {
-    padding: '8px 10px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
-    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
-    color: 'var(--csp-text, #e6edf3)',
-    cursor: 'pointer',
-    fontWeight: 900,
-  },
-  secondaryBtnSm: {
-    padding: '8px 10px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
-    background: 'color-mix(in srgb, var(--csp-surface-bg, rgba(255,255,255,0.06)) 88%, transparent)',
-    color: 'var(--csp-text, #e6edf3)',
-    cursor: 'pointer',
-    fontWeight: 800,
-  },
-  dangerBtnSm: {
-    padding: '8px 10px',
-    borderRadius: 999,
-    border: '1px solid rgba(220, 38, 38, 0.35)',
-    background: 'rgba(220, 38, 38, 0.10)',
-    color: 'rgb(185, 28, 28)',
-    cursor: 'pointer',
-    fontWeight: 800,
-  },
-  actions: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  error: {
-    padding: 12,
-    borderRadius: 12,
-    background: 'rgba(220, 38, 38, 0.10)',
-    border: '1px solid rgba(220, 38, 38, 0.35)',
-    color: 'rgb(185, 28, 28)',
-    whiteSpace: 'pre-wrap',
-    fontSize: 13,
-  },
-  tableWrap: { overflow: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'left',
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
-    color: 'var(--csp-muted, rgba(230,237,243,0.75))',
-    fontWeight: 900,
-    whiteSpace: 'nowrap',
-  },
-  td: { padding: '10px 8px', borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.06))', verticalAlign: 'top' },
-  tdMono: {
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.06))',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: 12,
-    verticalAlign: 'top',
-    whiteSpace: 'nowrap',
-  },
-  tdMuted: { padding: '14px 8px', color: 'var(--csp-muted, rgba(230,237,243,0.60))' },
+const styles = {
+    th: {
+        padding: '12px 16px',
+        fontWeight: 600,
+        fontSize: 12,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.05em',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-muted)'
+    },
+    td: {
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-text)'
+    },
+    tr: {
+        cursor: 'pointer',
+        transition: 'background 0.15s ease'
+    }
 }
-
