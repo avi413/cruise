@@ -1556,6 +1556,15 @@ class TranslationOut(TranslationCreate):
     id: str
     updated_at: datetime
 
+
+DEFAULT_TRANSLATIONS = [
+    {"lang": "en", "namespace": "translation", "key": "app.title", "value": "Cruise Management"},
+    {"lang": "en", "namespace": "translation", "key": "app.welcome", "value": "Welcome to the Dashboard"},
+    {"lang": "en", "namespace": "translation", "key": "common.save", "value": "Save Changes"},
+    {"lang": "en", "namespace": "translation", "key": "common.cancel", "value": "Cancel"},
+]
+
+
 @app.get("/translations", response_model=list[TranslationOut])
 def list_translations(
     lang: str | None = None,
@@ -1563,6 +1572,21 @@ def list_translations(
     tenant_engine=Depends(get_tenant_engine),
 ):
     with session(tenant_engine) as s:
+        # Auto-seed if table is completely empty
+        if s.query(Translation).first() is None:
+            now = _now()
+            for item in DEFAULT_TRANSLATIONS:
+                t = Translation(
+                    id=str(uuid4()),
+                    lang=item["lang"],
+                    namespace=item["namespace"],
+                    key=item["key"],
+                    value=item["value"],
+                    updated_at=now,
+                )
+                s.add(t)
+            s.commit()
+
         qry = s.query(Translation)
         if lang:
             qry = qry.filter(Translation.lang == lang)
