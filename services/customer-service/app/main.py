@@ -29,10 +29,10 @@ from .models import (
     StaffGroupMember,
     StaffUser,
     StaffUserPreference,
-    Translation,
 )
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
+from .translations import TRANSLATIONS
 
 app = FastAPI(
     title="Customer Management (CRM) Service",
@@ -1543,211 +1543,48 @@ def remove_group_member(
     )
     return {"status": "ok"}
 
+
 # ----------------------------
 # Translations
 # ----------------------------
 
-class TranslationCreate(BaseModel):
+class TranslationOut(BaseModel):
     lang: str
-    namespace: str = "translation"
+    namespace: str
     key: str
     value: str
-
-class TranslationOut(TranslationCreate):
-    id: str
-    updated_at: datetime
-
-
-DEFAULT_TRANSLATIONS = [
-    {"lang": "en", "namespace": "translation", "key": "app.title", "value": "Cruise Management"},
-    {"lang": "en", "namespace": "translation", "key": "app.welcome", "value": "Welcome to the Dashboard"},
-    {"lang": "en", "namespace": "translation", "key": "common.save", "value": "Save Changes"},
-    {"lang": "en", "namespace": "translation", "key": "common.cancel", "value": "Cancel"},
-    # Translations Page
-    {"lang": "en", "namespace": "translation", "key": "translations_page.title", "value": "Translations"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.add_edit_title", "value": "Add / Edit Translation"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.language", "value": "Language"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.namespace", "value": "Namespace"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.key", "value": "Key"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.value", "value": "Value"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.save", "value": "Save"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.table_lang", "value": "Lang"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.table_namespace", "value": "Namespace"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.table_key", "value": "Key"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.table_value", "value": "Value"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.actions", "value": "Actions"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.edit", "value": "Edit"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.delete", "value": "Delete"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.confirm_delete", "value": "Are you sure you want to delete this translation?"},
-    {"lang": "en", "namespace": "translation", "key": "translations_page.no_translations", "value": "No translations found."},
-    # Navigation
-    {"lang": "en", "namespace": "translation", "key": "nav.dashboard", "value": "Dashboard"},
-    {"lang": "en", "namespace": "translation", "key": "nav.preferences", "value": "Preferences"},
-    {"lang": "en", "namespace": "translation", "key": "nav.cruises", "value": "Cruises"},
-    {"lang": "en", "namespace": "translation", "key": "nav.sales", "value": "Sales"},
-    {"lang": "en", "namespace": "translation", "key": "nav.customers", "value": "Customers"},
-    {"lang": "en", "namespace": "translation", "key": "nav.sailings", "value": "Sailings"},
-    {"lang": "en", "namespace": "translation", "key": "nav.itineraries", "value": "Itineraries"},
-    {"lang": "en", "namespace": "translation", "key": "nav.ports", "value": "Ports"},
-    {"lang": "en", "namespace": "translation", "key": "nav.fleet", "value": "Fleet"},
-    {"lang": "en", "namespace": "translation", "key": "nav.onboard", "value": "Onboard"},
-    {"lang": "en", "namespace": "translation", "key": "nav.pricing", "value": "Pricing"},
-    {"lang": "en", "namespace": "translation", "key": "nav.reports", "value": "Reports"},
-    {"lang": "en", "namespace": "translation", "key": "nav.notifications", "value": "Notifications"},
-    {"lang": "en", "namespace": "translation", "key": "nav.users", "value": "Users"},
-    {"lang": "en", "namespace": "translation", "key": "nav.audit", "value": "Audit"},
-    {"lang": "en", "namespace": "translation", "key": "nav.branding", "value": "Branding"},
-    {"lang": "en", "namespace": "translation", "key": "nav.search", "value": "Search"},
-    {"lang": "en", "namespace": "translation", "key": "nav.switch_company", "value": "Switch Company"},
-    {"lang": "en", "namespace": "translation", "key": "nav.sign_out", "value": "Sign Out"},
-    {"lang": "en", "namespace": "translation", "key": "nav.navigation", "value": "Navigation"},
-    {"lang": "en", "namespace": "translation", "key": "nav.session", "value": "Session"},
-    {"lang": "en", "namespace": "translation", "key": "nav.role", "value": "Role"},
-    {"lang": "en", "namespace": "translation", "key": "nav.company", "value": "Company"},
-    {"lang": "en", "namespace": "translation", "key": "nav.search_placeholder", "value": "Search..."},
-    {"lang": "en", "namespace": "translation", "key": "nav.main", "value": "Main"},
-    {"lang": "en", "namespace": "translation", "key": "nav.operations", "value": "Operations"},
-    {"lang": "en", "namespace": "translation", "key": "nav.administration", "value": "Administration"},
-]
 
 
 @app.get("/translations", response_model=list[TranslationOut])
 def list_translations(
     lang: str | None = None,
     namespace: str | None = None,
-    tenant_engine=Depends(get_tenant_engine),
 ):
-    with session(tenant_engine) as s:
-        # Ensure defaults exist (upsert-like behavior for missing defaults)
-        existing_keys = {
-            (r.lang, r.namespace, r.key) 
-            for r in s.query(Translation.lang, Translation.namespace, Translation.key).all()
-        }
-        
-        now = _now()
-        new_items = []
-        for item in DEFAULT_TRANSLATIONS:
-            if (item["lang"], item["namespace"], item["key"]) not in existing_keys:
-                t = Translation(
-                    id=str(uuid4()),
-                    lang=item["lang"],
-                    namespace=item["namespace"],
-                    key=item["key"],
-                    value=item["value"],
-                    updated_at=now,
-                )
-                s.add(t)
-                new_items.append(t)
-        
-        if new_items:
-            s.commit()
+    results = []
+    for l, ns_data in TRANSLATIONS.items():
+        if lang and l != lang:
+            continue
+        for ns, keys in ns_data.items():
+            if namespace and ns != namespace:
+                continue
+            for k, v in keys.items():
+                results.append(TranslationOut(lang=l, namespace=ns, key=k, value=v))
+    return results
 
-        qry = s.query(Translation)
-        if lang:
-            qry = qry.filter(Translation.lang == lang)
-        if namespace:
-            qry = qry.filter(Translation.namespace == namespace)
-        rows = qry.all()
-    return [
-        TranslationOut(
-            id=r.id,
-            updated_at=r.updated_at,
-            lang=r.lang,
-            namespace=r.namespace,
-            key=r.key,
-            value=r.value,
-        )
-        for r in rows
-    ]
-
-@app.post("/translations", response_model=TranslationOut)
-def create_translation(
-    payload: TranslationCreate,
-    tenant_engine=Depends(get_tenant_engine),
-    principal=Depends(require_roles("admin")),
-):
-    with session(tenant_engine) as s:
-        # Check if exists
-        exists = s.query(Translation).filter(
-            Translation.lang == payload.lang,
-            Translation.namespace == payload.namespace,
-            Translation.key == payload.key
-        ).first()
-        
-        now = _now()
-        if exists:
-            exists.value = payload.value
-            exists.updated_at = now
-            s.add(exists)
-            s.commit()
-            return TranslationOut(
-                id=exists.id,
-                updated_at=exists.updated_at,
-                lang=exists.lang,
-                namespace=exists.namespace,
-                key=exists.key,
-                value=exists.value,
-            )
-        
-        t = Translation(
-            id=str(uuid4()),
-            lang=payload.lang,
-            namespace=payload.namespace,
-            key=payload.key,
-            value=payload.value,
-            updated_at=now,
-        )
-        s.add(t)
-        s.commit()
-        return TranslationOut(
-            id=t.id,
-            updated_at=t.updated_at,
-            lang=t.lang,
-            namespace=t.namespace,
-            key=t.key,
-            value=t.value,
-        )
-
-@app.delete("/translations/{translation_id}")
-def delete_translation(
-    translation_id: str,
-    tenant_engine=Depends(get_tenant_engine),
-    principal=Depends(require_roles("admin")),
-):
-    with session(tenant_engine) as s:
-        t = s.get(Translation, translation_id)
-        if t:
-            s.delete(t)
-            s.commit()
-    return {"status": "ok"}
 
 @app.get("/translations/bundle/{lang}/{namespace}")
 def get_translation_bundle(
     lang: str,
     namespace: str,
-    tenant_engine=Depends(get_tenant_engine),
 ):
-    with session(tenant_engine) as s:
-        # 1. Always load 'en' (base) for this namespace to ensure we have defaults
-        #    This implements "fall back to English for missing keys" server-side.
-        base_rows = s.query(Translation).filter(
-            Translation.lang == 'en',
-            Translation.namespace == namespace
-        ).all()
-        base_map = {r.key: r.value for r in base_rows}
+    # 1. Always load 'en' (base) for this namespace to ensure we have defaults
+    base_map = TRANSLATIONS.get("en", {}).get(namespace, {}).copy()
 
-        # 2. If requested lang is not 'en', load it and merge over base
-        if lang != 'en':
-            target_rows = s.query(Translation).filter(
-                Translation.lang == lang,
-                Translation.namespace == namespace
-            ).all()
-            for r in target_rows:
-                base_map[r.key] = r.value
-            
-            # If target was empty and had region (e.g. en-US), try base of target (e.g. en)
-            # (Skipping complex chain, just sticking to en-base + target-specific)
-    
+    # 2. If requested lang is not 'en', load it and merge over base
+    if lang != "en":
+        target_map = TRANSLATIONS.get(lang, {}).get(namespace, {})
+        base_map.update(target_map)
+
     # 3. Unflatten
     result = {}
     for key, value in base_map.items():
@@ -1760,5 +1597,5 @@ def get_translation_bundle(
                 d[part] = {}
             d = d[part]
         d[parts[-1]] = value
-        
+
     return result

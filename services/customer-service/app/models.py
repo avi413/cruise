@@ -200,14 +200,3 @@ class AuditLog(Base):
 
     meta: Mapped[dict] = mapped_column(JSON)  # {before, after, request, ...}
 
-
-class Translation(Base):
-    __tablename__ = "translations"
-    __table_args__ = (UniqueConstraint("lang", "namespace", "key", name="uq_translation_key"),)
-
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    lang: Mapped[str] = mapped_column(String, index=True)
-    namespace: Mapped[str] = mapped_column(String, index=True) # e.g. "translation"
-    key: Mapped[str] = mapped_column(String, index=True)
-    value: Mapped[str] = mapped_column(String)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
