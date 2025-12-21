@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 
 type Customer = {
@@ -55,6 +56,7 @@ type Passenger = {
 }
 
 export function CustomersPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<'details' | 'related'>('details')
   const [customerId, setCustomerId] = useState('')
   const [cust, setCust] = useState<Customer | null>(null)
@@ -178,7 +180,7 @@ export function CustomersPage(props: { apiBase: string }) {
     } catch (e: any) {
       const msg = String(e?.detail || e?.message || e)
       if (msg.toLowerCase().includes('not found')) {
-         setErr(`Customer ${id} not found.`)
+         setErr(t('customers.error_not_found', { id }))
       } else {
          setErr(msg)
       }
@@ -196,7 +198,7 @@ export function CustomersPage(props: { apiBase: string }) {
       try {
         parsed = prefs.trim() ? JSON.parse(prefs) : {}
       } catch {
-        throw new Error('Preferences must be valid JSON.')
+        throw new Error(t('customers.error_preferences'))
       }
       const c = await apiFetch<Customer>(props.apiBase, `/v1/customers/${cust.id}`, {
         method: 'PATCH',
@@ -236,7 +238,7 @@ export function CustomersPage(props: { apiBase: string }) {
     const first = String(pNew.first_name || '').trim()
     const last = String(pNew.last_name || '').trim()
     if (!first || !last) {
-      setPErr('Passenger first/last name are required.')
+      setPErr(t('customers.error_passenger_name'))
       return
     }
     setPBusy(true)
@@ -298,8 +300,8 @@ export function CustomersPage(props: { apiBase: string }) {
   const renderSidebar = () => (
     <div style={styles.sidebar}>
       <div style={styles.sidebarHeader}>
-        <div style={styles.sidebarTitle}>Customers</div>
-        <button style={styles.primaryBtn} onClick={() => { setCust(null); setIsCreating(true); }}>New</button>
+        <div style={styles.sidebarTitle}>{t('customers.title')}</div>
+        <button style={styles.primaryBtn} onClick={() => { setCust(null); setIsCreating(true); }}>{t('customers.new')}</button>
       </div>
 
       <div style={styles.searchBox}>
@@ -307,7 +309,7 @@ export function CustomersPage(props: { apiBase: string }) {
           style={styles.searchInput} 
           value={searchQ} 
           onChange={(e) => setSearchQ(e.target.value)} 
-          placeholder="Search customers..." 
+          placeholder={t('customers.search_placeholder')} 
         />
       </div>
 
@@ -322,14 +324,14 @@ export function CustomersPage(props: { apiBase: string }) {
             <div style={styles.hitSub}>{h.email}</div>
           </div>
         ))}
-        {hits.length === 0 && searchQ && <div style={styles.muted}>No results found.</div>}
+        {hits.length === 0 && searchQ && <div style={styles.muted}>{t('customers.no_results')}</div>}
       </div>
       
       <div style={styles.lookupBox}>
-         <div style={styles.muted}>Load by ID</div>
+         <div style={styles.muted}>{t('customers.load_by_id')}</div>
          <div style={{display: 'flex', gap: 6}}>
-           <input style={styles.input} value={customerId} onChange={e => setCustomerId(e.target.value)} placeholder="UUID" />
-           <button style={styles.secondaryBtn} onClick={() => void loadCustomer()}>Go</button>
+           <input style={styles.input} value={customerId} onChange={e => setCustomerId(e.target.value)} placeholder={t('customers.uuid_placeholder')} />
+           <button style={styles.secondaryBtn} onClick={() => void loadCustomer()}>{t('customers.go')}</button>
          </div>
       </div>
     </div>
@@ -341,8 +343,8 @@ export function CustomersPage(props: { apiBase: string }) {
         <div style={styles.pageHeader}>
            <div style={styles.headerIcon}>+</div>
            <div>
-             <div style={styles.headerBread}>Customers</div>
-             <div style={styles.headerTitle}>New Customer</div>
+             <div style={styles.headerBread}>{t('customers.title')}</div>
+             <div style={styles.headerTitle}>{t('customers.new_customer_title')}</div>
            </div>
         </div>
       )
@@ -352,22 +354,22 @@ export function CustomersPage(props: { apiBase: string }) {
         <div style={styles.pageHeader}>
            <div style={styles.headerIcon}>?</div>
            <div>
-             <div style={styles.headerBread}>Customers</div>
-             <div style={styles.headerTitle}>Select a customer</div>
+             <div style={styles.headerBread}>{t('customers.title')}</div>
+             <div style={styles.headerTitle}>{t('customers.select_customer')}</div>
            </div>
         </div>
       )
     }
-    const name = [cust.first_name, cust.last_name].filter(Boolean).join(' ') || 'Unnamed Customer'
+    const name = [cust.first_name, cust.last_name].filter(Boolean).join(' ') || t('customers.unnamed')
     return (
       <div style={styles.pageHeader}>
         <div style={styles.headerIcon}>{cust.first_name?.[0] || 'C'}</div>
         <div style={{flex: 1}}>
-          <div style={styles.headerBread}>Customer</div>
+          <div style={styles.headerBread}>{t('customers.customer_breadcrumb')}</div>
           <div style={styles.headerTitle}>{name}</div>
         </div>
         <div style={styles.headerActions}>
-           <button style={styles.primaryBtn} disabled={busy} onClick={() => void saveCustomer()}>Save</button>
+           <button style={styles.primaryBtn} disabled={busy} onClick={() => void saveCustomer()}>{t('customers.save')}</button>
         </div>
       </div>
     )
@@ -378,19 +380,19 @@ export function CustomersPage(props: { apiBase: string }) {
     return (
       <div style={styles.highlights}>
         <div style={styles.highlightItem}>
-          <div style={styles.highlightLabel}>Email</div>
+          <div style={styles.highlightLabel}>{t('customers.email')}</div>
           <div style={styles.highlightValue}>{cust.email}</div>
         </div>
         <div style={styles.highlightItem}>
-          <div style={styles.highlightLabel}>Loyalty Tier</div>
+          <div style={styles.highlightLabel}>{t('customers.loyalty_tier')}</div>
           <div style={styles.highlightValue}>{cust.loyalty_tier || '—'}</div>
         </div>
         <div style={styles.highlightItem}>
-          <div style={styles.highlightLabel}>Phone</div>
+          <div style={styles.highlightLabel}>{t('customers.phone')}</div>
           <div style={styles.highlightValue}>{cust.phone || '—'}</div>
         </div>
         <div style={styles.highlightItem}>
-          <div style={styles.highlightLabel}>ID</div>
+          <div style={styles.highlightLabel}>{t('customers.id')}</div>
           <div style={styles.highlightValueMono}>{cust.id}</div>
         </div>
       </div>
@@ -405,13 +407,13 @@ export function CustomersPage(props: { apiBase: string }) {
           style={{...styles.tab, ...(activeTab === 'details' ? styles.tabActive : {})}} 
           onClick={() => setActiveTab('details')}
         >
-          Details
+          {t('customers.details')}
         </div>
         <div 
           style={{...styles.tab, ...(activeTab === 'related' ? styles.tabActive : {})}} 
           onClick={() => setActiveTab('related')}
         >
-          Related
+          {t('customers.related')}
         </div>
       </div>
     )
@@ -421,53 +423,53 @@ export function CustomersPage(props: { apiBase: string }) {
      if (!cust) return null
      return (
        <div style={styles.detailGrid}>
-         <Section title="Contact Information">
-            <Field label="Email" value={cust.email} readOnly />
-            <Field label="Phone" value={cust.phone || ''} onChange={v => setCust({...cust, phone: v})} />
+         <Section title={t('customers.contact_info')}>
+            <Field label={t('customers.email')} value={cust.email} readOnly />
+            <Field label={t('customers.phone')} value={cust.phone || ''} onChange={v => setCust({...cust, phone: v})} />
          </Section>
          
-         <Section title="Personal Information">
+         <Section title={t('customers.personal_info')}>
             <div style={styles.row2}>
-              <Select label="Title" value={cust.title || ''} options={['MR','MRS','MS','MISS','DR']} onChange={v => setCust({...cust, title: v})} />
-              <Field label="Birth Date" type="date" value={cust.birth_date || ''} onChange={v => setCust({...cust, birth_date: v})} />
+              <Select label={t('customers.field_title')} value={cust.title || ''} options={['MR','MRS','MS','MISS','DR']} onChange={v => setCust({...cust, title: v})} />
+              <Field label={t('customers.birth_date')} type="date" value={cust.birth_date || ''} onChange={v => setCust({...cust, birth_date: v})} />
             </div>
             <div style={styles.row2}>
-               <Field label="First Name" value={cust.first_name || ''} onChange={v => setCust({...cust, first_name: v})} />
-               <Field label="Last Name" value={cust.last_name || ''} onChange={v => setCust({...cust, last_name: v})} />
+               <Field label={t('customers.first_name')} value={cust.first_name || ''} onChange={v => setCust({...cust, first_name: v})} />
+               <Field label={t('customers.last_name')} value={cust.last_name || ''} onChange={v => setCust({...cust, last_name: v})} />
             </div>
-            <Field label="Loyalty Tier" value={cust.loyalty_tier || ''} onChange={v => setCust({...cust, loyalty_tier: v})} />
+            <Field label={t('customers.loyalty_tier')} value={cust.loyalty_tier || ''} onChange={v => setCust({...cust, loyalty_tier: v})} />
          </Section>
 
-         <Section title="Address">
-            <Field label="Address Line 1" value={cust.address_line1 || ''} onChange={v => setCust({...cust, address_line1: v})} />
-            <Field label="Address Line 2" value={cust.address_line2 || ''} onChange={v => setCust({...cust, address_line2: v})} />
+         <Section title={t('customers.address')}>
+            <Field label={t('customers.address_line1')} value={cust.address_line1 || ''} onChange={v => setCust({...cust, address_line1: v})} />
+            <Field label={t('customers.address_line2')} value={cust.address_line2 || ''} onChange={v => setCust({...cust, address_line2: v})} />
             <div style={styles.row2}>
-              <Field label="City" value={cust.city || ''} onChange={v => setCust({...cust, city: v})} />
-              <Field label="State/Province" value={cust.state || ''} onChange={v => setCust({...cust, state: v})} />
+              <Field label={t('customers.city')} value={cust.city || ''} onChange={v => setCust({...cust, city: v})} />
+              <Field label={t('customers.state')} value={cust.state || ''} onChange={v => setCust({...cust, state: v})} />
             </div>
             <div style={styles.row2}>
-              <Field label="Postal Code" value={cust.postal_code || ''} onChange={v => setCust({...cust, postal_code: v})} />
-              <Field label="Country" value={cust.country || ''} onChange={v => setCust({...cust, country: v})} />
+              <Field label={t('customers.postal_code')} value={cust.postal_code || ''} onChange={v => setCust({...cust, postal_code: v})} />
+              <Field label={t('customers.country')} value={cust.country || ''} onChange={v => setCust({...cust, country: v})} />
             </div>
          </Section>
 
-         <Section title="Identity">
+         <Section title={t('customers.identity')}>
             <div style={styles.row2}>
-               <Field label="National ID" value={cust.national_id_number || ''} onChange={v => setCust({...cust, national_id_number: v})} />
-               <Field label="National ID Country" value={cust.national_id_country || ''} onChange={v => setCust({...cust, national_id_country: v})} />
+               <Field label={t('customers.national_id')} value={cust.national_id_number || ''} onChange={v => setCust({...cust, national_id_number: v})} />
+               <Field label={t('customers.national_id_country')} value={cust.national_id_country || ''} onChange={v => setCust({...cust, national_id_country: v})} />
             </div>
             <div style={styles.row2}>
-               <Field label="Passport Number" value={cust.passport_number || ''} onChange={v => setCust({...cust, passport_number: v})} />
-               <Field label="Passport Country" value={cust.passport_country || ''} onChange={v => setCust({...cust, passport_country: v})} />
+               <Field label={t('customers.passport_number')} value={cust.passport_number || ''} onChange={v => setCust({...cust, passport_number: v})} />
+               <Field label={t('customers.passport_country')} value={cust.passport_country || ''} onChange={v => setCust({...cust, passport_country: v})} />
             </div>
-            <Field label="Passport Expiry" type="date" value={cust.passport_expiry || ''} onChange={v => setCust({...cust, passport_expiry: v})} />
+            <Field label={t('customers.passport_expiry')} type="date" value={cust.passport_expiry || ''} onChange={v => setCust({...cust, passport_expiry: v})} />
          </Section>
 
-         <Section title="System">
-            <Field label="Created At" value={cust.created_at} readOnly />
-            <Field label="Updated At" value={cust.updated_at} readOnly />
+         <Section title={t('customers.system')}>
+            <Field label={t('customers.created_at')} value={cust.created_at} readOnly />
+            <Field label={t('customers.updated_at')} value={cust.updated_at} readOnly />
             <label style={styles.fieldLabel}>
-              Preferences (JSON)
+              {t('customers.preferences_json')}
               <textarea 
                 style={styles.textarea} 
                 value={prefs} 
@@ -481,24 +483,24 @@ export function CustomersPage(props: { apiBase: string }) {
 
   const renderCreateForm = () => (
     <div style={styles.detailGrid}>
-      <Section title="New Customer Details">
-         <Field label="Email" value={email} onChange={setEmail} placeholder="required" />
+      <Section title={t('customers.new_customer_details')}>
+         <Field label={t('customers.email')} value={email} onChange={setEmail} placeholder={t('customers.required')} />
          <div style={styles.row2}>
-           <Select label="Title" value={createTitle} options={['MR','MRS','MS','MISS','DR']} onChange={setCreateTitle} />
+           <Select label={t('customers.field_title')} value={createTitle} options={['MR','MRS','MS','MISS','DR']} onChange={setCreateTitle} />
            <div />
          </div>
          <div style={styles.row2}>
-           <Field label="First Name" value={firstName} onChange={setFirstName} />
-           <Field label="Last Name" value={lastName} onChange={setLastName} />
+           <Field label={t('customers.first_name')} value={firstName} onChange={setFirstName} />
+           <Field label={t('customers.last_name')} value={lastName} onChange={setLastName} />
          </div>
-         <Field label="Phone" value={createPhone} onChange={setCreatePhone} />
-         <Field label="Loyalty Tier" value={tier} onChange={setTier} />
+         <Field label={t('customers.phone')} value={createPhone} onChange={setCreatePhone} />
+         <Field label={t('customers.loyalty_tier')} value={tier} onChange={setTier} />
          
          <div style={{marginTop: 20}}>
            <button style={styles.primaryBtn} disabled={busy || !email} onClick={() => void createCustomer()}>
-             {busy ? 'Creating...' : 'Create Customer'}
+             {busy ? t('customers.creating') : t('customers.create_btn')}
            </button>
-           <button style={{...styles.secondaryBtn, marginLeft: 10}} onClick={() => setIsCreating(false)}>Cancel</button>
+           <button style={{...styles.secondaryBtn, marginLeft: 10}} onClick={() => setIsCreating(false)}>{t('customers.cancel')}</button>
          </div>
       </Section>
     </div>
@@ -508,25 +510,25 @@ export function CustomersPage(props: { apiBase: string }) {
     if (!cust) return null
     return (
       <div style={{display: 'grid', gap: 20}}>
-        <Section title="Passengers">
+        <Section title={t('customers.passengers')}>
            <div style={styles.tableToolbar}>
-              <button style={styles.secondaryBtn} onClick={() => setPNew({...pNew, first_name: 'New', last_name: 'Passenger'})}>+ Add Passenger</button>
+              <button style={styles.secondaryBtn} onClick={() => setPNew({...pNew, first_name: 'New', last_name: 'Passenger'})}>{t('customers.add_passenger')}</button>
            </div>
            
            {pNew.first_name !== '' && !pEdit ? (
              <div style={styles.inlineForm}>
-                <strong>New Passenger</strong>
+                <strong>{t('customers.new_passenger')}</strong>
                 <div style={styles.row2}>
-                  <Select label="Title" value={pNew.title || ''} options={['MR','MRS','MS','MISS','DR']} onChange={v => setPNew({...pNew, title: v})} />
-                  <Field label="Birth Date" type="date" value={pNew.birth_date || ''} onChange={v => setPNew({...pNew, birth_date: v})} />
+                  <Select label={t('customers.field_title')} value={pNew.title || ''} options={['MR','MRS','MS','MISS','DR']} onChange={v => setPNew({...pNew, title: v})} />
+                  <Field label={t('customers.birth_date')} type="date" value={pNew.birth_date || ''} onChange={v => setPNew({...pNew, birth_date: v})} />
                 </div>
                 <div style={styles.row2}>
-                   <Field label="First Name" value={pNew.first_name || ''} onChange={v => setPNew({...pNew, first_name: v})} />
-                   <Field label="Last Name" value={pNew.last_name || ''} onChange={v => setPNew({...pNew, last_name: v})} />
+                   <Field label={t('customers.first_name')} value={pNew.first_name || ''} onChange={v => setPNew({...pNew, first_name: v})} />
+                   <Field label={t('customers.last_name')} value={pNew.last_name || ''} onChange={v => setPNew({...pNew, last_name: v})} />
                 </div>
                 <div style={{display: 'flex', gap: 10, marginTop: 10}}>
-                   <button style={styles.primaryBtn} onClick={() => void createPassenger()}>Save</button>
-                   <button style={styles.secondaryBtn} onClick={() => setPNew({title: 'MR', first_name: '', last_name: ''})}>Cancel</button>
+                   <button style={styles.primaryBtn} onClick={() => void createPassenger()}>{t('customers.save')}</button>
+                   <button style={styles.secondaryBtn} onClick={() => setPNew({title: 'MR', first_name: '', last_name: ''})}>{t('customers.cancel')}</button>
                 </div>
              </div>
            ) : null}
@@ -534,10 +536,10 @@ export function CustomersPage(props: { apiBase: string }) {
            <table style={styles.table}>
              <thead>
                <tr>
-                 <th style={styles.th}>Name</th>
-                 <th style={styles.th}>Birth Date</th>
-                 <th style={styles.th}>Passport</th>
-                 <th style={styles.th}>Actions</th>
+                 <th style={styles.th}>{t('customers.table_name')}</th>
+                 <th style={styles.th}>{t('customers.table_birth_date')}</th>
+                 <th style={styles.th}>{t('customers.table_passport')}</th>
+                 <th style={styles.th}>{t('customers.table_actions')}</th>
                </tr>
              </thead>
              <tbody>
@@ -547,48 +549,48 @@ export function CustomersPage(props: { apiBase: string }) {
                    <td style={styles.tdMono}>{p.birth_date || '—'}</td>
                    <td style={styles.tdMono}>{p.passport_number || '—'}</td>
                    <td style={styles.td}>
-                     <button style={styles.linkBtn} onClick={() => setPEdit(p)}>Edit</button>
-                     <button style={styles.linkBtnDanger} onClick={() => void removePassenger(p.id)}>Del</button>
+                     <button style={styles.linkBtn} onClick={() => setPEdit(p)}>{t('customers.edit')}</button>
+                     <button style={styles.linkBtnDanger} onClick={() => void removePassenger(p.id)}>{t('customers.delete')}</button>
                    </td>
                  </tr>
                ))}
-               {!passengers.length && <tr><td colSpan={4} style={styles.tdMuted}>No passengers.</td></tr>}
+               {!passengers.length && <tr><td colSpan={4} style={styles.tdMuted}>{t('customers.no_passengers')}</td></tr>}
              </tbody>
            </table>
            
            {pEdit && (
              <div style={styles.modalOverlay}>
                <div style={styles.modal}>
-                 <h3>Edit Passenger</h3>
+                 <h3>{t('customers.edit_passenger')}</h3>
                  <div style={styles.row2}>
-                    <Select label="Title" value={pEdit.title || ''} options={['MR','MRS','MS','MISS','DR']} onChange={v => setPEdit({...pEdit, title: v})} />
-                    <Field label="Birth Date" type="date" value={pEdit.birth_date || ''} onChange={v => setPEdit({...pEdit, birth_date: v})} />
+                    <Select label={t('customers.field_title')} value={pEdit.title || ''} options={['MR','MRS','MS','MISS','DR']} onChange={v => setPEdit({...pEdit, title: v})} />
+                    <Field label={t('customers.birth_date')} type="date" value={pEdit.birth_date || ''} onChange={v => setPEdit({...pEdit, birth_date: v})} />
                  </div>
                  <div style={styles.row2}>
-                    <Field label="First Name" value={pEdit.first_name || ''} onChange={v => setPEdit({...pEdit, first_name: v})} />
-                    <Field label="Last Name" value={pEdit.last_name || ''} onChange={v => setPEdit({...pEdit, last_name: v})} />
+                    <Field label={t('customers.first_name')} value={pEdit.first_name || ''} onChange={v => setPEdit({...pEdit, first_name: v})} />
+                    <Field label={t('customers.last_name')} value={pEdit.last_name || ''} onChange={v => setPEdit({...pEdit, last_name: v})} />
                  </div>
                  <div style={styles.row2}>
-                    <Field label="Passport Number" value={pEdit.passport_number || ''} onChange={v => setPEdit({...pEdit, passport_number: v})} />
-                    <Field label="Passport Expiry" type="date" value={pEdit.passport_expiry || ''} onChange={v => setPEdit({...pEdit, passport_expiry: v})} />
+                    <Field label={t('customers.passport_number')} value={pEdit.passport_number || ''} onChange={v => setPEdit({...pEdit, passport_number: v})} />
+                    <Field label={t('customers.passport_expiry')} type="date" value={pEdit.passport_expiry || ''} onChange={v => setPEdit({...pEdit, passport_expiry: v})} />
                  </div>
                  <div style={{display: 'flex', gap: 10, marginTop: 20}}>
-                    <button style={styles.primaryBtn} onClick={() => void savePassenger()}>Save</button>
-                    <button style={styles.secondaryBtn} onClick={() => setPEdit(null)}>Cancel</button>
+                    <button style={styles.primaryBtn} onClick={() => void savePassenger()}>{t('customers.save')}</button>
+                    <button style={styles.secondaryBtn} onClick={() => setPEdit(null)}>{t('customers.cancel')}</button>
                  </div>
                </div>
              </div>
            )}
         </Section>
         
-        <Section title="Booking History">
+        <Section title={t('customers.booking_history')}>
            <table style={styles.table}>
              <thead>
                <tr>
-                 <th style={styles.th}>Booking ID</th>
-                 <th style={styles.th}>Sailing</th>
-                 <th style={styles.th}>Status</th>
-                 <th style={styles.th}>Updated</th>
+                 <th style={styles.th}>{t('customers.booking_id')}</th>
+                 <th style={styles.th}>{t('customers.sailing')}</th>
+                 <th style={styles.th}>{t('customers.status')}</th>
+                 <th style={styles.th}>{t('customers.updated')}</th>
                </tr>
              </thead>
              <tbody>
@@ -600,7 +602,7 @@ export function CustomersPage(props: { apiBase: string }) {
                    <td style={styles.tdMono}>{h.updated_at}</td>
                  </tr>
                ))}
-               {!history.length && <tr><td colSpan={4} style={styles.tdMuted}>No bookings found.</td></tr>}
+               {!history.length && <tr><td colSpan={4} style={styles.tdMuted}>{t('customers.no_bookings')}</td></tr>}
              </tbody>
            </table>
         </Section>
@@ -618,7 +620,7 @@ export function CustomersPage(props: { apiBase: string }) {
         {renderTabs()}
         <div style={styles.content}>
            {isCreating ? renderCreateForm() : (activeTab === 'details' ? renderDetailForm() : renderRelated())}
-           {!cust && !isCreating && <div style={styles.emptyState}>Select a customer from the sidebar or create a new one.</div>}
+           {!cust && !isCreating && <div style={styles.emptyState}>{t('customers.empty_state')}</div>}
         </div>
       </div>
     </div>
