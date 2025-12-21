@@ -229,6 +229,10 @@ async def get_itinerary(itinerary_id: str, request: Request):
 async def replace_itinerary(itinerary_id: str, request: Request):
     return await _proxy("PUT", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}", request, "cruise-service")
 
+@app.delete("/v1/itineraries/{itinerary_id}")
+async def delete_itinerary(itinerary_id: str, request: Request):
+    return await _proxy("DELETE", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}", request, "cruise-service")
+
 @app.get("/v1/itineraries/{itinerary_id}/compute")
 async def compute_itinerary_dates(itinerary_id: str, request: Request):
     return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/compute", request, "cruise-service")
