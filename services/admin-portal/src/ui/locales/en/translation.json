@@ -40,23 +40,5 @@
     "layout_title": "Dashboard layout (JSON)",
     "layout_subtitle": "Temporary editor until drag-and-drop widgets are wired in.",
     "save_layout": "Save layout"
-  },
-  "translations_page": {
-    "title": "Translations Management",
-    "add_edit_title": "Add / Edit Translation",
-    "language": "Language",
-    "namespace": "Namespace",
-    "key": "Key",
-    "value": "Value",
-    "save": "Save",
-    "table_lang": "Lang",
-    "table_namespace": "Namespace",
-    "table_key": "Key",
-    "table_value": "Value",
-    "actions": "Actions",
-    "edit": "Edit",
-    "delete": "Delete",
-    "no_translations": "No translations found.",
-    "confirm_delete": "Are you sure?"
   }
 }
