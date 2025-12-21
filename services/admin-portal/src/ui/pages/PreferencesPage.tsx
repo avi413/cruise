@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { fetchCompanySettings } from '../components/theme'
 import { getCompany } from '../components/storage'
@@ -14,6 +15,7 @@ function safeJsonParse(s: string): any {
 }
 
 export function PreferencesPage(props: { apiBase: string }) {
+  const { t, i18n } = useTranslation()
   const company = getCompany()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -28,10 +30,12 @@ export function PreferencesPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     apiFetch<MePrefs>(props.apiBase, `/v1/staff/me/preferences`)
-      .then((r) => {
+    .then((r) => {
         if (cancelled) return
         setPrefs(r.preferences || {})
-        setLocale(String(r.preferences?.locale || 'en'))
+        const l = String(r.preferences?.locale || 'en')
+        setLocale(l)
+        i18n.changeLanguage(l) // Sync i18n with saved preference
         setDashboardLayoutJson(JSON.stringify(r.preferences?.dashboard?.layout || [], null, 2))
       })
       .catch((e: any) => {
@@ -43,7 +47,7 @@ export function PreferencesPage(props: { apiBase: string }) {
     return () => {
       cancelled = true
     }
-  }, [props.apiBase])
+  }, [props.apiBase, i18n])
 
   useEffect(() => {
     let cancelled = false
@@ -79,6 +83,8 @@ export function PreferencesPage(props: { apiBase: string }) {
       }
       const r = await apiFetch<MePrefs>(props.apiBase, `/v1/staff/me/preferences`, { method: 'PATCH', body: payload })
       setPrefs(r.preferences || {})
+      // Also update i18n immediately if successful
+      i18n.changeLanguage(locale)
     } catch (e: any) {
       setErr(String(e?.message || e?.detail || e))
     } finally {
@@ -86,40 +92,48 @@ export function PreferencesPage(props: { apiBase: string }) {
     }
   }
 
+  const changeLocale = (newLocale: string) => {
+    setLocale(newLocale)
+    i18n.changeLanguage(newLocale)
+  }
+
   return (
     <div style={styles.wrap}>
-      <div style={styles.hTitle}>My preferences</div>
-      <div style={styles.hSub}>Language and workspace layout (saved per user). Currency is managed in company settings.</div>
+      <div style={styles.hTitle}>{t('preferences.title')}</div>
+      <div style={styles.hSub}>{t('preferences.subtitle')}</div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
       <div style={styles.grid}>
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Locale</div>
+          <div style={styles.panelTitle}>{t('preferences.locale_title')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Locale
-              <input style={styles.input} value={locale} onChange={(e) => setLocale(e.target.value)} placeholder="en / es / fr / ar / ..." />
+              {t('preferences.locale_label')}
+              <select style={styles.input} value={locale} onChange={(e) => changeLocale(e.target.value)}>
+                <option value="en">English</option>
+                <option value="he">Hebrew (עברית)</option>
+              </select>
             </label>
             <div style={styles.muted}>
-              Currency: <span style={{ fontFamily: styles.mono.fontFamily as any }}>{companyCurrency}</span> (set in <span style={{ fontFamily: styles.mono.fontFamily as any }}>Branding &amp; localization</span>)
+              {t('preferences.currency_label')}: <span style={{ fontFamily: styles.mono.fontFamily as any }}>{companyCurrency}</span> (set in <span style={{ fontFamily: styles.mono.fontFamily as any }}>Branding &amp; localization</span>)
             </div>
             <button style={styles.primaryBtn} disabled={busy} onClick={() => void save()}>
-              {busy ? 'Saving…' : 'Save'}
+              {busy ? t('preferences.saving') : t('preferences.save')}
             </button>
             <div style={styles.muted}>
-              Note: this is the persistence layer. Next, the UI will use locale for formatting, and workspace layout for reduced-click workflows.
+              {t('preferences.note')}
             </div>
           </div>
         </section>
 
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Dashboard layout (JSON)</div>
-          <div style={styles.muted}>Temporary editor until drag-and-drop widgets are wired in.</div>
+          <div style={styles.panelTitle}>{t('preferences.layout_title')}</div>
+          <div style={styles.muted}>{t('preferences.layout_subtitle')}</div>
           <div style={styles.form}>
             <textarea style={{ ...styles.input, minHeight: 260, fontFamily: styles.mono.fontFamily as any }} value={dashboardLayoutJson} onChange={(e) => setDashboardLayoutJson(e.target.value)} />
             <button style={styles.primaryBtn} disabled={busy} onClick={() => void save()}>
-              {busy ? 'Saving…' : 'Save layout'}
+              {busy ? t('preferences.saving') : t('preferences.save_layout')}
             </button>
           </div>
         </section>
@@ -171,4 +185,3 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
   },
 }
-

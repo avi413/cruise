@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { decodeJwt, permsFromClaims } from './jwt'
 import { getCompany, getToken, setCompany, setToken } from './storage'
 import { applyCompanyTheme, fetchCompanySettings } from './theme'
 
 export function Shell(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const nav = useNavigate()
   const loc = useLocation()
   const company = getCompany()
@@ -104,26 +106,26 @@ export function Shell(props: { apiBase: string }) {
 
   const navItems: NavItem[] = useMemo(() => {
     const items: NavItem[] = [
-      { key: 'dashboard', label: 'Dashboard', to: '/app/dashboard', show: true, icon: <Icon name="home" />, group: 'Main' },
-      { key: 'preferences', label: 'My preferences', to: '/app/preferences', show: true, icon: <Icon name="user" />, group: 'Main' },
+      { key: 'dashboard', label: t('nav.dashboard'), to: '/app/dashboard', show: true, icon: <Icon name="home" />, group: 'Main' },
+      { key: 'preferences', label: t('nav.preferences'), to: '/app/preferences', show: true, icon: <Icon name="user" />, group: 'Main' },
 
-      { key: 'cruises', label: 'Cruises', to: '/app/cruises', show: canSailings || canSales, icon: <Icon name="compass" />, group: 'Operations' },
-      { key: 'sales', label: 'Sales', to: '/app/sales', show: canSales, icon: <Icon name="tag" />, group: 'Operations' },
-      { key: 'customers', label: 'Customers', to: '/app/customers', show: canCustomers, icon: <Icon name="users" />, group: 'Operations' },
-      { key: 'sailings', label: 'Sailings', to: '/app/sailings', show: canSailings, icon: <Icon name="calendar" />, group: 'Operations' },
-      { key: 'itineraries', label: 'Itineraries', to: '/app/itineraries', show: canSailings, icon: <Icon name="map" />, group: 'Operations' },
-      { key: 'ports', label: 'Ports', to: '/app/ports', show: canSailings, icon: <Icon name="pin" />, group: 'Operations' },
-      { key: 'fleet', label: 'Fleet & Cabins', to: '/app/fleet', show: canFleet, icon: <Icon name="ship" />, group: 'Operations' },
-      { key: 'onboard', label: 'Onboard & ShoreX', to: '/app/onboard', show: canFleet, icon: <Icon name="list" />, group: 'Operations' },
-      { key: 'pricing', label: 'Pricing & Offers', to: '/app/pricing', show: canPricing, icon: <Icon name="sparkles" />, group: 'Operations' },
-      { key: 'reports', label: 'Reports', to: '/app/reports', show: canReports, icon: <Icon name="chart" />, group: 'Operations' },
-      { key: 'notifications', label: 'Agenda & Notifications', to: '/app/notifications', show: canSales || canCustomers, icon: <Icon name="bell" />, group: 'Operations' },
+      { key: 'cruises', label: t('nav.cruises'), to: '/app/cruises', show: canSailings || canSales, icon: <Icon name="compass" />, group: 'Operations' },
+      { key: 'sales', label: t('nav.sales'), to: '/app/sales', show: canSales, icon: <Icon name="tag" />, group: 'Operations' },
+      { key: 'customers', label: t('nav.customers'), to: '/app/customers', show: canCustomers, icon: <Icon name="users" />, group: 'Operations' },
+      { key: 'sailings', label: t('nav.sailings'), to: '/app/sailings', show: canSailings, icon: <Icon name="calendar" />, group: 'Operations' },
+      { key: 'itineraries', label: t('nav.itineraries'), to: '/app/itineraries', show: canSailings, icon: <Icon name="map" />, group: 'Operations' },
+      { key: 'ports', label: t('nav.ports'), to: '/app/ports', show: canSailings, icon: <Icon name="pin" />, group: 'Operations' },
+      { key: 'fleet', label: t('nav.fleet'), to: '/app/fleet', show: canFleet, icon: <Icon name="ship" />, group: 'Operations' },
+      { key: 'onboard', label: t('nav.onboard'), to: '/app/onboard', show: canFleet, icon: <Icon name="list" />, group: 'Operations' },
+      { key: 'pricing', label: t('nav.pricing'), to: '/app/pricing', show: canPricing, icon: <Icon name="sparkles" />, group: 'Operations' },
+      { key: 'reports', label: t('nav.reports'), to: '/app/reports', show: canReports, icon: <Icon name="chart" />, group: 'Operations' },
+      { key: 'notifications', label: t('nav.notifications'), to: '/app/notifications', show: canSales || canCustomers, icon: <Icon name="bell" />, group: 'Operations' },
 
-      { key: 'users', label: 'Users & Groups', to: '/app/users', show: canUsers, icon: <Icon name="shield" />, group: 'Administration' },
-      { key: 'audit', label: 'Audit log', to: '/app/audit', show: canUsers, icon: <Icon name="clock" />, group: 'Administration' },
+      { key: 'users', label: t('nav.users'), to: '/app/users', show: canUsers, icon: <Icon name="shield" />, group: 'Administration' },
+      { key: 'audit', label: t('nav.audit'), to: '/app/audit', show: canUsers, icon: <Icon name="clock" />, group: 'Administration' },
       {
         key: 'company-settings',
-        label: 'Branding & localization',
+        label: t('nav.branding'),
         to: '/app/company-settings',
         show: isPlatform || role === 'admin',
         icon: <Icon name="paint" />,
@@ -131,7 +133,7 @@ export function Shell(props: { apiBase: string }) {
       },
     ]
     return items.filter((x) => x.show)
-  }, [canCustomers, canFleet, canPricing, canReports, canSailings, canSales, canUsers, isPlatform, role])
+  }, [canCustomers, canFleet, canPricing, canReports, canSailings, canSales, canUsers, isPlatform, role, t])
 
   const paletteItems = useMemo(() => {
     const q = paletteQ.trim().toLowerCase()
@@ -178,7 +180,7 @@ export function Shell(props: { apiBase: string }) {
         <div style={styles.topbarSearchWrap}>
           <button style={styles.searchBtn} onClick={() => setPaletteOpen(true)} title="Search (Ctrl+K)">
             <Icon name="search" />
-            {!isNarrow && <span style={{ fontWeight: 800, opacity: 0.9 }}>Search…</span>}
+            {!isNarrow && <span style={{ fontWeight: 800, opacity: 0.9 }}>{t('nav.search')}</span>}
             {!isNarrow && <span style={styles.kbd}>Ctrl K</span>}
           </button>
         </div>
@@ -193,10 +195,10 @@ export function Shell(props: { apiBase: string }) {
           {!isNarrow && (
             <>
               <button style={styles.primaryBtn} onClick={switchCompany} title="Switch company">
-                Switch
+                {t('nav.switch_company')}
               </button>
               <button style={styles.dangerBtnSmall} onClick={logout} title="Sign out">
-                Sign out
+                {t('nav.sign_out')}
               </button>
             </>
           )}
@@ -218,7 +220,7 @@ export function Shell(props: { apiBase: string }) {
               <span style={styles.logoSmall} aria-hidden />
               {!collapsed ? (
                 <div style={{ minWidth: 0 }}>
-                  <div style={styles.sidebarTitle}>Navigation</div>
+                  <div style={styles.sidebarTitle}>{t('nav.navigation')}</div>
                   <div style={styles.sidebarSub}>{role}</div>
                 </div>
               ) : null}
@@ -239,7 +241,7 @@ export function Shell(props: { apiBase: string }) {
             if (!items.length) return null
             return (
               <div key={group} style={{ marginTop: 14 }}>
-                {!collapsed ? <div style={styles.navGroupTitle}>{group}</div> : null}
+                {!collapsed ? <div style={styles.navGroupTitle}>{t(`nav.${group.toLowerCase()}`)}</div> : null}
                 <nav style={styles.nav}>
                   {items.map((it) => (
                     <NavLink
@@ -262,9 +264,9 @@ export function Shell(props: { apiBase: string }) {
 
           {!collapsed ? (
             <div style={styles.sessionCard}>
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Session</div>
-              <div style={styles.muted}>Role: {role}</div>
-              <div style={styles.muted}>Company: {company ? `${company.code}` : '—'}</div>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>{t('nav.session')}</div>
+              <div style={styles.muted}>{t('nav.role')}: {role}</div>
+              <div style={styles.muted}>{t('nav.company')}: {company ? `${company.code}` : '—'}</div>
             </div>
           ) : null}
 
@@ -292,7 +294,7 @@ export function Shell(props: { apiBase: string }) {
                 ref={paletteInputRef}
                 value={paletteQ}
                 onChange={(e) => setPaletteQ(e.target.value)}
-                placeholder="Search pages…"
+                placeholder={t('nav.search_placeholder')}
                 style={styles.paletteInput}
               />
               <span style={styles.kbd}>Esc</span>
