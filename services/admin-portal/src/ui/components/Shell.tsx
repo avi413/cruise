@@ -311,12 +311,14 @@ export function Shell(props: { apiBase: string }) {
 const styles: Record<string, React.CSSProperties> = {
   shell: {
     display: 'grid',
+    gridTemplateRows: 'auto 1fr',
     height: '100vh',
     background: 'var(--csp-shell-bg)',
     color: 'var(--csp-text)',
     fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial',
   },
   topbar: {
+    gridColumn: '1 / -1',
     position: 'sticky',
     top: 0,
     zIndex: 20,
@@ -680,4 +682,3 @@ function Icon(props: { name: 'home' | 'user' | 'compass' | 'tag' | 'users' | 'ca
       )
   }
 }
-

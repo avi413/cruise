@@ -17,7 +17,7 @@ services:
       POSTGRES_PASSWORD: cruise
       POSTGRES_DB: cruise
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-data:/var/lib/postgresql/data
 
   ship-service:
     build: ../services/ship-service
@@ -121,6 +121,3 @@ services:
       - edge-api
     ports:
       - "3000:80"
-
-volumes:
-  postgres_data:

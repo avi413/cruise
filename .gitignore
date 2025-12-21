@@ -16,3 +16,5 @@ htmlcov/
 .dist/
 dist/
 build/
+
+infra/postgres-data/

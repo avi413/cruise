@@ -53,6 +53,22 @@ function rgba(hex: string, a: number): string | null {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
 }
 
+// Helper to mix a color with white (tint) or black (shade)
+// weight: 0-1. 0 = original color, 1 = target color (white/black)
+function mix(colorHex: string, targetHex: string, weight: number): string {
+  const c = hexToRgb(colorHex)
+  const t = hexToRgb(targetHex)
+  if (!c || !t) return colorHex
+  
+  const w = clamp(weight, 0, 1)
+  const r = Math.round(c.r * (1 - w) + t.r * w)
+  const g = Math.round(c.g * (1 - w) + t.g * w)
+  const b = Math.round(c.b * (1 - w) + t.b * w)
+  
+  const toHex = (n: number) => n.toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
 export function resetThemeToDefaults() {
   const root = document.documentElement
   root.style.removeProperty('--csp-primary')
@@ -129,7 +145,77 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
       chip_bg: 'rgba(63,114,175,0.10)',
     },
   },
+  {
+    id: 'ocean',
+    name: 'Ocean',
+    builtIn: true,
+    tokens: {
+      shell_bg_base: '#f0f8ff',
+      surface_bg: 'rgba(255,255,255,0.90)',
+      surface_2_bg: 'rgba(0, 119, 255, 0.08)',
+      border: 'rgba(0, 51, 102, 0.15)',
+      border_strong: 'rgba(0, 51, 102, 0.25)',
+      text: '#003366',
+      muted: 'rgba(0, 51, 102, 0.65)',
+      input_bg: 'rgba(255,255,255,0.95)',
+      input_border: 'rgba(0, 51, 102, 0.20)',
+      chip_bg: 'rgba(0, 119, 255, 0.12)',
+    },
+  },
+  {
+    id: 'forest',
+    name: 'Forest',
+    builtIn: true,
+    tokens: {
+      shell_bg_base: '#f0fff4',
+      surface_bg: 'rgba(255,255,255,0.92)',
+      surface_2_bg: 'rgba(0, 128, 0, 0.08)',
+      border: 'rgba(0, 77, 38, 0.15)',
+      border_strong: 'rgba(0, 77, 38, 0.25)',
+      text: '#004d26',
+      muted: 'rgba(0, 77, 38, 0.65)',
+      input_bg: 'rgba(255,255,255,0.95)',
+      input_border: 'rgba(0, 77, 38, 0.20)',
+      chip_bg: 'rgba(0, 128, 0, 0.12)',
+    },
+  },
 ]
+
+export function generateThemeFromPalette(name: string, primary: string): PortalTheme {
+  // Generate a light theme based on the primary color
+  const p = primary || '#388bfd'
+  
+  // Background: very light tint of primary (95% white)
+  const shellBg = mix(p, '#ffffff', 0.96)
+  
+  // Text: very dark shade of primary (80% black)
+  const text = mix(p, '#000000', 0.85)
+  
+  // Muted: medium shade (40% black)
+  const muted = mix(p, '#000000', 0.4)
+  
+  // Border: light shade (20% black)
+  const border = rgba(text, 0.15) || 'rgba(0,0,0,0.15)'
+  const borderStrong = rgba(text, 0.25) || 'rgba(0,0,0,0.25)'
+  
+  return {
+    id: `gen_${Math.random().toString(36).slice(2)}`,
+    name: name || 'Custom Theme',
+    builtIn: false,
+    tokens: {
+      shell_bg_base: shellBg,
+      surface_bg: 'rgba(255,255,255,0.94)',
+      surface_2_bg: rgba(p, 0.08) || 'rgba(0,0,0,0.05)',
+      border: border,
+      border_strong: borderStrong,
+      text: text,
+      muted: rgba(text, 0.65) || 'rgba(0,0,0,0.65)',
+      input_bg: 'rgba(255,255,255,0.98)',
+      input_border: borderStrong,
+      chip_bg: rgba(p, 0.12) || 'rgba(0,0,0,0.1)',
+    }
+  }
+}
 
 function normalizeThemeId(s: unknown): string {
   const v = String(s || '').trim()
@@ -185,16 +271,28 @@ export function applyPortalTheme(theme: PortalTheme | PortalThemeTokens | null |
 
 export function applyCompanyTheme(settings: CompanySettings | null | undefined) {
   if (typeof document === 'undefined') return
-  if (!settings) {
-    resetThemeToDefaults()
-    return
-  }
 
   // Apply portal (shell/UI) theme first; branding can override parts (logo/bg/primary).
   applyPortalTheme(resolvePortalTheme(settings))
 
-  const branding = settings.branding || {}
   const root = document.documentElement
+
+  if (!settings) {
+    root.style.removeProperty('--csp-primary')
+    root.style.removeProperty('--csp-secondary')
+    root.style.removeProperty('--csp-primary-soft')
+    root.style.removeProperty('--csp-primary-border')
+    root.style.removeProperty('--csp-secondary-soft')
+    root.style.removeProperty('--csp-secondary-border')
+    root.style.removeProperty('--csp-logo-url')
+    root.style.removeProperty('--csp-display-name')
+    
+    // Fallback to the portal theme's base background.
+    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #f4f6fa)')
+    return
+  }
+
+  const branding = settings.branding || {}
 
   const primary = String(branding.primary_color || '#388bfd')
   const secondary = String(branding.secondary_color || '#9ecbff')
@@ -233,4 +331,3 @@ export async function fetchCompanySettings(apiBase: string, companyId: string): 
     tenant: false,
   })
 }
-

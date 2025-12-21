@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../api/client'
 import { decodeJwt } from '../components/jwt'
 import { getCompany, getToken } from '../components/storage'
-import { applyCompanyTheme, applyPortalTheme, CompanySettings, DEFAULT_PORTAL_THEMES, PortalTheme, PortalThemeTokens } from '../components/theme'
+import { applyCompanyTheme, applyPortalTheme, CompanySettings, DEFAULT_PORTAL_THEMES, generateThemeFromPalette, PortalTheme, PortalThemeTokens } from '../components/theme'
 import { Button, ErrorBanner, Input, PageHeader, Panel, Select, TwoCol } from '../components/ui'
 
 type PatchPayload = {
@@ -310,6 +310,15 @@ export function CompanySettingsPage(props: { apiBase: string }) {
     applyPortalTheme({ id, name, builtIn: false, tokens: next.tokens })
   }
 
+  function createThemeFromPrimary() {
+    const name = newThemeNameText.trim() || `Theme from ${primaryColor}`
+    const t = generateThemeFromPalette(name, primaryColor)
+    setUiThemes((prev) => [...prev, t])
+    setUiThemeActiveId(t.id)
+    setNewThemeNameText('')
+    applyPortalTheme(t)
+  }
+
   function deleteSelectedTheme() {
     if (!selectedCustom) return
     setUiThemes((prev) => prev.filter((t) => t.id !== selectedCustom.id))
@@ -433,7 +442,10 @@ export function CompanySettingsPage(props: { apiBase: string }) {
                   }}
                 />
                 <Button variant="primary" disabled={!canEdit || busy || !newThemeNameText.trim()} onClick={() => createThemeFromSelected()}>
-                  Create
+                  Copy
+                </Button>
+                <Button variant="secondary" disabled={!canEdit || busy} onClick={() => createThemeFromPrimary()} title="Generate a light theme based on the primary brand color">
+                  Generate from Primary
                 </Button>
               </div>
               <div style={{ color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 11, lineHeight: 1.35 }}>
@@ -478,4 +490,3 @@ export function CompanySettingsPage(props: { apiBase: string }) {
     </div>
   )
 }
-
