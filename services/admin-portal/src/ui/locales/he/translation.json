@@ -40,23 +40,5 @@
     "layout_title": "פריסת לוח בקרה (JSON)",
     "layout_subtitle": "עורך זמני עד שייכנסו ווידג'טים בגרירה.",
     "save_layout": "שמור פריסה"
-  },
-  "translations_page": {
-    "title": "ניהול תרגומים",
-    "add_edit_title": "הוספה / עריכה של תרגום",
-    "language": "שפה",
-    "namespace": "מרחב שם",
-    "key": "מפתח",
-    "value": "ערך",
-    "save": "שמור",
-    "table_lang": "שפה",
-    "table_namespace": "מרחב שם",
-    "table_key": "מפתח",
-    "table_value": "ערך",
-    "actions": "פעולות",
-    "edit": "ערוך",
-    "delete": "מחק",
-    "no_translations": "לא נמצאו תרגומים.",
-    "confirm_delete": "האם אתה בטוח?"
   }
 }
