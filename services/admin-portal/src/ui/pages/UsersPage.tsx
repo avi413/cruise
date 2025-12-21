@@ -180,7 +180,7 @@ export function UsersPage(props: { apiBase: string }) {
             <div style={styles.muted}>Optional: assign groups now (recommended for agents/staff).</div>
             <div style={{ display: 'grid', gap: 6 }}>
               {groups.map((g) => (
-                <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+                <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' }}>
                   <input
                     type="checkbox"
                     checked={Boolean(newUserGroups[g.id])}
@@ -254,7 +254,7 @@ export function UsersPage(props: { apiBase: string }) {
             <div style={styles.muted}>Permissions</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {ALL_PERMS.map((p) => (
-                <label key={p} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+                <label key={p} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' }}>
                   <input
                     type="checkbox"
                     checked={Boolean(gPerms[p])}
@@ -321,51 +321,53 @@ export function UsersPage(props: { apiBase: string }) {
 const styles: Record<string, React.CSSProperties> = {
   wrap: { display: 'grid', gap: 12 },
   hTitle: { fontSize: 22, fontWeight: 900 },
-  hSub: { color: 'rgba(230,237,243,0.7)', fontSize: 13 },
+  hSub: { color: 'var(--csp-muted)', fontSize: 13, lineHeight: 1.45 },
   grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' },
   panel: {
-    border: '1px solid rgba(255,255,255,0.10)',
+    border: '1px solid var(--csp-border)',
     borderRadius: 14,
-    background: 'rgba(255,255,255,0.04)',
+    background: 'var(--csp-surface-bg)',
+    boxShadow: 'var(--csp-shadow-sm)',
     padding: 14,
   },
   panelTitle: { fontWeight: 900, marginBottom: 10 },
   form: { display: 'grid', gap: 10 },
   row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
-  label: { display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' },
+  label: { display: 'grid', gap: 6, fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' },
   input: {
     padding: '10px 10px',
     borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.12)',
-    background: 'rgba(0,0,0,0.25)',
-    color: '#e6edf3',
+    border: '1px solid var(--csp-input-border)',
+    background: 'var(--csp-input-bg)',
+    color: 'var(--csp-text)',
   },
-  muted: { color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.4 },
+  muted: { color: 'var(--csp-muted)', fontSize: 12, lineHeight: 1.4 },
   mono: { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' },
   primaryBtn: {
     padding: '10px 12px',
-    borderRadius: 10,
-    border: '1px solid rgba(56,139,253,0.55)',
-    background: 'rgba(56,139,253,0.22)',
-    color: '#e6edf3',
+    borderRadius: 999,
+    border: '1px solid var(--csp-primary-border)',
+    background: 'var(--csp-primary-soft)',
+    color: 'color-mix(in srgb, var(--csp-primary) 72%, var(--csp-text))',
     cursor: 'pointer',
     fontWeight: 900,
   },
   secondaryBtn: {
     padding: '8px 10px',
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.12)',
-    background: 'rgba(255,255,255,0.06)',
-    color: '#e6edf3',
+    borderRadius: 999,
+    border: '1px solid var(--csp-border-strong)',
+    background: 'var(--csp-surface-bg)',
+    boxShadow: 'var(--csp-shadow-sm)',
+    color: 'var(--csp-text)',
     cursor: 'pointer',
     fontWeight: 900,
   },
   error: {
     padding: 12,
     borderRadius: 12,
-    background: 'rgba(248,81,73,0.12)',
-    border: '1px solid rgba(248,81,73,0.35)',
-    color: '#ffb4ae',
+    background: 'rgba(220, 38, 38, 0.10)',
+    border: '1px solid rgba(220, 38, 38, 0.35)',
+    color: 'rgb(185, 28, 28)',
     whiteSpace: 'pre-wrap',
     fontSize: 13,
   },
@@ -374,19 +376,19 @@ const styles: Record<string, React.CSSProperties> = {
   th: {
     textAlign: 'left',
     padding: '10px 8px',
-    borderBottom: '1px solid rgba(255,255,255,0.10)',
-    color: 'rgba(230,237,243,0.75)',
+    borderBottom: '1px solid var(--csp-border)',
+    color: 'var(--csp-muted)',
     fontWeight: 900,
     verticalAlign: 'bottom',
   },
-  thSub: { marginTop: 4, color: 'rgba(230,237,243,0.55)', fontSize: 11, fontWeight: 700 },
-  td: { padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)' },
+  thSub: { marginTop: 4, color: 'var(--csp-muted)', fontSize: 11, fontWeight: 700 },
+  td: { padding: '10px 8px', borderBottom: '1px solid var(--csp-border)' },
   tdMono: {
     padding: '10px 8px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: '1px solid var(--csp-border)',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: 12,
   },
-  tdMuted: { padding: '14px 8px', color: 'rgba(230,237,243,0.60)' },
+  tdMuted: { padding: '14px 8px', color: 'var(--csp-muted)' },
 }
 

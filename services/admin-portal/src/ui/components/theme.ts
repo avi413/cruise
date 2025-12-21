@@ -131,11 +131,11 @@ export const DEFAULT_PORTAL_THEMES: PortalTheme[] = [
 
 function normalizeThemeId(s: unknown): string {
   const v = String(s || '').trim()
-  return v || 'dark'
+  return v || 'light'
 }
 
 export function resolvePortalTheme(settings: CompanySettings | null | undefined): PortalTheme {
-  const activeId = normalizeThemeId(settings?.branding?.ui_theme_active_id || 'dark')
+  const activeId = normalizeThemeId(settings?.branding?.ui_theme_active_id || 'light')
   const custom = (settings?.branding?.ui_themes || [])
     .map((t) => {
       const id = String(t?.id || '').trim()
@@ -206,14 +206,14 @@ export function applyCompanyTheme(settings: CompanySettings | null | undefined) 
 
   const bgUrl = (branding.background_url || '').trim()
   if (bgUrl) {
-    // Use a dark overlay so the portal remains readable regardless of image.
+    // Keep an overlay so the portal remains readable regardless of image.
     root.style.setProperty(
       '--csp-shell-bg',
-      `linear-gradient(180deg, rgba(11,18,32,0.92) 0%, rgba(11,18,32,0.92) 100%), url("${bgUrl}") center/cover fixed`,
+      `linear-gradient(180deg, color-mix(in srgb, var(--csp-shell-bg-base, #f4f6fa) 92%, transparent) 0%, color-mix(in srgb, var(--csp-shell-bg-base, #f4f6fa) 92%, transparent) 100%), url("${bgUrl}") center/cover fixed`,
     )
   } else {
     // Fallback to the portal theme's base background.
-    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #0b1220)')
+    root.style.setProperty('--csp-shell-bg', 'var(--csp-shell-bg-base, #f4f6fa)')
   }
 
   const logoUrl = (branding.logo_url || '').trim()
