@@ -1035,7 +1035,7 @@ export function PricingPage(props: { apiBase: string }) {
                             <div style={{ fontWeight: 900 }}>
                               <Mono>{cabinCode}</Mono> · {c.name}
                             </div>
-                            <div style={{ fontSize: 12, color: 'rgba(230,237,243,0.65)', marginTop: 4 }}>{c.description || ''}</div>
+                            <div style={{ fontSize: 12, color: 'var(--csp-muted)', marginTop: 4 }}>{c.description || ''}</div>
                           </td>
                           {priceCats
                             .filter((pc) => pc.active)
@@ -1045,7 +1045,7 @@ export function PricingPage(props: { apiBase: string }) {
                               const k = `${cabinCode}|${String(pc.code).toLowerCase()}`
                               const cents = Number(gridCells[k] ?? 0)
                               return (
-                                <td key={k} style={{ padding: 10, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                <td key={k} style={{ padding: 10, borderBottom: '1px solid var(--csp-border)' }}>
                                   <input
                                     style={{
                                       width: 140,
@@ -1062,7 +1062,7 @@ export function PricingPage(props: { apiBase: string }) {
                                     onChange={(e) => setGridCells((prev) => ({ ...prev, [k]: Number(e.target.value) }))}
                                     disabled={busy}
                                   />
-                                  <div style={{ fontSize: 11, color: 'rgba(230,237,243,0.55)', marginTop: 6 }}>cents / pax</div>
+                                  <div style={{ fontSize: 11, color: 'var(--csp-muted)', marginTop: 6 }}>cents / pax</div>
                                 </td>
                               )
                             })}

@@ -192,9 +192,9 @@ const styles: Record<string, React.CSSProperties> = {
   error: {
     padding: 10,
     borderRadius: 10,
-    background: 'rgba(248,81,73,0.12)',
-    border: '1px solid rgba(248,81,73,0.35)',
-    color: '#ffb4ae',
+    background: 'rgba(220, 38, 38, 0.10)',
+    border: '1px solid rgba(220, 38, 38, 0.35)',
+    color: 'rgb(185, 28, 28)',
     fontSize: 12,
     whiteSpace: 'pre-wrap',
   },

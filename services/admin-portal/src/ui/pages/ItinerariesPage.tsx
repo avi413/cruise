@@ -1077,12 +1077,12 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = { padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', verticalAlign: 'top' }
 const tdMono: React.CSSProperties = {
   padding: '10px 8px',
-  borderBottom: '1px solid rgba(255,255,255,0.06)',
+  borderBottom: '1px solid var(--csp-border)',
   verticalAlign: 'top',
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   fontSize: 12,
 }
-const tdMuted: React.CSSProperties = { padding: '14px 8px', color: 'rgba(230,237,243,0.60)' }
+const tdMuted: React.CSSProperties = { padding: '14px 8px', color: 'var(--csp-muted)' }
 
 const segWrap: React.CSSProperties = {
   display: 'inline-flex',
@@ -1101,7 +1101,7 @@ const segBtn: React.CSSProperties = {
 }
 const segActive: React.CSSProperties = {
   padding: '10px 12px',
-  background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
+  background: 'var(--csp-primary-soft)',
   border: '0',
   color: 'var(--csp-text, #e6edf3)',
   cursor: 'pointer',

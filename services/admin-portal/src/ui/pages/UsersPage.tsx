@@ -180,7 +180,7 @@ export function UsersPage(props: { apiBase: string }) {
             <div style={styles.muted}>Optional: assign groups now (recommended for agents/staff).</div>
             <div style={{ display: 'grid', gap: 6 }}>
               {groups.map((g) => (
-                <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+                <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' }}>
                   <input
                     type="checkbox"
                     checked={Boolean(newUserGroups[g.id])}
@@ -254,7 +254,7 @@ export function UsersPage(props: { apiBase: string }) {
             <div style={styles.muted}>Permissions</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {ALL_PERMS.map((p) => (
-                <label key={p} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+                <label key={p} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' }}>
                   <input
                     type="checkbox"
                     checked={Boolean(gPerms[p])}
@@ -364,9 +364,9 @@ const styles: Record<string, React.CSSProperties> = {
   error: {
     padding: 12,
     borderRadius: 12,
-    background: 'rgba(248,81,73,0.12)',
-    border: '1px solid rgba(248,81,73,0.35)',
-    color: '#ffb4ae',
+    background: 'rgba(220, 38, 38, 0.10)',
+    border: '1px solid rgba(220, 38, 38, 0.35)',
+    color: 'rgb(185, 28, 28)',
     whiteSpace: 'pre-wrap',
     fontSize: 13,
   },
@@ -388,6 +388,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: 12,
   },
-  tdMuted: { padding: '14px 8px', color: 'rgba(230,237,243,0.60)' },
+  tdMuted: { padding: '14px 8px', color: 'var(--csp-muted)' },
 }
 
