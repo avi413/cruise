@@ -31,17 +31,20 @@ BOOKING_SERVICE_URL = os.getenv("BOOKING_SERVICE_URL", "http://localhost:8005")
 PRICING_SERVICE_URL = os.getenv("PRICING_SERVICE_URL", "http://localhost:8004")
 NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8006")
 
-# Dev-friendly fallback:
+# Dev-friendly fallbacks:
 # If you run edge-api directly on your host (not in Docker), the docker-compose
 # service DNS names (e.g. http://pricing-service:8000) won't resolve.
-# In that scenario we can transparently fall back to the host-mapped ports.
-_DEV_DOCKER_DNS_FALLBACK: dict[str, str] = {
-    "ship-service": "http://localhost:8001",
-    "cruise-service": "http://localhost:8002",
-    "customer-service": "http://localhost:8003",
-    "pricing-service": "http://localhost:8004",
-    "booking-service": "http://localhost:8005",
-    "notification-service": "http://localhost:8006",
+# In that scenario we can transparently fall back to well-known localhost ports.
+#
+# We allow multiple fallbacks per service because teams run services in different
+# ways (docker-compose host-mapped ports vs running uvicorn directly).
+_DEV_DOCKER_DNS_FALLBACK: dict[str, list[str]] = {
+    "ship-service": ["http://localhost:8001", "http://localhost:8000"],
+    "cruise-service": ["http://localhost:8002", "http://localhost:8000"],
+    "customer-service": ["http://localhost:8003", "http://localhost:8000"],
+    "pricing-service": ["http://localhost:8004", "http://localhost:8000"],
+    "booking-service": ["http://localhost:8005", "http://localhost:8000"],
+    "notification-service": ["http://localhost:8006", "http://localhost:8000"],
 }
 
 
@@ -56,24 +59,33 @@ def _looks_like_dns_error(e: Exception) -> bool:
     )
 
 
-def _fallback_url_if_docker_dns(url: str) -> str | None:
+def _fallback_urls_if_docker_dns(url: str) -> list[str]:
     """
-    If url points at a docker-compose DNS hostname, return a localhost fallback url.
-    Otherwise returns None.
+    If url points at a docker-compose DNS hostname, return one or more localhost
+    fallback urls (preserving path + query). Otherwise returns [].
     """
     try:
         p = urlparse(url)
         host = (p.hostname or "").strip()
         if not host:
-            return None
-        fb_base = _DEV_DOCKER_DNS_FALLBACK.get(host)
-        if not fb_base:
-            return None
-        fb = urlparse(fb_base)
-        # Preserve path + query; replace scheme/netloc.
-        return urlunparse((fb.scheme, fb.netloc, p.path, p.params, p.query, p.fragment))
+            return []
+        bases = _DEV_DOCKER_DNS_FALLBACK.get(host) or []
+        out: list[str] = []
+        for base in bases:
+            fb = urlparse(base)
+            # Preserve path + query; replace scheme/netloc.
+            out.append(urlunparse((fb.scheme, fb.netloc, p.path, p.params, p.query, p.fragment)))
+        # Deduplicate while keeping order.
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for u in out:
+            if u in seen:
+                continue
+            seen.add(u)
+            uniq.append(u)
+        return uniq
     except Exception:
-        return None
+        return []
 
 
 @app.get("/health")
@@ -106,14 +118,22 @@ async def _proxy(method: str, url: str, request: Request):
             # Usually indicates a missing upstream service or a DNS/runtime mismatch.
             # If running edge-api on the host, docker-compose service hostnames won't resolve; retry with localhost mapping.
             if _looks_like_dns_error(e):
-                fb = _fallback_url_if_docker_dns(url)
-                if fb and fb != url:
+                fallbacks = [fb for fb in _fallback_urls_if_docker_dns(url) if fb != url]
+                if not fallbacks:
+                    raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
+
+                last_err: Exception | None = None
+                for fb in fallbacks:
                     try:
                         r = await client.request(method, fb, content=body, headers=headers)
+                        break
                     except httpx.RequestError as e2:
-                        raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url} (fallback {fb}): {e2}")
+                        last_err = e2
                 else:
-                    raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Upstream unavailable for {method} {url} (fallbacks {fallbacks}): {last_err}",
+                    )
             else:
                 raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
 
@@ -600,6 +620,58 @@ async def upsert_pricing_category_price(request: Request):
 @app.post("/v1/pricing/category-prices/bulk")
 async def upsert_pricing_category_prices_bulk(request: Request):
     return await _proxy("POST", f"{PRICING_SERVICE_URL}/category-prices/bulk", request)
+
+
+@app.get("/v1/pricing/price-categories")
+async def list_price_categories(request: Request):
+    q = request.url.query
+    url = f"{PRICING_SERVICE_URL}/price-categories"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.post("/v1/pricing/price-categories")
+async def create_price_category(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/price-categories", request)
+
+
+@app.patch("/v1/pricing/price-categories/{code}")
+async def patch_price_category(code: str, request: Request):
+    return await _proxy("PATCH", f"{PRICING_SERVICE_URL}/price-categories/{code}", request)
+
+
+@app.delete("/v1/pricing/price-categories/{code}")
+async def delete_price_category(code: str, request: Request):
+    return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/price-categories/{code}", request)
+
+
+@app.post("/v1/pricing/price-categories/reorder")
+async def reorder_price_categories(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/price-categories/reorder", request)
+
+
+@app.get("/v1/pricing/cruise-prices")
+async def list_cruise_prices(request: Request):
+    q = request.url.query
+    url = f"{PRICING_SERVICE_URL}/cruise-prices"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
+
+
+@app.post("/v1/pricing/cruise-prices/bulk")
+async def upsert_cruise_prices_bulk(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/cruise-prices/bulk", request)
+
+
+@app.get("/v1/pricing/cruise-prices/export")
+async def export_cruise_prices(request: Request):
+    q = request.url.query
+    url = f"{PRICING_SERVICE_URL}/cruise-prices/export"
+    if q:
+        url = f"{url}?{q}"
+    return await _proxy("GET", url, request)
 
 
 @app.post("/v1/holds")

@@ -174,6 +174,7 @@ export function SalesPage(props: { apiBase: string }) {
       const r = await apiFetch<QuoteOut>(props.apiBase, `/v1/quote`, {
         method: 'POST',
         body: {
+          sailing_id: sailingId || null,
           sailing_date: sailingDate || null,
           cabin_type: cabinType,
           cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
