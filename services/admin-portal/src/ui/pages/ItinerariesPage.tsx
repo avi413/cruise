@@ -297,7 +297,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
     return Array.from(new Set(langs.map((l) => String(l || '').trim()).filter(Boolean)))
   }, [preferredLang])
 
-  const [view, setView] = useState<'list' | 'create' | 'import'>('list')
+  const [view, setView] = useState<'list' | 'create' | 'edit' | 'import'>('list')
   const [q, setQ] = useState('')
 
   // create form
@@ -429,6 +429,82 @@ export function ItinerariesPage(props: { apiBase: string }) {
       setBusy(false)
     }
   }
+
+  async function updateItinerary() {
+    if (!selectedId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      const titlesObj: Record<string, string> = {}
+      for (const row of titles) {
+        const k = normLang(row.lang)
+        const v = row.text.trim()
+        if (k && v) titlesObj[k] = v
+      }
+
+      const payload = {
+        code: code.trim() ? code.trim() : null,
+        titles: titlesObj,
+        map_image_url: mapImageUrl.trim() ? mapImageUrl.trim() : null,
+        stops: stops.map((s) => ({
+          day_offset: s.day_offset,
+          kind: s.kind,
+          image_url: s.image_url,
+          port_code: s.port_code || null,
+          arrival_time: s.arrival_time || null,
+          departure_time: s.departure_time || null,
+          labels: s.labels || null,
+        })),
+      }
+
+      await apiFetch(props.apiBase, `/v1/itineraries/${encodeURIComponent(selectedId)}`, { method: 'PUT', body: payload, auth: true, tenant: false })
+
+      await refresh()
+      setView('list')
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deleteItinerary() {
+    if (!selectedId || !confirm('Are you sure you want to delete this itinerary?')) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/itineraries/${encodeURIComponent(selectedId)}`, { method: 'DELETE', auth: true, tenant: false })
+      setSelectedId('')
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function startEdit() {
+    if (!selectedItinerary) return
+    setCode(selectedItinerary.code || '')
+    setMapImageUrl(selectedItinerary.map_image_url || '')
+
+    const tRows: TitleRow[] = []
+    const srcTitles = selectedItinerary.titles || {}
+
+    tRows.push({ lang: 'he', text: srcTitles['he'] || '' })
+    tRows.push({ lang: 'en', text: srcTitles['en'] || '' })
+
+    for (const k of Object.keys(srcTitles)) {
+      if (k !== 'he' && k !== 'en') {
+        tRows.push({ lang: k, text: srcTitles[k] })
+      }
+    }
+
+    setTitles(tRows)
+    setStops(JSON.parse(JSON.stringify(selectedItinerary.stops || [])))
+    setView('edit')
+  }
+
 
   async function computeDates() {
     if (!selectedId || !computeStartDate) return
@@ -595,8 +671,10 @@ export function ItinerariesPage(props: { apiBase: string }) {
 
       <TwoCol
         left={
-          view === 'create' ? (
-            <Panel title="New itinerary" subtitle="Tip: start with titles (he/en), then add day-by-day stops.">
+          view === 'create' || view === 'edit' ? (
+            <Panel title={view === 'create' ? 'New itinerary' : 'Edit itinerary'}
+              subtitle={view === 'create' ? 'Tip: start with titles (he/en), then add day-by-day stops.' : 'Update details and stops.'}
+            >
               <div style={{ display: 'grid', gap: 10 }}>
                 <Input label="Itinerary code (optional)" value={code} onChange={(e) => setCode(e.target.value)} placeholder="GREEK-7N" />
                 <Input
@@ -606,7 +684,20 @@ export function ItinerariesPage(props: { apiBase: string }) {
                   placeholder="https://cdn.example.com/itineraries/greek-7n/map.jpg"
                   hint="Required. This is the itinerary overview route/map image."
                 />
-
+                <Button
+                  variant="primary"
+                  disabled={
+                    busy ||
+                    !String(mapImageUrl || '').trim() ||
+                    stops.length < 1 ||
+                    stops.some((s) => !String(s.image_url || '').trim()) ||
+                    stops.some((s) => s.kind === 'port' && !String(s.port_code || '').trim())
+                  }
+                  // UPDATE ONCLICK AND LABEL:
+                  onClick={() => (view === 'create' ? void createItinerary() : void updateItinerary())}
+                >
+                  {busy ? 'Saving…' : view === 'create' ? 'Create itinerary' : 'Save changes'}
+                </Button>
                 <Panel title="Titles" subtitle="Only he + en are supported for itinerary titles.">
                   <div style={{ display: 'grid', gap: 10 }}>
                     {titles.map((t, idx) => (
@@ -958,10 +1049,22 @@ export function ItinerariesPage(props: { apiBase: string }) {
               title={selectedItinerary ? 'Details' : 'Details'}
               subtitle={selectedItinerary ? 'Preview stops and compute end date for a given start date.' : 'Select an itinerary from the list to see details.'}
               right={
-                <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
-                  <option value="he">he</option>
-                  <option value="en">en</option>
-                </Select>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {selectedItinerary ? (
+                    <>
+                      <Button variant="secondary" disabled={busy} onClick={startEdit}>
+                        Edit
+                      </Button>
+                      <Button variant="danger" disabled={busy} onClick={() => void deleteItinerary()}>
+                        Delete
+                      </Button>
+                    </>
+                  ) : null}
+                  <Select label="Display lang" value={preferredLang} onChange={(e) => setPreferredLang(e.target.value)}>
+                    <option value="he">he</option>
+                    <option value="en">en</option>
+                  </Select>
+                </div>
               }
             >
               {selectedItinerary ? (
