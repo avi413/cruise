@@ -1563,6 +1563,51 @@ DEFAULT_TRANSLATIONS = [
     {"lang": "en", "namespace": "translation", "key": "app.welcome", "value": "Welcome to the Dashboard"},
     {"lang": "en", "namespace": "translation", "key": "common.save", "value": "Save Changes"},
     {"lang": "en", "namespace": "translation", "key": "common.cancel", "value": "Cancel"},
+    # Translations Page
+    {"lang": "en", "namespace": "translation", "key": "translations_page.title", "value": "Translations"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.add_edit_title", "value": "Add / Edit Translation"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.language", "value": "Language"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.namespace", "value": "Namespace"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.key", "value": "Key"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.value", "value": "Value"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.save", "value": "Save"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.table_lang", "value": "Lang"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.table_namespace", "value": "Namespace"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.table_key", "value": "Key"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.table_value", "value": "Value"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.actions", "value": "Actions"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.edit", "value": "Edit"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.delete", "value": "Delete"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.confirm_delete", "value": "Are you sure you want to delete this translation?"},
+    {"lang": "en", "namespace": "translation", "key": "translations_page.no_translations", "value": "No translations found."},
+    # Navigation
+    {"lang": "en", "namespace": "translation", "key": "nav.dashboard", "value": "Dashboard"},
+    {"lang": "en", "namespace": "translation", "key": "nav.preferences", "value": "Preferences"},
+    {"lang": "en", "namespace": "translation", "key": "nav.cruises", "value": "Cruises"},
+    {"lang": "en", "namespace": "translation", "key": "nav.sales", "value": "Sales"},
+    {"lang": "en", "namespace": "translation", "key": "nav.customers", "value": "Customers"},
+    {"lang": "en", "namespace": "translation", "key": "nav.sailings", "value": "Sailings"},
+    {"lang": "en", "namespace": "translation", "key": "nav.itineraries", "value": "Itineraries"},
+    {"lang": "en", "namespace": "translation", "key": "nav.ports", "value": "Ports"},
+    {"lang": "en", "namespace": "translation", "key": "nav.fleet", "value": "Fleet"},
+    {"lang": "en", "namespace": "translation", "key": "nav.onboard", "value": "Onboard"},
+    {"lang": "en", "namespace": "translation", "key": "nav.pricing", "value": "Pricing"},
+    {"lang": "en", "namespace": "translation", "key": "nav.reports", "value": "Reports"},
+    {"lang": "en", "namespace": "translation", "key": "nav.notifications", "value": "Notifications"},
+    {"lang": "en", "namespace": "translation", "key": "nav.users", "value": "Users"},
+    {"lang": "en", "namespace": "translation", "key": "nav.audit", "value": "Audit"},
+    {"lang": "en", "namespace": "translation", "key": "nav.branding", "value": "Branding"},
+    {"lang": "en", "namespace": "translation", "key": "nav.search", "value": "Search"},
+    {"lang": "en", "namespace": "translation", "key": "nav.switch_company", "value": "Switch Company"},
+    {"lang": "en", "namespace": "translation", "key": "nav.sign_out", "value": "Sign Out"},
+    {"lang": "en", "namespace": "translation", "key": "nav.navigation", "value": "Navigation"},
+    {"lang": "en", "namespace": "translation", "key": "nav.session", "value": "Session"},
+    {"lang": "en", "namespace": "translation", "key": "nav.role", "value": "Role"},
+    {"lang": "en", "namespace": "translation", "key": "nav.company", "value": "Company"},
+    {"lang": "en", "namespace": "translation", "key": "nav.search_placeholder", "value": "Search..."},
+    {"lang": "en", "namespace": "translation", "key": "nav.main", "value": "Main"},
+    {"lang": "en", "namespace": "translation", "key": "nav.operations", "value": "Operations"},
+    {"lang": "en", "namespace": "translation", "key": "nav.administration", "value": "Administration"},
 ]
 
 
@@ -1573,10 +1618,16 @@ def list_translations(
     tenant_engine=Depends(get_tenant_engine),
 ):
     with session(tenant_engine) as s:
-        # Auto-seed if table is completely empty
-        if s.query(Translation).first() is None:
-            now = _now()
-            for item in DEFAULT_TRANSLATIONS:
+        # Ensure defaults exist (upsert-like behavior for missing defaults)
+        existing_keys = {
+            (r.lang, r.namespace, r.key) 
+            for r in s.query(Translation.lang, Translation.namespace, Translation.key).all()
+        }
+        
+        now = _now()
+        new_items = []
+        for item in DEFAULT_TRANSLATIONS:
+            if (item["lang"], item["namespace"], item["key"]) not in existing_keys:
                 t = Translation(
                     id=str(uuid4()),
                     lang=item["lang"],
@@ -1586,6 +1637,9 @@ def list_translations(
                     updated_at=now,
                 )
                 s.add(t)
+                new_items.append(t)
+        
+        if new_items:
             s.commit()
 
         qry = s.query(Translation)
@@ -1679,4 +1733,19 @@ def get_translation_bundle(
             Translation.namespace == namespace
         ).all()
     
-    return {r.key: r.value for r in rows}
+    flat = {r.key: r.value for r in rows}
+    
+    # Unflatten to support nested keys in i18next
+    result = {}
+    for key, value in flat.items():
+        parts = key.split(".")
+        d = result
+        for part in parts[:-1]:
+            if part not in d:
+                d[part] = {}
+            if not isinstance(d[part], dict):
+                d[part] = {}
+            d = d[part]
+        d[parts[-1]] = value
+        
+    return result
