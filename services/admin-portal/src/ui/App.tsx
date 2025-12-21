@@ -24,6 +24,7 @@ import { NotificationsPage } from './pages/NotificationsPage'
 import { AuditPage } from './pages/AuditPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { UsersPage } from './pages/UsersPage'
+import { AgentsPage } from './pages/AgentsPage'
 import { PreferencesPage } from './pages/PreferencesPage'
 import { CompanySettingsPage } from './pages/CompanySettingsPage'
 import { RequirePerm } from './components/RequirePerm'
@@ -121,6 +122,14 @@ export function App() {
             element={
               <RequirePerm anyOf={['users.manage']}>
                 <UsersPage apiBase={apiBase} />
+              </RequirePerm>
+            }
+          />
+          <Route
+            path="agents"
+            element={
+              <RequirePerm anyOf={['users.manage']}>
+                <AgentsPage apiBase={apiBase} />
               </RequirePerm>
             }
           />

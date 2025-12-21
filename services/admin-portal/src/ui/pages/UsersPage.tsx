@@ -31,6 +31,12 @@ export function UsersPage(props: { apiBase: string }) {
   const [disabled, setDisabled] = useState(false)
   const [newUserGroups, setNewUserGroups] = useState<Record<string, boolean>>({})
 
+  // Edit user (role/disabled/reset password)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editRole, setEditRole] = useState('agent')
+  const [editDisabled, setEditDisabled] = useState(false)
+  const [editPassword, setEditPassword] = useState('')
+
   const [gCode, setGCode] = useState('sales_agents')
   const [gName, setGName] = useState('Sales Agents')
   const [gDesc, setGDesc] = useState('Call center sales agents')
@@ -98,6 +104,52 @@ export function UsersPage(props: { apiBase: string }) {
     setErr(null)
     try {
       await apiFetch(props.apiBase, `/v1/staff/users/${u.id}`, { method: 'PATCH', body: { disabled: !u.disabled } })
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function beginEdit(u: StaffUser) {
+    setEditingId(u.id)
+    setEditRole((u.role || 'agent').toLowerCase())
+    setEditDisabled(Boolean(u.disabled))
+    setEditPassword('')
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditRole('agent')
+    setEditDisabled(false)
+    setEditPassword('')
+  }
+
+  async function saveEdit(u: StaffUser) {
+    setBusy(true)
+    setErr(null)
+    try {
+      const body: Record<string, unknown> = { role: editRole, disabled: Boolean(editDisabled) }
+      if (editPassword.trim()) body.password = editPassword.trim()
+      await apiFetch(props.apiBase, `/v1/staff/users/${u.id}`, { method: 'PATCH', body })
+      cancelEdit()
+      await refresh()
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function del(u: StaffUser) {
+    const ok = window.confirm(`Delete user "${u.email}"?\n\nThis cannot be undone.`)
+    if (!ok) return
+    setBusy(true)
+    setErr(null)
+    try {
+      await apiFetch(props.apiBase, `/v1/staff/users/${u.id}`, { method: 'DELETE' })
+      if (editingId === u.id) cancelEdit()
       await refresh()
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
@@ -210,18 +262,79 @@ export function UsersPage(props: { apiBase: string }) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((u) => (
-                  <tr key={u.id}>
-                    <td style={styles.tdMono}>{u.email}</td>
-                    <td style={styles.td}>{u.role}</td>
-                    <td style={styles.td}>{u.disabled ? 'yes' : 'no'}</td>
-                    <td style={styles.td}>
-                      <button style={styles.secondaryBtn} disabled={busy} onClick={() => void toggle(u)}>
-                        {u.disabled ? 'Enable' : 'Disable'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {items.map((u) => {
+                  const isEditing = editingId === u.id
+                  return (
+                    <React.Fragment key={u.id}>
+                      <tr>
+                        <td style={styles.tdMono}>{u.email}</td>
+                        <td style={styles.td}>{u.role}</td>
+                        <td style={styles.td}>{u.disabled ? 'yes' : 'no'}</td>
+                        <td style={styles.td}>
+                          {!isEditing ? (
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                              <button style={styles.secondaryBtn} disabled={busy} onClick={() => beginEdit(u)}>
+                                Edit
+                              </button>
+                              <button style={styles.secondaryBtn} disabled={busy} onClick={() => void toggle(u)}>
+                                {u.disabled ? 'Enable' : 'Disable'}
+                              </button>
+                              <button style={styles.dangerBtnSmall} disabled={busy} onClick={() => void del(u)}>
+                                Delete
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                              <button style={styles.secondaryBtn} disabled={busy} onClick={cancelEdit}>
+                                Cancel
+                              </button>
+                              <button style={styles.primaryBtnCompact} disabled={busy} onClick={() => void saveEdit(u)}>
+                                Save
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                      {isEditing ? (
+                        <tr>
+                          <td style={styles.td} colSpan={4}>
+                            <div style={styles.editBox}>
+                              <div style={styles.editTitle}>Edit user</div>
+                              <div style={styles.editGrid}>
+                                <label style={styles.label}>
+                                  Role
+                                  <select style={styles.input} value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+                                    <option value="agent">agent</option>
+                                    <option value="staff">staff</option>
+                                    <option value="admin">admin</option>
+                                  </select>
+                                </label>
+                                <label style={styles.label}>
+                                  Disabled
+                                  <select style={styles.input} value={editDisabled ? 'yes' : 'no'} onChange={(e) => setEditDisabled(e.target.value === 'yes')}>
+                                    <option value="no">no</option>
+                                    <option value="yes">yes</option>
+                                  </select>
+                                </label>
+                                <label style={styles.label}>
+                                  Reset password (optional)
+                                  <input
+                                    style={styles.input}
+                                    value={editPassword}
+                                    onChange={(e) => setEditPassword(e.target.value)}
+                                    type="password"
+                                    placeholder="leave blank to keep current"
+                                  />
+                                </label>
+                              </div>
+                              <div style={styles.muted}>Notes: email changes are not supported yet; use Disable for reversible lock, Delete for permanent removal.</div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
+                  )
+                })}
                 {items.length === 0 ? (
                   <tr>
                     <td style={styles.tdMuted} colSpan={4}>
@@ -352,12 +465,30 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontWeight: 900,
   },
+  primaryBtnCompact: {
+    padding: '8px 10px',
+    borderRadius: 10,
+    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
+    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
+    color: 'var(--csp-text, #e6edf3)',
+    cursor: 'pointer',
+    fontWeight: 900,
+  },
   secondaryBtn: {
     padding: '8px 10px',
     borderRadius: 10,
     border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
     background: 'color-mix(in srgb, var(--csp-surface-bg, rgba(255,255,255,0.06)) 88%, transparent)',
     color: 'var(--csp-text, #e6edf3)',
+    cursor: 'pointer',
+    fontWeight: 900,
+  },
+  dangerBtnSmall: {
+    padding: '8px 10px',
+    borderRadius: 10,
+    border: '1px solid rgba(248,81,73,0.35)',
+    background: 'rgba(248,81,73,0.12)',
+    color: '#ffb4ae',
     cursor: 'pointer',
     fontWeight: 900,
   },
