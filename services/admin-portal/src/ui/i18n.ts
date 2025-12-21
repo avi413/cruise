@@ -24,7 +24,10 @@ i18n
     // },
     backend: {
       loadPath: `${apiBase}/v1/translations/bundle/{{lng}}/{{ns}}`,
+      queryStringParams: { v: Date.now().toString() },
+      crossDomain: true,
     },
+    debug: true,
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false, // react already safes from xss

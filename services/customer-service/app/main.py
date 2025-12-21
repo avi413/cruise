@@ -1728,11 +1728,20 @@ def get_translation_bundle(
     tenant_engine=Depends(get_tenant_engine),
 ):
     with session(tenant_engine) as s:
+        # Try exact match
         rows = s.query(Translation).filter(
             Translation.lang == lang,
             Translation.namespace == namespace
         ).all()
-    
+        
+        # Fallback logic: if empty and lang has region (e.g. en-US), try base lang (e.g. en)
+        if not rows and "-" in lang:
+            base_lang = lang.split("-")[0]
+            rows = s.query(Translation).filter(
+                Translation.lang == base_lang,
+                Translation.namespace == namespace
+            ).all()
+            
     flat = {r.key: r.value for r in rows}
     
     # Unflatten to support nested keys in i18next
