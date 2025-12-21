@@ -76,15 +76,15 @@ export function FleetPage(props: { apiBase: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/fleet` : null), [companyId])
+  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/ships` : null), [companyId])
   const catsEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/cabin-categories` : null), [shipId])
   const cabinsEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/cabins` : null), [shipId])
 
   useEffect(() => {
     if (!fleetEndpoint) return
-    apiFetch<{ items: Ship[] }>(props.apiBase, fleetEndpoint)
+    apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
       .then((r) => {
-        setFleet(r.items)
+        setFleet(r)
         // Keep selection stable if possible; otherwise default to first ship (or clear).
         setShipId((prev) => {
           if (prev && r.items.some((s) => s.id === prev)) return prev
@@ -119,8 +119,8 @@ export function FleetPage(props: { apiBase: string }) {
         method: 'POST',
         body: { company_id: companyId, name: shipName, code: shipCode, operator: shipOperator || null, decks: shipDecks, status: 'active' },
       })
-      const r = await apiFetch<{ items: Ship[] }>(props.apiBase, `/v1/companies/${companyId}/fleet`)
-      setFleet(r.items)
+      const r = await apiFetch<Ship[]>(props.apiBase, `/v1/companies/${companyId}/ships`)
+      setFleet(r)
       setShipName('')
       setShipCode('')
       setShipOperator('')
