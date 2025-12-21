@@ -455,6 +455,15 @@ const styles: Record<string, React.CSSProperties> = {
   cardTitle: { fontWeight: 800, marginBottom: 8 },
   muted: { color: 'var(--csp-muted, rgba(230,237,243,0.7))', fontSize: 12, marginBottom: 8 },
   inlineLink: { color: 'var(--csp-primary, #388bfd)', textDecoration: 'none' },
+  primaryBtn: {
+    padding: '10px 12px',
+    borderRadius: 999,
+    border: '1px solid var(--csp-primary-border)',
+    background: 'var(--csp-primary-soft)',
+    color: 'color-mix(in srgb, var(--csp-primary) 72%, var(--csp-text))',
+    cursor: 'pointer',
+    fontWeight: 950,
+  },
   secondaryBtnFull: {
     width: '100%',
     padding: '10px 12px',
