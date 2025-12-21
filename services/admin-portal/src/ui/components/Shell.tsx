@@ -155,7 +155,7 @@ export function Shell(props: { apiBase: string }) {
 
   return (
     <div style={{ ...styles.shell, gridTemplateColumns: isNarrow ? '1fr' : collapsed ? '88px 1fr' : '272px 1fr' }}>
-      <header style={styles.topbar}>
+      <header style={{ ...styles.topbar, padding: isNarrow ? '20px 12px' : 12 }}>
         <button
           style={styles.iconBtn}
           onClick={() => (isNarrow ? setDrawerOpen(!drawerOpen) : setCollapsed(!collapsed))}
