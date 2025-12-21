@@ -374,4 +374,41 @@ async def add_payment(booking_id: str, request: Request):
 
 @app.post("/v1/quotes")
 async def create_quote(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/quotes", request, "pricing-service")
+    # Note: pricing-service uses /quote (singular)
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/quote", request, "pricing-service")
+
+@app.get("/v1/pricing/overrides")
+async def list_overrides(request: Request):
+    return await _proxy("GET", f"{PRICING_SERVICE_URL}/overrides", request, "pricing-service")
+
+@app.delete("/v1/pricing/overrides/{company_id}")
+async def clear_overrides(company_id: str, request: Request):
+    return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/overrides/{company_id}", request, "pricing-service")
+
+@app.get("/v1/pricing/price-categories")
+async def list_price_categories(request: Request):
+    return await _proxy("GET", f"{PRICING_SERVICE_URL}/price-categories", request, "pricing-service")
+
+@app.post("/v1/pricing/price-categories")
+async def create_price_category(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/price-categories", request, "pricing-service")
+
+@app.patch("/v1/pricing/price-categories/{code}")
+async def patch_price_category(code: str, request: Request):
+    return await _proxy("PATCH", f"{PRICING_SERVICE_URL}/price-categories/{code}", request, "pricing-service")
+
+@app.delete("/v1/pricing/price-categories/{code}")
+async def delete_price_category(code: str, request: Request):
+    return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/price-categories/{code}", request, "pricing-service")
+
+@app.get("/v1/pricing/cruise-prices")
+async def list_cruise_prices(request: Request):
+    return await _proxy("GET", f"{PRICING_SERVICE_URL}/cruise-prices", request, "pricing-service")
+
+@app.post("/v1/pricing/cruise-prices/bulk")
+async def upsert_cruise_prices_bulk(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/cruise-prices/bulk", request, "pricing-service")
+
+@app.get("/v1/pricing/cruise-prices/export")
+async def export_cruise_prices(request: Request):
+    return await _proxy("GET", f"{PRICING_SERVICE_URL}/cruise-prices/export", request, "pricing-service")
