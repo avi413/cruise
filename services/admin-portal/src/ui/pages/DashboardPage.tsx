@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
 import { Button, ErrorBanner, Mono, PageHeader, Panel } from '../components/ui'
@@ -38,6 +39,7 @@ function moveInArray<T>(xs: T[], fromIdx: number, toIdx: number): T[] {
 }
 
 export function DashboardPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const company = getCompany()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -99,7 +101,21 @@ export function DashboardPage(props: { apiBase: string }) {
     }
   }, [props.apiBase])
 
-  const availableToAdd = useMemo(() => ALL_WIDGETS.filter((w) => !layout.includes(w.key)), [layout])
+  const availableToAdd = useMemo(() => {
+    return ALL_WIDGETS.filter((w) => !layout.includes(w.key)).map((w) => ({
+      ...w,
+      title:
+        w.key === 'quick_actions'
+          ? t('dashboard.quick_actions')
+          : w.key === 'kpis'
+          ? t('dashboard.kpis')
+          : w.key === 'notifications'
+          ? t('dashboard.agenda')
+          : w.key === 'notes'
+          ? t('dashboard.my_notes')
+          : w.title,
+    }))
+  }, [layout, t])
 
   async function saveDashboard() {
     setBusy(true)
@@ -137,16 +153,16 @@ export function DashboardPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Dashboard"
-        subtitle={company ? `Signed in for ${company.name} (${company.code}).` : 'No company selected.'}
+        title={t('nav.dashboard')}
+        subtitle={company ? `${t('dashboard.signed_in_for')} ${company.name} (${company.code}).` : 'No company selected.'}
         right={
           <>
-            <Button variant="secondary" disabled={busy} onClick={() => setEdit(!edit)} title="Customize dashboard widgets">
-              {edit ? 'Done' : 'Customize'}
+            <Button variant="secondary" disabled={busy} onClick={() => setEdit(!edit)} title={t('dashboard.customize')}>
+              {edit ? t('common.save') : t('dashboard.customize')}
             </Button>
             {edit ? (
               <Button variant="primary" disabled={busy} onClick={() => void saveDashboard()}>
-                {busy ? 'Saving…' : 'Save layout'}
+                {busy ? t('common.save') : t('common.save')}
               </Button>
             ) : null}
           </>
@@ -202,7 +218,12 @@ export function DashboardPage(props: { apiBase: string }) {
       <div style={{ display: 'grid', gridTemplateColumns: cols === 1 ? '1fr' : '1fr 1fr', gap: 12, alignItems: 'start' }}>
         {layout.map((k, idx) => {
           const def = ALL_WIDGETS.find((w) => w.key === k)
-          const title = def?.title || k
+          let title = def?.title || k
+          if (k === 'quick_actions') title = t('dashboard.quick_actions')
+          if (k === 'kpis') title = t('dashboard.kpis')
+          if (k === 'notifications') title = t('dashboard.agenda')
+          if (k === 'notes') title = t('dashboard.my_notes')
+
           return (
             <section
               key={k}
@@ -237,16 +258,16 @@ export function DashboardPage(props: { apiBase: string }) {
 
               {k === 'quick_actions' ? (
                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                  <div style={styles.muted}>Fast navigation for frequent workflows.</div>
+                  <div style={styles.muted}>{t('dashboard.quick_actions_desc')}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     <Link to="/app/sales" style={styles.pill}>
-                      Quote / Hold / Confirm
+                      {t('dashboard.quote_hold_confirm')}
                     </Link>
                     <Link to="/app/customers" style={styles.pill}>
-                      Customer search
+                      {t('dashboard.customer_search')}
                     </Link>
                     <Link to="/app/cruises" style={styles.pill}>
-                      Browse sailings
+                      {t('dashboard.browse_sailings')}
                     </Link>
                   </div>
                 </div>
@@ -254,14 +275,14 @@ export function DashboardPage(props: { apiBase: string }) {
 
               {k === 'kpis' ? (
                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                  <div style={styles.muted}>Starter KPI block (extend with real-time booking/hold counts).</div>
+                  <div style={styles.muted}>{t('dashboard.kpi_desc')}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div style={styles.kpi}>
-                      <div style={styles.kpiLabel}>Notifications (loaded)</div>
+                      <div style={styles.kpiLabel}>{t('dashboard.notifications_loaded')}</div>
                       <div style={styles.kpiValue}>{notifs.length}</div>
                     </div>
                     <div style={styles.kpi}>
-                      <div style={styles.kpiLabel}>Widgets</div>
+                      <div style={styles.kpiLabel}>{t('dashboard.widgets')}</div>
                       <div style={styles.kpiValue}>{layout.length}</div>
                     </div>
                   </div>
@@ -270,7 +291,7 @@ export function DashboardPage(props: { apiBase: string }) {
 
               {k === 'notifications' ? (
                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                  <div style={styles.muted}>Latest items from the in-app feed.</div>
+                  <div style={styles.muted}>{t('dashboard.agenda_desc')}</div>
                   <div style={{ display: 'grid', gap: 6 }}>
                     {notifs.slice(0, 6).map((n, i) => (
                       <div key={String(n.id || i)} style={styles.notifRow}>
@@ -280,18 +301,18 @@ export function DashboardPage(props: { apiBase: string }) {
                         </div>
                       </div>
                     ))}
-                    {!notifs.length ? <div style={styles.muted}>No notifications yet.</div> : null}
+                    {!notifs.length ? <div style={styles.muted}>{t('dashboard.no_notifications')}</div> : null}
                   </div>
                 </div>
               ) : null}
 
               {k === 'notes' ? (
                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
-                  <div style={styles.muted}>Saved per user (Preferences → dashboard.notes).</div>
+                  <div style={styles.muted}>{t('dashboard.my_notes_desc')}</div>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Add quick notes, call-backs, reminders…"
+                    placeholder={t('dashboard.my_notes') + "..."}
                     style={{
                       width: '100%',
                       minHeight: 140,
