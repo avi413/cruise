@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { Shell } from './components/Shell'
 import { RequireAuth } from './components/auth'
 import { decodeJwt, isExpired } from './components/jwt'
@@ -36,6 +37,7 @@ function envEdgeUrl(): string {
 }
 
 export function App() {
+  const { i18n } = useTranslation()
   const apiBase = useMemo(() => envEdgeUrl(), [])
   const initial = useMemo(() => {
     const company = getCompany()
@@ -45,6 +47,11 @@ export function App() {
     if (company?.id && okToken) return '/app/dashboard'
     return '/login'
   }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = i18n.language
+    document.documentElement.dir = i18n.language === 'he' || i18n.language === 'ar' ? 'rtl' : 'ltr'
+  }, [i18n.language])
 
   return (
     <BrowserRouter>
