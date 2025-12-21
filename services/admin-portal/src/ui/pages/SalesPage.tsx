@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 
 type QuoteOut = { currency: string; subtotal: number; discounts: number; taxes_fees: number; total: number; lines: { code: string; description: string; amount: number }[] }
@@ -34,6 +35,7 @@ function formatMoney(cents: number, currency: string, locale: string): string {
 }
 
 export function SalesPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const [sailingId, setSailingId] = useState('')
   const [sailingDate, setSailingDate] = useState('')
@@ -355,21 +357,21 @@ export function SalesPage(props: { apiBase: string }) {
 
   return (
     <div style={styles.wrap}>
-      <div style={styles.hTitle}>Sales</div>
-      <div style={styles.hSub}>Quote, place holds, confirm bookings, and manage per-sailing inventory capacity.</div>
+      <div style={styles.hTitle}>{t('sales.title')}</div>
+      <div style={styles.hSub}>{t('sales.subtitle')}</div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
       <div style={styles.grid}>
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Quote</div>
+          <div style={styles.panelTitle}>{t('sales.quote_panel')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Sailing (optional, for quick-fill)
-              <input style={styles.input} value={sailingQ} onChange={(e) => setSailingQ(e.target.value)} placeholder="Search sailings by code/date/port…" />
+              {t('sales.sailing_label')}
+              <input style={styles.input} value={sailingQ} onChange={(e) => setSailingQ(e.target.value)} placeholder={t('sales.sailing_placeholder')} />
             </label>
             <label style={styles.label}>
-              Select sailing id (optional)
+              {t('sales.sailing_id_label')}
               <select
                 style={styles.input}
                 value={sailingId}
@@ -380,7 +382,7 @@ export function SalesPage(props: { apiBase: string }) {
                   if (s && !sailingDate) setSailingDate(s.start_date)
                 }}
               >
-                <option value="">(none)</option>
+                <option value="">{t('sales.none')}</option>
                 {sailingOptions.slice(0, 150).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.code} · {s.start_date}→{s.end_date} · {s.embark_port_code}→{s.debark_port_code}
@@ -389,13 +391,13 @@ export function SalesPage(props: { apiBase: string }) {
               </select>
             </label>
             <label style={styles.label}>
-              Sailing date (optional)
+              {t('sales.sailing_date_label')}
               <input style={styles.input} value={sailingDate} onChange={(e) => setSailingDate(e.target.value)} type="date" />
             </label>
             <label style={styles.label}>
-              Cabin category (pricing)
+              {t('sales.cabin_cat_label')}
               <select style={styles.input} value={cabinCategoryCode} onChange={(e) => setCabinCategoryCode(e.target.value)}>
-                <option value="">(none)</option>
+                <option value="">{t('sales.none')}</option>
                 {cabinCats.map((c) => (
                   <option key={c.id} value={c.code}>
                     {c.code} · {c.name}
@@ -404,27 +406,27 @@ export function SalesPage(props: { apiBase: string }) {
               </select>
             </label>
             <label style={styles.label}>
-              Price type (rate plan)
+              {t('sales.price_type_label')}
               <input
                 style={styles.input}
                 value={priceType}
                 onChange={(e) => setPriceType(e.target.value)}
-                placeholder="regular | internet | …"
+                placeholder={t('sales.price_type_placeholder')}
               />
             </label>
             <label style={styles.label}>
-              Cabin type (inventory)
+              {t('sales.cabin_type_label')}
               <select style={styles.input} value={cabinType} onChange={(e) => setCabinType(e.target.value as any)}>
-                <option value="inside">inside</option>
-                <option value="oceanview">oceanview</option>
-                <option value="balcony">balcony</option>
-                <option value="suite">suite</option>
+                <option value="inside">{t('sales.cabin_types.inside')}</option>
+                <option value="oceanview">{t('sales.cabin_types.oceanview')}</option>
+                <option value="balcony">{t('sales.cabin_types.balcony')}</option>
+                <option value="suite">{t('sales.cabin_types.suite')}</option>
               </select>
             </label>
             <label style={styles.label}>
-              Specific Cabin (optional)
+              {t('sales.specific_cabin_label')}
               <select style={styles.input} value={specificCabinId} onChange={(e) => setSpecificCabinId(e.target.value)}>
-                <option value="">(TBA / Random)</option>
+                <option value="">{t('sales.tba_random')}</option>
                 {cabins
                   .filter(c => {
                      // Filter by category if selected
@@ -439,7 +441,7 @@ export function SalesPage(props: { apiBase: string }) {
                     const isTaken = unavailableCabins.includes(c.id)
                     return (
                       <option key={c.id} value={c.id} disabled={isTaken}>
-                        {c.cabin_no} (Deck {c.deck}) {isTaken ? '— Taken' : ''}
+                        {c.cabin_no} (Deck {c.deck}) {isTaken ? `— ${t('sales.taken')}` : ''}
                       </option>
                     )
                   })}
@@ -447,39 +449,39 @@ export function SalesPage(props: { apiBase: string }) {
             </label>
             <div style={styles.row3}>
               <label style={styles.label}>
-                Adults
+                {t('sales.adults')}
                 <input style={styles.input} value={adult} onChange={(e) => setAdult(Number(e.target.value))} type="number" min={1} step={1} />
               </label>
               <label style={styles.label}>
-                Children
+                {t('sales.children')}
                 <input style={styles.input} value={child} onChange={(e) => setChild(Number(e.target.value))} type="number" min={0} step={1} />
               </label>
               <label style={styles.label}>
-                Infants
+                {t('sales.infants')}
                 <input style={styles.input} value={infant} onChange={(e) => setInfant(Number(e.target.value))} type="number" min={0} step={1} />
               </label>
             </div>
             <div style={styles.row2}>
               <label style={styles.label}>
-                Coupon (optional)
-                <input style={styles.input} value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder="WELCOME10" />
+                {t('sales.coupon_label')}
+                <input style={styles.input} value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder={t('sales.coupon_placeholder')} />
               </label>
               <label style={styles.label}>
-                Loyalty tier (optional)
-                <input style={styles.input} value={tier} onChange={(e) => setTier(e.target.value)} placeholder="GOLD" />
+                {t('sales.loyalty_label')}
+                <input style={styles.input} value={tier} onChange={(e) => setTier(e.target.value)} placeholder={t('sales.loyalty_placeholder')} />
               </label>
             </div>
             <button style={styles.primaryBtn} disabled={busy} onClick={() => void doQuote()}>
-              {busy ? 'Working…' : 'Get quote'}
+              {busy ? t('sales.working') : t('sales.get_quote')}
             </button>
 
             {quote ? (
               <div style={styles.card}>
                 <div style={styles.cardTitle}>
-                  Total: {formatMoney(quote.total, quote.currency, userLocale)}
+                  {t('sales.total')} {formatMoney(quote.total, quote.currency, userLocale)}
                 </div>
                 <div style={styles.muted}>
-                  Subtotal {formatMoney(quote.subtotal, quote.currency, userLocale)} · Discounts {formatMoney(quote.discounts, quote.currency, userLocale)} · Taxes {formatMoney(quote.taxes_fees, quote.currency, userLocale)}
+                  {t('sales.subtotal')} {formatMoney(quote.subtotal, quote.currency, userLocale)} · {t('sales.discounts')} {formatMoney(quote.discounts, quote.currency, userLocale)} · {t('sales.taxes')} {formatMoney(quote.taxes_fees, quote.currency, userLocale)}
                 </div>
                 <ul style={styles.ul}>
                   {quote.lines.map((l) => (
@@ -494,11 +496,11 @@ export function SalesPage(props: { apiBase: string }) {
         </section>
 
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Hold / Confirm</div>
+          <div style={styles.panelTitle}>{t('sales.hold_confirm_panel')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Sailing id
-              <input list="sailing-ids" style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder="(pick from list)" />
+              {t('sales.sailing_id')}
+              <input list="sailing-ids" style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder={t('sales.pick_list_placeholder')} />
               <datalist id="sailing-ids">
                 {sailings.slice(0, 200).map((s) => (
                   <option key={s.id} value={s.id}>
@@ -508,13 +510,13 @@ export function SalesPage(props: { apiBase: string }) {
               </datalist>
             </label>
             <label style={styles.label}>
-              Customer search (email/name/id)
-              <input style={styles.input} value={customerQ} onChange={(e) => setCustomerQ(e.target.value)} placeholder="guest@example.com" />
+              {t('sales.customer_search_label')}
+              <input style={styles.input} value={customerQ} onChange={(e) => setCustomerQ(e.target.value)} placeholder={t('sales.customer_placeholder')} />
             </label>
             {customerHits.length ? (
               <div style={styles.card}>
-                <div style={styles.cardTitle}>Matches</div>
-                <div style={styles.muted}>Click to select customer id.</div>
+                <div style={styles.cardTitle}>{t('sales.matches')}</div>
+                <div style={styles.muted}>{t('sales.click_to_select')}</div>
                 <div style={{ display: 'grid', gap: 6 }}>
                   {customerHits.slice(0, 6).map((c) => (
                     <button
@@ -533,8 +535,8 @@ export function SalesPage(props: { apiBase: string }) {
               </div>
             ) : null}
             <label style={styles.label}>
-              Customer id (optional)
-              <input list="customer-ids" style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="UUID" />
+              {t('sales.customer_id_label')}
+              <input list="customer-ids" style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder={t('sales.customer_id_placeholder')} />
               <datalist id="customer-ids">
                 {customerHits.slice(0, 10).map((c) => (
                   <option key={c.id} value={c.id}>
@@ -545,34 +547,34 @@ export function SalesPage(props: { apiBase: string }) {
             </label>
 
             <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void placeHold()}>
-              {busy ? 'Working…' : 'Place hold'}
+              {busy ? t('sales.working') : t('sales.place_hold')}
             </button>
 
             <div style={styles.row2}>
               <button style={styles.secondaryBtn} disabled={busy || !bookingId.trim()} onClick={() => void loadBooking()}>
-                Load booking
+                {t('sales.load_booking')}
               </button>
               <button style={styles.secondaryBtn} disabled={busy || !bookingId.trim()} onClick={() => void confirm()}>
-                Confirm booking
+                {t('sales.confirm_booking')}
               </button>
             </div>
 
             <label style={styles.label}>
-              Booking id
-              <input style={styles.input} value={bookingId} onChange={(e) => setBookingId(e.target.value)} placeholder="UUID" />
+              {t('sales.booking_id_label')}
+              <input style={styles.input} value={bookingId} onChange={(e) => setBookingId(e.target.value)} placeholder={t('sales.booking_id_placeholder')} />
             </label>
 
             {booking ? (
               <div style={styles.card}>
                 <div style={styles.cardTitle}>
-                  Booking {booking.id} · {booking.status}
+                  {t('sales.booking')} {booking.id} · {booking.status}
                 </div>
                 <div style={styles.muted}>
-                  Sailing: <span style={styles.mono}>{booking.sailing_id}</span> · Cabin: <span style={styles.mono}>{booking.cabin_type}</span> {booking.cabin_id ? <span> · Room: <span style={styles.mono}>{cabins.find(c => c.id === booking.cabin_id)?.cabin_no || booking.cabin_id}</span></span> : ' (TBA)'}
+                  {t('sales.sailing')} <span style={styles.mono}>{booking.sailing_id}</span> · {t('sales.cabin')} <span style={styles.mono}>{booking.cabin_type}</span> {booking.cabin_id ? <span> · {t('sales.room')} <span style={styles.mono}>{cabins.find(c => c.id === booking.cabin_id)?.cabin_no || booking.cabin_id}</span></span> : ` ${t('sales.tba')}`}
                 </div>
-                <div style={styles.muted}>Hold expires: {booking.hold_expires_at || '—'}</div>
+                <div style={styles.muted}>{t('sales.hold_expires')} {booking.hold_expires_at || '—'}</div>
                 <div style={styles.muted}>
-                  Total: {formatMoney(booking.quote.total, booking.quote.currency, userLocale)}
+                  {t('sales.total')} {formatMoney(booking.quote.total, booking.quote.currency, userLocale)}
                 </div>
               </div>
             ) : null}
@@ -582,21 +584,21 @@ export function SalesPage(props: { apiBase: string }) {
 
       <div style={styles.grid}>
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Inventory capacity</div>
+          <div style={styles.panelTitle}>{t('sales.inventory_capacity_panel')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Inventory mode
+              {t('sales.inventory_mode')}
               <select style={styles.input} value={invMode} onChange={(e) => setInvMode(e.target.value as any)}>
-                <option value="cabin_type">Cabin type</option>
-                <option value="category_code">Cabin category (e.g. CO3)</option>
+                <option value="cabin_type">{t('sales.mode_cabin_type')}</option>
+                <option value="category_code">{t('sales.mode_cabin_cat')}</option>
               </select>
             </label>
             <div style={styles.row2}>
               {invMode === 'category_code' ? (
                 <label style={styles.label}>
-                  Category code
+                  {t('sales.category_code')}
                   <select style={styles.input} value={invCategoryCode || cabinCategoryCode} onChange={(e) => setInvCategoryCode(e.target.value)}>
-                    <option value="">(select)</option>
+                    <option value="">{t('sales.select')}</option>
                     {cabinCats.map((c) => (
                       <option key={c.id} value={c.code}>
                         {c.code} · {c.name}
@@ -606,26 +608,26 @@ export function SalesPage(props: { apiBase: string }) {
                 </label>
               ) : (
                 <label style={styles.label}>
-                  Cabin type
+                  {t('sales.cabin_type_label')}
                   <select style={styles.input} value={invCabinType} onChange={(e) => setInvCabinType(e.target.value)}>
-                    <option value="inside">inside</option>
-                    <option value="oceanview">oceanview</option>
-                    <option value="balcony">balcony</option>
-                    <option value="suite">suite</option>
+                    <option value="inside">{t('sales.cabin_types.inside')}</option>
+                    <option value="oceanview">{t('sales.cabin_types.oceanview')}</option>
+                    <option value="balcony">{t('sales.cabin_types.balcony')}</option>
+                    <option value="suite">{t('sales.cabin_types.suite')}</option>
                   </select>
                 </label>
               )}
               <label style={styles.label}>
-                Capacity
+                {t('sales.capacity')}
                 <input style={styles.input} value={invCap} onChange={(e) => setInvCap(Number(e.target.value))} type="number" min={0} step={1} />
               </label>
             </div>
             <div style={styles.row2}>
               <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void setInventory()}>
-                {busy ? 'Working…' : 'Set capacity'}
+                {busy ? t('sales.working') : t('sales.set_capacity')}
               </button>
               <button style={styles.secondaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void loadInventory()}>
-                Refresh inventory
+                {t('sales.refresh_inventory')}
               </button>
             </div>
 
@@ -634,11 +636,11 @@ export function SalesPage(props: { apiBase: string }) {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      <th style={styles.th}>Cabin type</th>
-                      <th style={styles.th}>Capacity</th>
-                      <th style={styles.th}>Held</th>
-                      <th style={styles.th}>Confirmed</th>
-                      <th style={styles.th}>Available</th>
+                      <th style={styles.th}>{t('sales.th_cabin_type')}</th>
+                      <th style={styles.th}>{t('sales.th_capacity')}</th>
+                      <th style={styles.th}>{t('sales.th_held')}</th>
+                      <th style={styles.th}>{t('sales.th_confirmed')}</th>
+                      <th style={styles.th}>{t('sales.th_available')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -654,7 +656,7 @@ export function SalesPage(props: { apiBase: string }) {
                     {inv.length === 0 ? (
                       <tr>
                         <td style={styles.tdMuted} colSpan={5}>
-                          No inventory rows yet (place a hold or set capacity).
+                          {t('sales.no_inv_rows')}
                         </td>
                       </tr>
                     ) : null}
@@ -668,11 +670,11 @@ export function SalesPage(props: { apiBase: string }) {
                 <table style={styles.table}>
                   <thead>
                     <tr>
-                      <th style={styles.th}>Category</th>
-                      <th style={styles.th}>Capacity</th>
-                      <th style={styles.th}>Held</th>
-                      <th style={styles.th}>Confirmed</th>
-                      <th style={styles.th}>Available</th>
+                      <th style={styles.th}>{t('sales.th_category')}</th>
+                      <th style={styles.th}>{t('sales.th_capacity')}</th>
+                      <th style={styles.th}>{t('sales.th_held')}</th>
+                      <th style={styles.th}>{t('sales.th_confirmed')}</th>
+                      <th style={styles.th}>{t('sales.th_available')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -688,7 +690,7 @@ export function SalesPage(props: { apiBase: string }) {
                     {catInv.length === 0 ? (
                       <tr>
                         <td style={styles.tdMuted} colSpan={5}>
-                          No category inventory rows yet (set capacity).
+                          {t('sales.no_cat_inv_rows')}
                         </td>
                       </tr>
                     ) : null}
@@ -700,42 +702,42 @@ export function SalesPage(props: { apiBase: string }) {
         </section>
 
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Rates (on-the-fly)</div>
-          <div style={styles.muted}>Admin/staff only. These overrides are in-memory (reset on service restart).</div>
+          <div style={styles.panelTitle}>{t('sales.rates_panel')}</div>
+          <div style={styles.muted}>{t('sales.rates_note')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Cabin type
+              {t('sales.cabin_type_label')}
               <select style={styles.input} value={rateCabinType} onChange={(e) => setRateCabinType(e.target.value as any)}>
-                <option value="inside">inside</option>
-                <option value="oceanview">oceanview</option>
-                <option value="balcony">balcony</option>
-                <option value="suite">suite</option>
+                <option value="inside">{t('sales.cabin_types.inside')}</option>
+                <option value="oceanview">{t('sales.cabin_types.oceanview')}</option>
+                <option value="balcony">{t('sales.cabin_types.balcony')}</option>
+                <option value="suite">{t('sales.cabin_types.suite')}</option>
               </select>
             </label>
             <label style={styles.label}>
-              Cabin multiplier
+              {t('sales.cabin_multiplier')}
               <input style={styles.input} value={rateMultiplier} onChange={(e) => setRateMultiplier(Number(e.target.value))} type="number" step="0.05" min="0.1" />
             </label>
             <button style={styles.primaryBtn} disabled={busy} onClick={() => void setCabinMultiplier()}>
-              {busy ? 'Working…' : 'Set cabin multiplier'}
+              {busy ? t('sales.working') : t('sales.set_multiplier')}
             </button>
 
             <div style={styles.row3}>
               <label style={styles.label}>
-                Base adult (cents)
+                {t('sales.base_adult')}
                 <input style={styles.input} value={baseAdult} onChange={(e) => setBaseAdult(Number(e.target.value))} type="number" min={0} step={1000} />
               </label>
               <label style={styles.label}>
-                Base child (cents)
+                {t('sales.base_child')}
                 <input style={styles.input} value={baseChild} onChange={(e) => setBaseChild(Number(e.target.value))} type="number" min={0} step={1000} />
               </label>
               <label style={styles.label}>
-                Base infant (cents)
+                {t('sales.base_infant')}
                 <input style={styles.input} value={baseInfant} onChange={(e) => setBaseInfant(Number(e.target.value))} type="number" min={0} step={1000} />
               </label>
             </div>
             <button style={styles.primaryBtn} disabled={busy} onClick={() => void setBaseFares()}>
-              {busy ? 'Working…' : 'Set base fares'}
+              {busy ? t('sales.working') : t('sales.set_base_fares')}
             </button>
           </div>
         </section>
@@ -825,4 +827,3 @@ const styles: Record<string, React.CSSProperties> = {
   },
   tdMuted: { padding: '14px 8px', color: 'var(--csp-muted, rgba(230,237,243,0.60))' },
 }
-
