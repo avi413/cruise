@@ -29,6 +29,7 @@ from .models import (
     StaffGroupMember,
     StaffUser,
     StaffUserPreference,
+    Translation,
 )
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
@@ -1540,3 +1541,117 @@ def remove_group_member(
         meta={"user_id": user_id},
     )
     return {"status": "ok"}
+
+# ----------------------------
+# Translations
+# ----------------------------
+
+class TranslationCreate(BaseModel):
+    lang: str
+    namespace: str = "translation"
+    key: str
+    value: str
+
+class TranslationOut(TranslationCreate):
+    id: str
+    updated_at: datetime
+
+@app.get("/translations", response_model=list[TranslationOut])
+def list_translations(
+    lang: str | None = None,
+    namespace: str | None = None,
+    tenant_engine=Depends(get_tenant_engine),
+):
+    with session(tenant_engine) as s:
+        qry = s.query(Translation)
+        if lang:
+            qry = qry.filter(Translation.lang == lang)
+        if namespace:
+            qry = qry.filter(Translation.namespace == namespace)
+        rows = qry.all()
+    return [
+        TranslationOut(
+            id=r.id,
+            updated_at=r.updated_at,
+            lang=r.lang,
+            namespace=r.namespace,
+            key=r.key,
+            value=r.value,
+        )
+        for r in rows
+    ]
+
+@app.post("/translations", response_model=TranslationOut)
+def create_translation(
+    payload: TranslationCreate,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        # Check if exists
+        exists = s.query(Translation).filter(
+            Translation.lang == payload.lang,
+            Translation.namespace == payload.namespace,
+            Translation.key == payload.key
+        ).first()
+        
+        now = _now()
+        if exists:
+            exists.value = payload.value
+            exists.updated_at = now
+            s.add(exists)
+            s.commit()
+            return TranslationOut(
+                id=exists.id,
+                updated_at=exists.updated_at,
+                lang=exists.lang,
+                namespace=exists.namespace,
+                key=exists.key,
+                value=exists.value,
+            )
+        
+        t = Translation(
+            id=str(uuid4()),
+            lang=payload.lang,
+            namespace=payload.namespace,
+            key=payload.key,
+            value=payload.value,
+            updated_at=now,
+        )
+        s.add(t)
+        s.commit()
+        return TranslationOut(
+            id=t.id,
+            updated_at=t.updated_at,
+            lang=t.lang,
+            namespace=t.namespace,
+            key=t.key,
+            value=t.value,
+        )
+
+@app.delete("/translations/{translation_id}")
+def delete_translation(
+    translation_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("admin")),
+):
+    with session(tenant_engine) as s:
+        t = s.get(Translation, translation_id)
+        if t:
+            s.delete(t)
+            s.commit()
+    return {"status": "ok"}
+
+@app.get("/translations/bundle/{lang}/{namespace}")
+def get_translation_bundle(
+    lang: str,
+    namespace: str,
+    tenant_engine=Depends(get_tenant_engine),
+):
+    with session(tenant_engine) as s:
+        rows = s.query(Translation).filter(
+            Translation.lang == lang,
+            Translation.namespace == namespace
+        ).all()
+    
+    return {r.key: r.value for r in rows}
