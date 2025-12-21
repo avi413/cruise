@@ -138,8 +138,8 @@ export function OnboardPage(props: { apiBase: string }) {
     const r = await apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
     setFleet(r || [])
     setShipId((prev) => {
-      if (prev && (r.items || []).some((s) => s.id === prev)) return prev
-      return r.items?.[0]?.id || ''
+      if (prev && (r || []).some((s) => s.id === prev)) return prev
+      return r?.[0]?.id || ''
     })
   }
 
