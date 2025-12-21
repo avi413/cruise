@@ -12,6 +12,7 @@ type BookingOut = {
   customer_id: string | null
   sailing_id: string
   cabin_type: string
+  cabin_id: string | null
   guests: any
   quote: QuoteOut
 }
@@ -19,6 +20,7 @@ type BookingOut = {
 type Sailing = { id: string; code: string; ship_id: string; start_date: string; end_date: string; embark_port_code: string; debark_port_code: string; status: string }
 type Customer = { id: string; email: string; first_name?: string | null; last_name?: string | null; loyalty_tier?: string | null; updated_at?: string }
 type CabinCategory = { id: string; ship_id: string; code: string; name: string; view: string; cabin_class: string; max_occupancy: number; meta: any }
+type Cabin = { id: string; cabin_no: string; deck: number; category_id: string | null; status: string }
 type CatInvRow = { sailing_id: string; category_code: string; capacity: number; held: number; confirmed: number; available: number }
 type MePrefs = { user_id: string; updated_at: string; preferences: any }
 
@@ -72,6 +74,9 @@ export function SalesPage(props: { apiBase: string }) {
   const [customerHits, setCustomerHits] = useState<Customer[]>([])
 
   const [cabinCats, setCabinCats] = useState<CabinCategory[]>([])
+  const [cabins, setCabins] = useState<Cabin[]>([])
+  const [unavailableCabins, setUnavailableCabins] = useState<string[]>([])
+  const [specificCabinId, setSpecificCabinId] = useState('')
 
   const [userLocale, setUserLocale] = useState('en')
 
@@ -133,8 +138,27 @@ export function SalesPage(props: { apiBase: string }) {
     loadInventory().catch(() => {
       /* ignore */
     })
+    loadCabinsAndAvailability().catch(() => {
+        /* ignore */
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sailingId])
+
+  async function loadCabinsAndAvailability() {
+     if (!sailingId) return
+     const s = sailings.find(x => x.id === sailingId)
+     if (!s?.ship_id) return
+     
+     // Load all cabins for ship
+     apiFetch<Cabin[]>(props.apiBase, `/v1/ships/${encodeURIComponent(s.ship_id)}/cabins`)
+       .then(r => setCabins(r || []))
+       .catch(() => setCabins([]))
+
+     // Load unavailable for sailing
+     apiFetch<string[]>(props.apiBase, `/v1/inventory/sailings/${encodeURIComponent(sailingId)}/unavailable-cabins`)
+       .then(r => setUnavailableCabins(r || []))
+       .catch(() => setUnavailableCabins([]))
+  }
 
   useEffect(() => {
     const q = customerQ.trim()
@@ -207,6 +231,7 @@ export function SalesPage(props: { apiBase: string }) {
           sailing_date: sailingDate ? `${sailingDate}T00:00:00Z` : null,
           cabin_type: cabinType,
           cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
+          cabin_id: specificCabinId || null,
           price_type: priceType.trim().toLowerCase() || 'regular',
           guests: { adult, child, infant },
           coupon_code: coupon || null,
@@ -396,6 +421,30 @@ export function SalesPage(props: { apiBase: string }) {
                 <option value="suite">suite</option>
               </select>
             </label>
+            <label style={styles.label}>
+              Specific Cabin (optional)
+              <select style={styles.input} value={specificCabinId} onChange={(e) => setSpecificCabinId(e.target.value)}>
+                <option value="">(TBA / Random)</option>
+                {cabins
+                  .filter(c => {
+                     // Filter by category if selected
+                     if (cabinCategoryCode) {
+                       const cat = cabinCats.find(cat => cat.code === cabinCategoryCode)
+                       return c.category_id === cat?.id
+                     }
+                     return true
+                  })
+                  .sort((a, b) => a.cabin_no.localeCompare(b.cabin_no, undefined, { numeric: true }))
+                  .map(c => {
+                    const isTaken = unavailableCabins.includes(c.id)
+                    return (
+                      <option key={c.id} value={c.id} disabled={isTaken}>
+                        {c.cabin_no} (Deck {c.deck}) {isTaken ? '— Taken' : ''}
+                      </option>
+                    )
+                  })}
+              </select>
+            </label>
             <div style={styles.row3}>
               <label style={styles.label}>
                 Adults
@@ -519,7 +568,7 @@ export function SalesPage(props: { apiBase: string }) {
                   Booking {booking.id} · {booking.status}
                 </div>
                 <div style={styles.muted}>
-                  Sailing: <span style={styles.mono}>{booking.sailing_id}</span> · Cabin: <span style={styles.mono}>{booking.cabin_type}</span>
+                  Sailing: <span style={styles.mono}>{booking.sailing_id}</span> · Cabin: <span style={styles.mono}>{booking.cabin_type}</span> {booking.cabin_id ? <span> · Room: <span style={styles.mono}>{cabins.find(c => c.id === booking.cabin_id)?.cabin_no || booking.cabin_id}</span></span> : ' (TBA)'}
                 </div>
                 <div style={styles.muted}>Hold expires: {booking.hold_expires_at || '—'}</div>
                 <div style={styles.muted}>
