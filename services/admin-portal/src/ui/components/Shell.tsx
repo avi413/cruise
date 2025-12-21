@@ -302,7 +302,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   cardTitle: { fontWeight: 800, marginBottom: 8 },
   muted: { color: 'var(--csp-muted, rgba(230,237,243,0.7))', fontSize: 12, marginBottom: 8 },
-  inlineLink: { color: '#9ecbff', textDecoration: 'none' },
+  inlineLink: { color: 'var(--csp-primary, #388bfd)', textDecoration: 'none' },
   secondaryBtnFull: {
     width: '100%',
     padding: '10px 12px',
