@@ -129,6 +129,10 @@ async def get_company_settings(company_id: str, request: Request):
 async def patch_company_settings(company_id: str, request: Request):
     return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request, "ship-service")
 
+@app.get("/v1/companies/{company_id}/ships")
+async def list_company_ships(company_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/companies/{company_id}/ships", request, "ship-service")
+
 @app.get("/v1/ships")
 async def list_ships(request: Request):
     return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships", request, "ship-service")
