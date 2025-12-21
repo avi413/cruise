@@ -3,6 +3,7 @@ import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
 import { fetchCompanySettings } from '../components/theme'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select, Tabs, TextArea, TwoCol } from '../components/ui'
+import * as XLSX from 'xlsx'
 
 type OverridesOut = {
   company_id: string
@@ -35,6 +36,7 @@ type Sailing = {
 type PriceCategory = {
   company_id: string
   code: string
+  parent_code?: string | null
   active: boolean
   order: number
   enabled_channels: string[]
@@ -80,11 +82,12 @@ export function PricingPage(props: { apiBase: string }) {
   const [sailings, setSailings] = useState<Sailing[]>([])
   const [selectedSailingId, setSelectedSailingId] = useState<string>('')
 
-  const [tab, setTab] = useState<'overrides' | 'flex'>('overrides')
+  const [tab, setTab] = useState<'categories' | 'cruise'>('categories')
 
   // Flexible pricing model state
   const [priceCats, setPriceCats] = useState<PriceCategory[]>([])
   const [newCatCode, setNewCatCode] = useState('internet')
+  const [newCatParentCode, setNewCatParentCode] = useState<string>('')
   const [newCatNameJson, setNewCatNameJson] = useState('{"en":"Internet"}')
   const [newCatDescJson, setNewCatDescJson] = useState('{"en":"Online-only pricing"}')
   const [newCatChannelsRaw, setNewCatChannelsRaw] = useState('website, api, mobile_app')
@@ -303,6 +306,20 @@ export function PricingPage(props: { apiBase: string }) {
     return out
   }
 
+  function downloadBlob(filename: string, blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.rel = 'noreferrer'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  function downloadText(filename: string, text: string, mime: string) {
+    downloadBlob(filename, new Blob([text], { type: mime }))
+  }
+
   async function createPriceCategory() {
     setBusy(true)
     setErr(null)
@@ -312,6 +329,7 @@ export function PricingPage(props: { apiBase: string }) {
         method: 'POST',
         body: {
           code: newCatCode,
+          parent_code: newCatParentCode || null,
           active: newCatActive,
           enabled_channels: parseChannels(newCatChannelsRaw),
           room_selection_included: newCatRoomSelIncluded,
@@ -336,6 +354,7 @@ export function PricingPage(props: { apiBase: string }) {
       await apiFetch(props.apiBase, `/v1/pricing/price-categories/${encodeURIComponent(code)}`, {
         method: 'PATCH',
         body: {
+          parent_code: patch.parent_code,
           active: patch.active,
           enabled_channels: patch.enabled_channels,
           room_selection_included: patch.room_selection_included,
@@ -365,13 +384,13 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function reorderCats(next: PriceCategory[]) {
+  async function reorderCats(codes: string[]) {
     setBusy(true)
     setErr(null)
     try {
       await apiFetch(props.apiBase, `/v1/pricing/price-categories/reorder`, {
         method: 'POST',
-        body: { codes: next.map((c) => c.code) },
+        body: { codes },
       })
       await refresh()
     } catch (e: any) {
@@ -379,6 +398,40 @@ export function PricingPage(props: { apiBase: string }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  function buildCategoryTreeOrder(): { flat: { c: PriceCategory; depth: number }[]; orderCodes: string[] } {
+    const byCode: Record<string, PriceCategory> = {}
+    for (const c of priceCats || []) byCode[String(c.code)] = c
+
+    const children: Record<string, PriceCategory[]> = {}
+    for (const c of priceCats || []) {
+      const p = String((c.parent_code as any) || '').trim()
+      if (!children[p]) children[p] = []
+      children[p].push(c)
+    }
+    for (const k of Object.keys(children)) children[k].sort((a, b) => (a.order || 0) - (b.order || 0))
+
+    const out: { c: PriceCategory; depth: number }[] = []
+    const seen = new Set<string>()
+
+    function walk(parent: string, depth: number) {
+      for (const c of children[parent] || []) {
+        if (seen.has(c.code)) continue
+        seen.add(c.code)
+        out.push({ c, depth })
+        walk(String(c.code), depth + 1)
+      }
+    }
+
+    walk('', 0)
+    // Any orphans/cycles fall back to root-level rendering
+    for (const c of (priceCats || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0))) {
+      if (seen.has(c.code)) continue
+      out.push({ c, depth: 0 })
+    }
+
+    return { flat: out, orderCodes: out.map((x) => x.c.code) }
   }
 
   async function loadGrid() {
@@ -458,12 +511,117 @@ export function PricingPage(props: { apiBase: string }) {
     try {
       const sid = (gridSailingId || '').trim()
       if (!sid) throw new Error('Select a sailing first.')
-      const url = `${props.apiBase}/v1/pricing/cruise-prices/export?sailing_id=${encodeURIComponent(sid)}&format=${encodeURIComponent(fmt)}`
-      const a = document.createElement('a')
-      a.href = url
-      a.target = '_blank'
-      a.rel = 'noreferrer'
-      a.click()
+
+      // Authenticated download (fixes "Missing bearer token")
+      if (fmt === 'json') {
+        const rows = await apiFetch<CruisePriceCell[]>(props.apiBase, `/v1/pricing/cruise-prices?sailing_id=${encodeURIComponent(sid)}`)
+        const payload = { company_id: companyId, sailing_id: sid, items: rows || [] }
+        downloadText(`cruise-prices-${sid}.json`, JSON.stringify(payload, null, 2) + '\n', 'application/json')
+        return
+      }
+
+      // CSV (client-side)
+      const activeCats = (priceCats || []).filter((c) => c.active).slice().sort((a, b) => a.order - b.order)
+      const header = ['sailing_id', 'cabin_category_code', 'price_category_code', 'currency', 'min_guests', 'price_per_person']
+      const lines: string[] = [header.join(',')]
+      for (const cabin of gridCabinCats) {
+        const cabinCode = String(cabin.code || '').trim().toUpperCase()
+        if (!cabinCode) continue
+        for (const pc of activeCats) {
+          const key = `${cabinCode}|${String(pc.code).toLowerCase()}`
+          const cents = Number(gridCells[key] ?? 0)
+          lines.push([sid, cabinCode, String(pc.code).toLowerCase(), gridCurrency.trim().toUpperCase(), String(gridMinGuests), String(Math.max(0, Math.round(cents)))].join(','))
+        }
+      }
+      downloadText(`cruise-prices-${sid}.csv`, lines.join('\n') + '\n', 'text/csv')
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function exportGridExcel() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const sid = (gridSailingId || '').trim()
+      if (!sid) throw new Error('Select a sailing first.')
+      const activeCats = (priceCats || []).filter((c) => c.active).slice().sort((a, b) => a.order - b.order)
+      if (!gridCabinCats.length || !activeCats.length) throw new Error('Load the table first (and ensure at least one active price category).')
+
+      const aoa: any[][] = []
+      aoa.push(['Cabin category', ...activeCats.map((c) => c.code)])
+      for (const cabin of gridCabinCats) {
+        const cabinCode = String(cabin.code || '').trim().toUpperCase()
+        const row: any[] = [cabinCode]
+        for (const pc of activeCats) {
+          const k = `${cabinCode}|${String(pc.code).toLowerCase()}`
+          const cents = Number(gridCells[k] ?? 0)
+          row.push(Number.isFinite(cents) ? cents : 0)
+        }
+        aoa.push(row)
+      }
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'CruisePrices')
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      downloadBlob(`cruise-prices-${sid}.xlsx`, new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function exportCategoriesJson() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const payload = { company_id: companyId, items: priceCats || [] }
+      downloadText(`price-categories-${companyId || 'company'}.json`, JSON.stringify(payload, null, 2) + '\n', 'application/json')
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function exportCategoriesExcel() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const rows = (priceCats || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0))
+      const aoa: any[][] = []
+      aoa.push([
+        'code',
+        'parent_code',
+        'active',
+        'order',
+        'enabled_channels',
+        'room_selection_included',
+        'room_category_only',
+        'name_i18n',
+        'description_i18n',
+      ])
+      for (const c of rows) {
+        aoa.push([
+          c.code,
+          c.parent_code || '',
+          c.active ? 'true' : 'false',
+          c.order,
+          (c.enabled_channels || []).join(', '),
+          c.room_selection_included ? 'true' : 'false',
+          c.room_category_only ? 'true' : 'false',
+          JSON.stringify(c.name_i18n || {}),
+          JSON.stringify(c.description_i18n || {}),
+        ])
+      }
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'PriceCategories')
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      downloadBlob(`price-categories-${companyId || 'company'}.xlsx`, new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -536,31 +694,53 @@ export function PricingPage(props: { apiBase: string }) {
         value={tab}
         onChange={(k) => setTab(k as any)}
         tabs={[
-          { key: 'overrides', label: 'Overrides' },
-          { key: 'flex', label: 'Flexible price categories & cruise tables', badge: (priceCats || []).filter((c) => c.active).length },
+          { key: 'categories', label: 'Price Categories', badge: (priceCats || []).filter((c) => c.active).length },
+          { key: 'cruise', label: 'Cruise Price Tables' },
         ]}
       />
 
-      {tab === 'flex' ? (
+      {tab === 'categories' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <TwoCol
             left={
               <Panel
                 title="Price Categories"
-                subtitle="Create unlimited price categories (rate plans) with channel enablement, room-selection flags, and localized name/description. Reorder anytime."
+                subtitle="CRM-style category management: create categories, assign optional parent (hierarchy), toggle availability flags, and export JSON/Excel."
+                right={
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <Button disabled={busy} onClick={() => void exportCategoriesJson()}>
+                      Export JSON
+                    </Button>
+                    <Button disabled={busy} onClick={() => void exportCategoriesExcel()}>
+                      Export Excel
+                    </Button>
+                  </div>
+                }
               >
                 <div style={{ display: 'grid', gap: 10 }}>
                   <TwoCol
                     left={<Input label="Code" value={newCatCode} onChange={(e) => setNewCatCode(e.target.value)} placeholder="internet" disabled={busy} />}
                     right={
-                      <Input
-                        label="Enabled channels (comma-separated)"
-                        value={newCatChannelsRaw}
-                        onChange={(e) => setNewCatChannelsRaw(e.target.value)}
-                        placeholder="website, agent, api"
-                        disabled={busy}
-                      />
+                      <Select label="Parent (optional)" value={newCatParentCode} onChange={(e) => setNewCatParentCode(e.target.value)} disabled={busy}>
+                        <option value="">(none)</option>
+                        {(priceCats || [])
+                          .slice()
+                          .sort((a, b) => (a.order || 0) - (b.order || 0))
+                          .map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.code}
+                            </option>
+                          ))}
+                      </Select>
                     }
+                  />
+
+                  <Input
+                    label="Enabled channels (comma-separated)"
+                    value={newCatChannelsRaw}
+                    onChange={(e) => setNewCatChannelsRaw(e.target.value)}
+                    placeholder="website, agent, api"
+                    disabled={busy}
                   />
 
                   <TwoCol
@@ -612,11 +792,14 @@ export function PricingPage(props: { apiBase: string }) {
             right={
               <Panel title="Existing categories" subtitle="Toggle active, edit channels/flags, and move up/down to reorder.">
                 <div style={{ display: 'grid', gap: 8 }}>
-                  {(priceCats || [])
-                    .slice()
-                    .sort((a, b) => a.order - b.order)
-                    .map((c, idx, arr) => {
+                  {(() => {
+                    const tree = buildCategoryTreeOrder()
+                    return tree.flat.map(({ c, depth }, idx) => {
+                      const arr = tree.flat.map((x) => x.c)
                       const name = c.name_i18n?.en || Object.values(c.name_i18n || {})[0] || c.code
+                      const parent = String((c.parent_code as any) || '')
+                      const siblings = arr.filter((x) => String((x.parent_code as any) || '') === parent)
+                      const sibIdx = siblings.findIndex((x) => x.code === c.code)
                       return (
                         <div
                           key={c.code}
@@ -632,6 +815,7 @@ export function PricingPage(props: { apiBase: string }) {
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                             <div>
                               <div style={{ fontWeight: 900 }}>
+                                <span style={{ display: 'inline-block', width: depth * 14 }} />
                                 <Mono>{c.code}</Mono> · {name}{' '}
                                 {!c.active ? <span style={{ color: 'rgba(230,237,243,0.65)', fontWeight: 700 }}>(inactive)</span> : null}
                               </div>
@@ -642,25 +826,51 @@ export function PricingPage(props: { apiBase: string }) {
                             </div>
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                               <Button
-                                disabled={busy || idx === 0}
+                                disabled={busy || sibIdx <= 0}
                                 onClick={() => {
-                                  const next = arr.slice()
-                                  const tmp = next[idx - 1]
-                                  next[idx - 1] = next[idx]
-                                  next[idx] = tmp
-                                  void reorderCats(next)
+                                  const sib = siblings.slice()
+                                  const tmp = sib[sibIdx - 1]
+                                  sib[sibIdx - 1] = sib[sibIdx]
+                                  sib[sibIdx] = tmp
+                                  // Build a full order list with updated sibling ordering
+                                  const current = buildCategoryTreeOrder()
+                                  const codes = current.orderCodes.slice()
+                                  const groupCodes = sib.map((x) => x.code)
+                                  // Replace occurrences of the group's codes in the codes list with the new order
+                                  const out: string[] = []
+                                  let gi = 0
+                                  for (const code of codes) {
+                                    if (groupCodes.includes(code)) {
+                                      out.push(groupCodes[gi++])
+                                    } else {
+                                      out.push(code)
+                                    }
+                                  }
+                                  void reorderCats(out)
                                 }}
                               >
                                 ↑
                               </Button>
                               <Button
-                                disabled={busy || idx === arr.length - 1}
+                                disabled={busy || sibIdx === -1 || sibIdx >= siblings.length - 1}
                                 onClick={() => {
-                                  const next = arr.slice()
-                                  const tmp = next[idx + 1]
-                                  next[idx + 1] = next[idx]
-                                  next[idx] = tmp
-                                  void reorderCats(next)
+                                  const sib = siblings.slice()
+                                  const tmp = sib[sibIdx + 1]
+                                  sib[sibIdx + 1] = sib[sibIdx]
+                                  sib[sibIdx] = tmp
+                                  const current = buildCategoryTreeOrder()
+                                  const codes = current.orderCodes.slice()
+                                  const groupCodes = sib.map((x) => x.code)
+                                  const out: string[] = []
+                                  let gi = 0
+                                  for (const code of codes) {
+                                    if (groupCodes.includes(code)) {
+                                      out.push(groupCodes[gi++])
+                                    } else {
+                                      out.push(code)
+                                    }
+                                  }
+                                  void reorderCats(out)
                                 }}
                               >
                                 ↓
@@ -684,7 +894,25 @@ export function PricingPage(props: { apiBase: string }) {
                               />
                             }
                             right={
-                              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 22 }}>
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                <Select
+                                  label="Parent"
+                                  value={(c.parent_code as any) || ''}
+                                  onChange={(e) => void patchPriceCategory(c.code, { parent_code: e.target.value || null })}
+                                  disabled={busy}
+                                >
+                                  <option value="">(none)</option>
+                                  {(priceCats || [])
+                                    .filter((x) => x.code !== c.code)
+                                    .slice()
+                                    .sort((a, b) => (a.order || 0) - (b.order || 0))
+                                    .map((p) => (
+                                      <option key={p.code} value={p.code}>
+                                        {p.code}
+                                      </option>
+                                    ))}
+                                </Select>
+                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                                   <input
                                     type="checkbox"
@@ -703,47 +931,55 @@ export function PricingPage(props: { apiBase: string }) {
                                   />
                                   Room Category Only
                                 </label>
+                                </div>
                               </div>
                             }
                           />
                         </div>
                       )
-                    })}
+                    })
+                  })()}
                 </div>
               </Panel>
             }
           />
+        </div>
+      ) : null}
 
-          <Panel
-            title="Cruise pricing table"
-            subtitle="Pick a sailing (cruise). Rows are cabin categories; columns are active price categories. Enter per-person price in cents. Bulk import/export supported."
-            right={
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <Button disabled={busy} onClick={() => void loadGrid()}>
-                  Load table
-                </Button>
-                <Button variant="primary" disabled={busy} onClick={() => void saveGrid()}>
-                  Save table
-                </Button>
-                <Button disabled={busy} onClick={() => void exportGrid('json')}>
-                  Export JSON
-                </Button>
-                <Button disabled={busy} onClick={() => void exportGrid('csv')}>
-                  Export CSV
-                </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="application/json"
-                  disabled={busy}
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) void importGridJson(f)
-                  }}
-                />
-              </div>
-            }
-          >
+      {tab === 'cruise' ? (
+        <Panel
+          title="Cruise pricing table"
+          subtitle="Pick a sailing (cruise). Rows are cabin categories; columns are active price categories. Enter per-person price in cents. Export JSON/CSV/Excel uses authenticated downloads."
+          right={
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <Button disabled={busy} onClick={() => void loadGrid()}>
+                Load table
+              </Button>
+              <Button variant="primary" disabled={busy} onClick={() => void saveGrid()}>
+                Save table
+              </Button>
+              <Button disabled={busy} onClick={() => void exportGrid('json')}>
+                Export JSON
+              </Button>
+              <Button disabled={busy} onClick={() => void exportGrid('csv')}>
+                Export CSV
+              </Button>
+              <Button disabled={busy} onClick={() => void exportGridExcel()}>
+                Export Excel
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/json"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void importGridJson(f)
+                }}
+              />
+            </div>
+          }
+        >
             <div style={{ display: 'grid', gap: 10 }}>
               <TwoCol
                 left={
@@ -844,183 +1080,10 @@ export function PricingPage(props: { apiBase: string }) {
                 </table>
               </div>
             </div>
-          </Panel>
-        </div>
+        </Panel>
       ) : null}
 
-      {tab === 'overrides' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-        <Panel title="Cabin multipliers" subtitle="Example: suites at 1.8x, balconies at 1.3x.">
-          <div style={{ display: 'grid', gap: 10 }}>
-            <Select label="Cabin type" value={cabinType} onChange={(e) => setCabinType(e.target.value as any)}>
-              <option value="inside">inside</option>
-              <option value="oceanview">oceanview</option>
-              <option value="balcony">balcony</option>
-              <option value="suite">suite</option>
-            </Select>
-            <Input label="Multiplier" type="number" step="0.05" min="0.1" value={multiplier} onChange={(e) => setMultiplier(Number(e.target.value))} />
-            <Button variant="primary" disabled={busy || !company?.id} onClick={() => void setCabinMultiplier()}>
-              {busy ? 'Saving…' : 'Set multiplier'}
-            </Button>
-          </div>
-        </Panel>
-
-        <Panel title="Base fares" subtitle="Amounts are in cents; applied per passenger type.">
-          <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-              <Input label="Adult" type="number" min="0" step="1000" value={adult} onChange={(e) => setAdult(Number(e.target.value))} />
-              <Input label="Child" type="number" min="0" step="1000" value={child} onChange={(e) => setChild(Number(e.target.value))} />
-              <Input label="Infant" type="number" min="0" step="1000" value={infant} onChange={(e) => setInfant(Number(e.target.value))} />
-            </div>
-            <Button variant="primary" disabled={busy || !company?.id} onClick={() => void setBaseFares()}>
-              {busy ? 'Saving…' : 'Set base fares'}
-            </Button>
-          </div>
-        </Panel>
-      </div>
-
-      <Panel
-        title="Cabin category pricing (bulk)"
-        subtitle="Create category prices for a list of cabin category codes, and apply all price types (rate plans) to each category. We don’t ask for optional date fields; pricing is attached to the selected cruise/sailing."
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'end' }}>
-          <Select
-            label="Cruise / sailing"
-            value={selectedSailingId}
-            onChange={(e) => setSelectedSailingId(e.target.value)}
-            hint="Pricing will be attached to this sailing’s date range automatically."
-          >
-            <option value="">(Any sailing date)</option>
-            {sailings.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.code} · {s.start_date} → {s.end_date} · {s.embark_port_code} → {s.debark_port_code}
-              </option>
-            ))}
-          </Select>
-          <TextArea
-            label="Category codes"
-            value={catCodesRaw}
-            onChange={(e) => setCatCodesRaw(e.target.value)}
-            rows={3}
-            placeholder="CO1, CO2, CO3"
-            hint="Enter one per line, or separate with spaces/commas."
-            style={{ minHeight: 88, resize: 'vertical' }}
-          />
-        </div>
-        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, alignItems: 'end' }}>
-          <Input
-            label="Price types"
-            value={catPriceTypesRaw}
-            onChange={(e) => setCatPriceTypesRaw(e.target.value)}
-            placeholder="regular, internet, promo"
-            hint="Comma/space-separated. Each type will be created for each category code."
-          />
-          <Input label="Currency" value={catCurrency} onChange={(e) => setCatCurrency(e.target.value)} />
-          <Input label="Min guests" type="number" min="1" step="1" value={catMinGuests} onChange={(e) => setCatMinGuests(Number(e.target.value))} />
-          <Input
-            label="Price / person"
-            type="number"
-            min="0"
-            step="0.01"
-            value={catPricePerPerson}
-            onChange={(e) => setCatPricePerPerson(Number(e.target.value))}
-            hint="Enter major units (e.g. 300.00 = €300.00). Saved as cents in API."
-          />
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <Button
-            variant="primary"
-            disabled={busy || !parseCodes(catCodesRaw).length || !parsePriceTypes(catPriceTypesRaw).length || !company?.id}
-            onClick={() => void upsertCategoryPricesBulk()}
-          >
-            {busy ? 'Saving…' : 'Save category prices'}
-          </Button>
-        </div>
-      </Panel>
-
-      <Panel title="Current overrides" subtitle="This service stores overrides in-memory (demo). In production, this would be persisted + versioned.">
-        <div style={{ overflow: 'auto' }}>
-          <table style={tableStyles.table}>
-            <thead>
-              <tr>
-                <th style={tableStyles.th}>Company</th>
-                <th style={tableStyles.th}>Base fares</th>
-                <th style={tableStyles.th}>Cabin multipliers</th>
-                <th style={tableStyles.th}>Category prices</th>
-                <th style={tableStyles.th}>Demand</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((o) => (
-                <tr key={o.company_id}>
-                  <td style={tableStyles.tdMono}>{o.company_id}</td>
-                  <td style={tableStyles.td}>
-                    {o.base_by_pax ? (
-                      <div style={tableStyles.wrap}>
-                        {Object.entries(o.base_by_pax).map(([k, v]) => (
-                          <div key={k}>
-                            <Mono>{k}</Mono>: {(v / 100).toFixed(2)}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={tableStyles.muted}>—</span>
-                    )}
-                  </td>
-                  <td style={tableStyles.td}>
-                    {o.cabin_multiplier ? (
-                      <div style={tableStyles.wrap}>
-                        {Object.entries(o.cabin_multiplier).map(([k, v]) => (
-                          <div key={k}>
-                            <Mono>{k}</Mono>: {v.toFixed(2)}x
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={tableStyles.muted}>—</span>
-                    )}
-                  </td>
-                  <td style={tableStyles.td}>
-                    {o.category_prices && o.category_prices.length ? (
-                      <div style={tableStyles.wrap}>
-                        {groupCategoryPrices(o.category_prices).map((g) => (
-                          <div key={g.category_code} style={{ display: 'grid', gap: 6 }}>
-                            <div style={{ fontWeight: 900 }}>
-                              <Mono>{g.category_code}</Mono>
-                            </div>
-                            <div style={{ display: 'grid', gap: 4, paddingLeft: 10 }}>
-                              {g.items.map((r) => (
-                                <div
-                                  key={`${r.category_code}-${r.price_type || 'regular'}-${r.currency}-${r.min_guests}-${r.effective_start_date || 'any'}-${r.effective_end_date || 'any'}`}
-                                >
-                                  <Mono>{(r.price_type || 'regular').toLowerCase()}</Mono> · {r.currency} · min {r.min_guests} · {(r.price_per_person / 100).toFixed(2)} / pax
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={tableStyles.muted}>—</span>
-                    )}
-                  </td>
-                  <td style={tableStyles.tdMono}>{o.demand_multiplier ?? '—'}</td>
-                </tr>
-              ))}
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={tableStyles.empty}>
-                    No overrides set.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-        </div>
-      ) : null}
+      {/* Legacy overrides UI removed from tabs per requirements */}
     </div>
   )
 }
