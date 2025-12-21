@@ -113,6 +113,18 @@ TRANSLATIONS = {
             "sailings.add_stop_button": "Add stop",
             "sailings.loading": "Loading...",
             "sailings.label_code_inline": "Code",
+            # Preferences
+            "preferences.title": "Preferences",
+            "preferences.subtitle": "Manage your personal settings.",
+            "preferences.locale_title": "Language & Region",
+            "preferences.locale_label": "Interface language",
+            "preferences.currency_label": "Default currency",
+            "preferences.saving": "Saving...",
+            "preferences.save": "Save",
+            "preferences.note": "Note: Some changes may require a page reload.",
+            "preferences.layout_title": "Dashboard Layout",
+            "preferences.layout_subtitle": "Advanced: Edit the raw JSON configuration for your dashboard widgets.",
+            "preferences.save_layout": "Save layout",
         }
     },
     "he": {
@@ -223,6 +235,18 @@ TRANSLATIONS = {
             "sailings.add_stop_button": "הוסף עצירה",
             "sailings.loading": "טוען...",
             "sailings.label_code_inline": "קוד",
+            # Preferences
+            "preferences.title": "הגדרות",
+            "preferences.subtitle": "ניהול הגדרות אישיות.",
+            "preferences.locale_title": "שפה ואזור",
+            "preferences.locale_label": "שפת ממשק",
+            "preferences.currency_label": "מטבע ברירת מחדל",
+            "preferences.saving": "שומר...",
+            "preferences.save": "שמור",
+            "preferences.note": "הערה: ייתכן שחלק מהשינויים ידרשו רענון עמוד.",
+            "preferences.layout_title": "פריסת לוח בקרה",
+            "preferences.layout_subtitle": "מתקדם: עריכת תצורת ה-JSON הגולמית עבור ווידג'טים בלוח הבקרה.",
+            "preferences.save_layout": "שמור פריסה",
         }
     }
 }
