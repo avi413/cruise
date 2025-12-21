@@ -158,7 +158,7 @@ export function DashboardPage(props: { apiBase: string }) {
       {edit ? (
         <Panel title="Add / manage widgets" subtitle="Drag and drop cards to reorder. Remove anything you don’t use.">
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
-            <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
+            <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--csp-text, #e6edf3)' }}>
               Add widget
               <select
                 value={addKey}
@@ -166,9 +166,9 @@ export function DashboardPage(props: { apiBase: string }) {
                 style={{
                   padding: '10px 10px',
                   borderRadius: 10,
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(0,0,0,0.25)',
-                  color: '#e6edf3',
+                  border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
+                  background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
+                  color: 'var(--csp-text, #e6edf3)',
                   minWidth: 260,
                 }}
               >
@@ -297,9 +297,9 @@ export function DashboardPage(props: { apiBase: string }) {
                       minHeight: 140,
                       padding: 10,
                       borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'rgba(0,0,0,0.25)',
-                      color: '#e6edf3',
+                      border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
+                      background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
+                      color: 'var(--csp-text, #e6edf3)',
                       fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
                       fontSize: 12,
                     }}
@@ -319,19 +319,20 @@ export function DashboardPage(props: { apiBase: string }) {
 const styles: Record<string, React.CSSProperties> = {
   card: {
     borderRadius: 14,
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
+    background: 'var(--csp-surface-bg, rgba(255,255,255,0.04))',
     padding: 14,
+    color: 'var(--csp-text, #e6edf3)',
   },
   cardTitle: { fontWeight: 900, marginBottom: 8 },
-  muted: { color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.45 },
-  mutedSmall: { color: 'rgba(230,237,243,0.58)', fontSize: 11, lineHeight: 1.35 },
+  muted: { color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.45 },
+  mutedSmall: { color: 'color-mix(in srgb, var(--csp-muted, rgba(230,237,243,0.65)) 85%, transparent)', fontSize: 11, lineHeight: 1.35 },
   pill: {
     padding: '8px 10px',
     borderRadius: 999,
-    border: '1px solid rgba(255,255,255,0.12)',
-    background: 'rgba(0,0,0,0.18)',
-    color: '#e6edf3',
+    border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
+    background: 'var(--csp-chip-bg, rgba(0,0,0,0.18))',
+    color: 'var(--csp-text, #e6edf3)',
     textDecoration: 'none',
     fontSize: 12,
     fontWeight: 900,
@@ -339,25 +340,25 @@ const styles: Record<string, React.CSSProperties> = {
   removeBtn: {
     padding: '6px 10px',
     borderRadius: 999,
-    border: '1px solid rgba(255,255,255,0.12)',
-    background: 'rgba(0,0,0,0.18)',
-    color: 'rgba(230,237,243,0.85)',
+    border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
+    background: 'var(--csp-surface-2-bg, rgba(0,0,0,0.18))',
+    color: 'var(--csp-text, rgba(230,237,243,0.85))',
     cursor: 'pointer',
     fontSize: 12,
     fontWeight: 900,
   },
   kpi: {
     borderRadius: 12,
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(0,0,0,0.18)',
+    border: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
+    background: 'var(--csp-surface-2-bg, rgba(0,0,0,0.18))',
     padding: 12,
   },
-  kpiLabel: { color: 'rgba(230,237,243,0.65)', fontSize: 12, fontWeight: 900 },
+  kpiLabel: { color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, fontWeight: 900 },
   kpiValue: { fontSize: 22, fontWeight: 900, marginTop: 6 },
   notifRow: {
     borderRadius: 12,
-    border: '1px solid rgba(255,255,255,0.10)',
-    background: 'rgba(0,0,0,0.18)',
+    border: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
+    background: 'var(--csp-surface-2-bg, rgba(0,0,0,0.18))',
     padding: 10,
   },
 }
