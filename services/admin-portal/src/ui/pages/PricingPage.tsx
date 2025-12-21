@@ -657,12 +657,11 @@ export function PricingPage(props: { apiBase: string }) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
       setBusy(false)
-      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
         title="Pricing & Offers"
         subtitle="Manage pricing. Use Overrides for legacy knobs, or Flexible model for admin-defined price categories and per-cruise price tables."
@@ -680,14 +679,13 @@ export function PricingPage(props: { apiBase: string }) {
 
       {err ? <ErrorBanner message={err} /> : null}
 
-      <Panel title="Company" subtitle="Pricing is stored per company (tenant). Select a company in the portal before editing pricing.">
-        <div style={{ display: 'grid', gap: 6, fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
-          <div>Effective company id</div>
-          <div>
+      <div style={{ display: 'grid', gap: 6, padding: '12px 16px', background: 'var(--csp-surface-bg)', border: '1px solid var(--csp-border)', borderRadius: 8 }}>
+         <div style={{ fontSize: 13, color: 'var(--csp-muted)' }}>Effective Company</div>
+         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Mono>{company?.id || '(no company selected)'}</Mono>
-          </div>
-        </div>
-      </Panel>
+            {company?.name ? <span style={{ color: 'var(--csp-text)' }}>{company.name}</span> : null}
+         </div>
+      </div>
 
       <Tabs
         idBase="pricing"
@@ -700,7 +698,7 @@ export function PricingPage(props: { apiBase: string }) {
       />
 
       {tab === 'categories' ? (
-        <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 24 }}>
           <TwoCol
             left={
               <Panel
@@ -717,7 +715,7 @@ export function PricingPage(props: { apiBase: string }) {
                   </div>
                 }
               >
-                <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gap: 16 }}>
                   <TwoCol
                     left={<Input label="Code" value={newCatCode} onChange={(e) => setNewCatCode(e.target.value.toUpperCase())} placeholder="internet" disabled={busy} />}
                     right={<Input label="Name" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Internet" disabled={busy} />}
@@ -756,11 +754,11 @@ export function PricingPage(props: { apiBase: string }) {
                     disabled={busy}
                   />
 
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', paddingTop: 8 }}>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                       <input type="checkbox" checked={newCatActive} onChange={(e) => setNewCatActive(e.target.checked)} /> Active
                     </label>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                       <input
                         type="checkbox"
                         checked={newCatRoomSelIncluded}
@@ -771,7 +769,7 @@ export function PricingPage(props: { apiBase: string }) {
                       />
                       Room Selection Included
                     </label>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                       <input
                         type="checkbox"
                         checked={newCatRoomCatOnly}
@@ -782,6 +780,7 @@ export function PricingPage(props: { apiBase: string }) {
                       />
                       Room Category Only
                     </label>
+                    <div style={{ flex: 1 }} />
                     <Button variant="primary" disabled={busy || !company?.id} onClick={() => void createPriceCategory()}>
                       Create category
                     </Button>
@@ -791,7 +790,7 @@ export function PricingPage(props: { apiBase: string }) {
             }
             right={
               <Panel title="Existing categories" subtitle="Toggle active, edit channels/flags, and move up/down to reorder.">
-                <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'grid', gap: 12 }}>
                   {(() => {
                     const tree = buildCategoryTreeOrder()
                     return tree.flat.map(({ c, depth }, idx) => {
@@ -804,22 +803,22 @@ export function PricingPage(props: { apiBase: string }) {
                         <div
                           key={c.code}
                           style={{
-                            border: '1px solid rgba(255,255,255,0.10)',
-                            borderRadius: 12,
-                            padding: 10,
+                            border: '1px solid var(--csp-border)',
+                            borderRadius: 8,
+                            padding: 12,
                             display: 'grid',
-                            gap: 8,
-                            background: 'rgba(0,0,0,0.12)',
+                            gap: 12,
+                            background: 'var(--csp-surface-bg)',
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                             <div>
-                              <div style={{ fontWeight: 900 }}>
+                              <div style={{ fontWeight: 600, color: 'var(--csp-text)' }}>
                                 <span style={{ display: 'inline-block', width: depth * 14 }} />
                                 <Mono>{c.code}</Mono> · {name}{' '}
-                                {!c.active ? <span style={{ color: 'rgba(230,237,243,0.65)', fontWeight: 700 }}>(inactive)</span> : null}
+                                {!c.active ? <span style={{ color: 'var(--csp-muted)', fontWeight: 400 }}>(inactive)</span> : null}
                               </div>
-                              <div style={{ fontSize: 12, color: 'rgba(230,237,243,0.65)', marginTop: 4 }}>
+                              <div style={{ fontSize: 12, color: 'var(--csp-muted)', marginTop: 4 }}>
                                 Channels: {(c.enabled_channels || []).join(', ') || '(none)'} ·{' '}
                                 {c.room_selection_included ? 'Room selection included' : c.room_category_only ? 'Room category only' : 'No room flag'}
                               </div>
@@ -894,7 +893,7 @@ export function PricingPage(props: { apiBase: string }) {
                               />
                             }
                             right={
-                              <div style={{ display: 'grid', gap: 8 }}>
+                              <div style={{ display: 'grid', gap: 12 }}>
                                 <Select
                                   label="Parent"
                                   value={(c.parent_code as any) || ''}
@@ -912,8 +911,8 @@ export function PricingPage(props: { apiBase: string }) {
                                       </option>
                                     ))}
                                 </Select>
-                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                                   <input
                                     type="checkbox"
                                     checked={!!c.room_selection_included}
@@ -922,7 +921,7 @@ export function PricingPage(props: { apiBase: string }) {
                                   />
                                   Room Selection Included
                                 </label>
-                                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                                   <input
                                     type="checkbox"
                                     checked={!!c.room_category_only}
@@ -980,7 +979,7 @@ export function PricingPage(props: { apiBase: string }) {
             </div>
           }
         >
-            <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gap: 16 }}>
               <TwoCol
                 left={
                   <Select label="Sailing" value={gridSailingId || selectedSailingId || ''} onChange={(e) => setGridSailingId(e.target.value)} disabled={busy}>
@@ -1010,17 +1009,17 @@ export function PricingPage(props: { apiBase: string }) {
                 }
               />
 
-              <div style={{ overflowX: 'auto', border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12 }}>
+              <div style={{ overflowX: 'auto', border: '1px solid var(--csp-border)', borderRadius: 8, background: 'var(--csp-surface-bg)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                   <thead>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(255,255,255,0.10)' }}>Cabin category</th>
+                    <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
+                      <th style={styles.th}>Cabin category</th>
                       {priceCats
                         .filter((c) => c.active)
                         .slice()
                         .sort((a, b) => a.order - b.order)
                         .map((pc) => (
-                          <th key={pc.code} style={{ textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(255,255,255,0.10)' }}>
+                          <th key={pc.code} style={styles.th}>
                             <Mono>{pc.code}</Mono>
                           </th>
                         ))}
@@ -1031,8 +1030,8 @@ export function PricingPage(props: { apiBase: string }) {
                       const cabinCode = String(c.code || '').toUpperCase()
                       return (
                         <tr key={c.id}>
-                          <td style={{ padding: 10, borderBottom: '1px solid rgba(255,255,255,0.06)', verticalAlign: 'top' }}>
-                            <div style={{ fontWeight: 900 }}>
+                          <td style={styles.td}>
+                            <div style={{ fontWeight: 600 }}>
                               <Mono>{cabinCode}</Mono> · {c.name}
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--csp-muted)', marginTop: 4 }}>{c.description || ''}</div>
@@ -1045,15 +1044,16 @@ export function PricingPage(props: { apiBase: string }) {
                               const k = `${cabinCode}|${String(pc.code).toLowerCase()}`
                               const cents = Number(gridCells[k] ?? 0)
                               return (
-                                <td key={k} style={{ padding: 10, borderBottom: '1px solid var(--csp-border)' }}>
+                                <td key={k} style={styles.td}>
                                   <input
                                     style={{
                                       width: 140,
                                       padding: '8px 10px',
-                                      borderRadius: 10,
-                                      border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
-                                      background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
-                                      color: 'var(--csp-text, #e6edf3)',
+                                      borderRadius: 6,
+                                      border: '1px solid var(--csp-input-border)',
+                                      background: 'var(--csp-input-bg)',
+                                      color: 'var(--csp-text)',
+                                      fontSize: 13
                                     }}
                                     type="number"
                                     min={0}
@@ -1062,7 +1062,7 @@ export function PricingPage(props: { apiBase: string }) {
                                     onChange={(e) => setGridCells((prev) => ({ ...prev, [k]: Number(e.target.value) }))}
                                     disabled={busy}
                                   />
-                                  <div style={{ fontSize: 11, color: 'var(--csp-muted)', marginTop: 6 }}>cents / pax</div>
+                                  <div style={{ fontSize: 11, color: 'var(--csp-muted)', marginTop: 4 }}>cents / pax</div>
                                 </td>
                               )
                             })}
@@ -1071,7 +1071,7 @@ export function PricingPage(props: { apiBase: string }) {
                     })}
                     {gridCabinCats.length === 0 ? (
                       <tr>
-                        <td colSpan={1 + (priceCats || []).filter((c) => c.active).length} style={{ padding: 12, color: 'rgba(230,237,243,0.60)' }}>
+                        <td colSpan={1 + (priceCats || []).filter((c) => c.active).length} style={{ padding: 32, textAlign: 'center', color: 'var(--csp-muted)' }}>
                           Load a sailing to view cabin categories and pricing.
                         </td>
                       </tr>
@@ -1121,25 +1121,20 @@ function groupCategoryPrices(
   }))
 }
 
-const tableStyles: Record<string, React.CSSProperties> = {
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'left',
-    padding: '10px 8px',
-    borderBottom: '1px solid rgba(255,255,255,0.10)',
-    color: 'rgba(230,237,243,0.75)',
-    fontWeight: 900,
-  },
-  td: { padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', verticalAlign: 'top' },
-  tdMono: {
-    padding: '10px 8px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: 12,
-    verticalAlign: 'top',
-  },
-  empty: { padding: '14px 8px', color: 'rgba(230,237,243,0.60)' },
-  muted: { color: 'rgba(230,237,243,0.60)' },
-  wrap: { display: 'grid', gap: 4 },
+const styles = {
+    th: {
+        padding: '12px 16px',
+        fontWeight: 600,
+        fontSize: 12,
+        textTransform: 'uppercase' as const,
+        letterSpacing: '0.05em',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-muted)'
+    },
+    td: {
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--csp-border)',
+        color: 'var(--csp-text)',
+        verticalAlign: 'top'
+    }
 }
-
