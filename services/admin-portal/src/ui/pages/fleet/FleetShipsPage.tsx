@@ -45,15 +45,15 @@ export function FleetShipsPage(props: { apiBase: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/fleet` : null), [companyId])
+  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/ships` : null), [companyId])
 
   async function refreshFleet() {
     if (!fleetEndpoint) {
       setFleet([])
       return
     }
-    const r = await apiFetch<{ items: Ship[] }>(props.apiBase, fleetEndpoint)
-    setFleet(r.items)
+    const r = await apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
+    setFleet(r)
   }
 
   useEffect(() => {

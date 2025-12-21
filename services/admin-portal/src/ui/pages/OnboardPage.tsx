@@ -126,15 +126,15 @@ export function OnboardPage(props: { apiBase: string }) {
   const [pricePax, setPricePax] = useState('adult')
   const [priceCents, setPriceCents] = useState(0)
 
-  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/fleet` : null), [companyId])
+  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/ships` : null), [companyId])
   const capEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/capabilities` : null), [shipId])
   const resEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/restaurants` : null), [shipId])
   const sxEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/shorex` : null), [shipId])
 
   async function refreshFleet() {
     if (!fleetEndpoint) return
-    const r = await apiFetch<{ items: Ship[] }>(props.apiBase, fleetEndpoint)
-    setFleet(r.items || [])
+    const r = await apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
+    setFleet(r || [])
     setShipId((prev) => {
       if (prev && (r.items || []).some((s) => s.id === prev)) return prev
       return r.items?.[0]?.id || ''

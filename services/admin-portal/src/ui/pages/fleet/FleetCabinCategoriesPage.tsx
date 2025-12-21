@@ -65,7 +65,7 @@ export function FleetCabinCategoriesPage(props: { apiBase: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/fleet` : null), [companyId])
+  const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/ships` : null), [companyId])
   const catsEndpoint = useMemo(() => (shipId ? `/v1/ships/${shipId}/cabin-categories` : null), [shipId])
 
   async function refreshFleet() {
@@ -73,8 +73,8 @@ export function FleetCabinCategoriesPage(props: { apiBase: string }) {
       setFleet([])
       return
     }
-    const r = await apiFetch<{ items: Ship[] }>(props.apiBase, fleetEndpoint)
-    setFleet(r.items)
+    const r = await apiFetch<Ship[]>(props.apiBase, fleetEndpoint)
+    setFleet(r)
     setShipId((prev) => {
       const next = prev && r.items.some((s) => s.id === prev) ? prev : r.items[0]?.id || ''
       setSelectedShipId(next)

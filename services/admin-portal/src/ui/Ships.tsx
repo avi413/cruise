@@ -17,7 +17,7 @@ export function Ships(props: { apiBase: string; token: string }) {
 
   const companiesEndpoint = useMemo(() => `${apiBase}/v1/companies`, [apiBase])
   const fleetEndpoint = useMemo(
-    () => (companyId ? `${apiBase}/v1/companies/${companyId}/fleet` : null),
+    () => (companyId ? `${apiBase}/v1/companies/${companyId}/ships` : null),
     [apiBase, companyId],
   )
 
@@ -32,8 +32,8 @@ export function Ships(props: { apiBase: string; token: string }) {
       setFleet([])
       return
     }
-    const res = await apiGet<{ items: Ship[] }>(fleetEndpoint, token)
-    setFleet(res.items)
+    const res = await apiGet<Ship[]>(fleetEndpoint, token)
+    setFleet(res)
   }
 
   useEffect(() => {

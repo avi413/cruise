@@ -89,8 +89,8 @@ export function SailingsPage(props: { apiBase: string }) {
 
   useEffect(() => {
     if (!company?.id) return
-    apiFetch<{ items: Ship[] }>(props.apiBase, `/v1/companies/${company.id}/fleet`, { auth: false, tenant: false })
-      .then((r) => setShips(r.items || []))
+    apiFetch<Ship[]>(props.apiBase, `/v1/companies/${company.id}/ships`, { auth: false, tenant: false })
+      .then((r) => setShips(r || []))
       .catch(() => setShips([]))
   }, [company?.id, props.apiBase])
 
