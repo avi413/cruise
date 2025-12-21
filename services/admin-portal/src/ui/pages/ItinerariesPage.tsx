@@ -1086,17 +1086,16 @@ const tdMuted: React.CSSProperties = { padding: '14px 8px', color: 'var(--csp-mu
 
 const segWrap: React.CSSProperties = {
   display: 'inline-flex',
-  border: '1px solid var(--csp-border)',
+  border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
   borderRadius: 10,
   overflow: 'hidden',
-  background: 'var(--csp-surface-bg)',
-  boxShadow: 'var(--csp-shadow-sm)',
+  background: 'var(--csp-surface-2-bg, rgba(0,0,0,0.18))',
 }
 const segBtn: React.CSSProperties = {
   padding: '10px 12px',
   background: 'transparent',
   border: '0',
-  color: 'var(--csp-text)',
+  color: 'var(--csp-text, rgba(230,237,243,0.85))',
   cursor: 'pointer',
   fontWeight: 900,
 }
@@ -1104,7 +1103,7 @@ const segActive: React.CSSProperties = {
   padding: '10px 12px',
   background: 'var(--csp-primary-soft)',
   border: '0',
-  color: 'color-mix(in srgb, var(--csp-primary) 72%, var(--csp-text))',
+  color: 'var(--csp-text, #e6edf3)',
   cursor: 'pointer',
   fontWeight: 900,
 }

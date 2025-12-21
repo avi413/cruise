@@ -450,8 +450,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'var(--csp-surface-bg)',
     boxShadow: 'var(--csp-shadow-sm)',
   },
-  muted: { color: 'var(--csp-muted)', fontSize: 12, marginBottom: 6 },
-  primaryBtn: {
+  cardTitle: { fontWeight: 800, marginBottom: 8 },
+  muted: { color: 'var(--csp-muted, rgba(230,237,243,0.7))', fontSize: 12, marginBottom: 8 },
+  inlineLink: { color: 'var(--csp-primary, #388bfd)', textDecoration: 'none' },
+  secondaryBtnFull: {
+    width: '100%',
     padding: '10px 12px',
     borderRadius: 999,
     border: '1px solid var(--csp-primary-border)',
