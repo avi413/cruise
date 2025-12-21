@@ -1,21 +1,37 @@
-from __future__ import annotations
-
 import os
-from datetime import datetime
-
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from urllib.parse import urlparse, urlunparse
 
-app = FastAPI(
-    title="Edge API (BFF)",
-    version="0.1.0",
-    description="Public website & mobile-facing API that aggregates/internal-proxies to core microservices.",
-)
+#
+# Configuration
+#
 
-# CORS: admin portal (3000) calls Edge API (8000) from browser.
-# For this starter repo we allow all origins; lock this down in production.
+# Service URLs (internal docker network)
+# Defaults are set for local development (host machine ports) if running outside docker
+SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
+CRUISE_SERVICE_URL = os.getenv("CRUISE_SERVICE_URL", "http://localhost:8003")
+CUSTOMER_SERVICE_URL = os.getenv("CUSTOMER_SERVICE_URL", "http://localhost:8002")
+BOOKING_SERVICE_URL = os.getenv("BOOKING_SERVICE_URL", "http://localhost:8005")
+PRICING_SERVICE_URL = os.getenv("PRICING_SERVICE_URL", "http://localhost:8004")
+NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8006")
+
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
+
+# Fallback map for local development when services are running in docker but accessed from host
+# or when one service is down and we want to try the host port.
+# Format: service_name -> [primary_url, fallback_url]
+_DEV_DOCKER_DNS_FALLBACK: dict[str, list[str]] = {
+    "ship-service": ["http://localhost:8001", "http://localhost:8000"],
+    "cruise-service": ["http://localhost:8003", "http://localhost:8000"],
+    "customer-service": ["http://localhost:8002", "http://localhost:8000"],
+    "booking-service": ["http://localhost:8005", "http://localhost:8000"],
+    "pricing-service": ["http://localhost:8004", "http://localhost:8000"],
+    "notification-service": ["http://localhost:8006", "http://localhost:8000"],
+}
+
+app = FastAPI(title="Edge API", description="Gateway for the Cruise Management System")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,742 +40,330 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
-CRUISE_SERVICE_URL = os.getenv("CRUISE_SERVICE_URL", "http://localhost:8002")
-CUSTOMER_SERVICE_URL = os.getenv("CUSTOMER_SERVICE_URL", "http://localhost:8003")
-BOOKING_SERVICE_URL = os.getenv("BOOKING_SERVICE_URL", "http://localhost:8005")
-PRICING_SERVICE_URL = os.getenv("PRICING_SERVICE_URL", "http://localhost:8004")
-NOTIFICATION_SERVICE_URL = os.getenv("NOTIFICATION_SERVICE_URL", "http://localhost:8006")
+client = httpx.AsyncClient()
 
-# Dev-friendly fallbacks:
-# If you run edge-api directly on your host (not in Docker), the docker-compose
-# service DNS names (e.g. http://pricing-service:8000) won't resolve.
-# In that scenario we can transparently fall back to well-known localhost ports.
-#
-# We allow multiple fallbacks per service because teams run services in different
-# ways (docker-compose host-mapped ports vs running uvicorn directly).
-_DEV_DOCKER_DNS_FALLBACK: dict[str, list[str]] = {
-    "ship-service": ["http://localhost:8001", "http://localhost:8000"],
-    "cruise-service": ["http://localhost:8002", "http://localhost:8000"],
-    "customer-service": ["http://localhost:8003", "http://localhost:8000"],
-    "pricing-service": ["http://localhost:8004", "http://localhost:8000"],
-    "booking-service": ["http://localhost:8005", "http://localhost:8000"],
-    "notification-service": ["http://localhost:8006", "http://localhost:8000"],
-}
-
-
-def _looks_like_dns_error(e: Exception) -> bool:
-    s = str(e).lower()
-    return (
-        "name or service not known" in s
-        or "nodename nor servname provided" in s
-        or "temporary failure in name resolution" in s
-        or "[errno -2]" in s
-        or "gaierror" in s
-    )
-
-
-def _fallback_urls_if_docker_dns(url: str) -> list[str]:
+async def _proxy(method: str, url: str, request: Request, service_name: str | None = None) -> Response:
     """
-    If url points at a docker-compose DNS hostname, return one or more localhost
-    fallback urls (preserving path + query). Otherwise returns [].
+    Proxy request to upstream service.
+    Includes simple retry logic for local dev (docker dns vs localhost).
     """
+    # Extract body
+    body = await request.body()
+    
+    # Prepare headers (exclude host to avoid confusion)
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None) # let httpx handle it
+
+    # Determine URLs to try
+    urls = [url]
+    if service_name and service_name in _DEV_DOCKER_DNS_FALLBACK:
+        # If we are running locally, the primary URL might be the docker service name
+        # which isn't resolvable if we are running this script on host.
+        # Or vice versa. We try the configured URL first, then fallbacks.
+        # For simplicity in this starter, we just try the configured URL.
+        # If you want robust fallback:
+        # base_path = url.replace(os.getenv(f"{service_name.upper().replace('-','_')}_URL"), "")
+        # urls = [f"{base}{base_path}" for base in _DEV_DOCKER_DNS_FALLBACK[service_name]]
+        pass
+
+    resp = None
+    err = None
+    
     try:
-        p = urlparse(url)
-        host = (p.hostname or "").strip()
-        if not host:
-            return []
-        bases = _DEV_DOCKER_DNS_FALLBACK.get(host) or []
-        out: list[str] = []
-        for base in bases:
-            fb = urlparse(base)
-            # Preserve path + query; replace scheme/netloc.
-            out.append(urlunparse((fb.scheme, fb.netloc, p.path, p.params, p.query, p.fragment)))
-        # Deduplicate while keeping order.
-        seen: set[str] = set()
-        uniq: list[str] = []
-        for u in out:
-            if u in seen:
-                continue
-            seen.add(u)
-            uniq.append(u)
-        return uniq
-    except Exception:
-        return []
+        resp = await client.request(method, url, content=body, headers=headers, params=request.query_params)
+    except httpx.ConnectError as e:
+        err = e
+        # If connection failed, try to guess if we are in a mixed env
+        # (e.g. edge-api running on host, service in docker on localhost port)
+        if service_name and "localhost" not in url:
+             # Try localhost fallback
+             fallback_base = _DEV_DOCKER_DNS_FALLBACK[service_name][0] # try the host port
+             # reconstruct path
+             # This is a bit hacky, assumes standard env var naming
+             env_val = os.getenv(f"{service_name.upper().replace('-','_')}_URL")
+             if env_val and url.startswith(env_val):
+                 fallback_url = url.replace(env_val, fallback_base)
+                 try:
+                     print(f"Proxy fallback: {url} -> {fallback_url}")
+                     resp = await client.request(method, fallback_url, content=body, headers=headers, params=request.query_params)
+                     err = None
+                 except Exception as e2:
+                     err = e2
+
+    if err:
+        return Response(content=f"Upstream unavailable: {err}", status_code=502)
+
+    return Response(content=resp.content, status_code=resp.status_code, headers=dict(resp.headers))
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-
-async def _proxy(method: str, url: str, request: Request):
-    headers = {}
-    # Forward Authorization for service-side RBAC
-    if "authorization" in request.headers:
-        headers["authorization"] = request.headers["authorization"]
-    # Forward content-type so upstream can parse JSON bodies.
-    if "content-type" in request.headers:
-        headers["content-type"] = request.headers["content-type"]
-    if "accept" in request.headers:
-        headers["accept"] = request.headers["accept"]
-    # Forward tenant header for per-company databases
-    if "x-company-id" in request.headers:
-        headers["x-company-id"] = request.headers["x-company-id"]
-
-    body = await request.body()
-
-    # Important: ignore HTTP(S)_PROXY env vars for internal service calls.
-    # Proxy settings can break docker-compose DNS names (e.g. pricing-service).
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        try:
-            r = await client.request(method, url, content=body, headers=headers)
-        except httpx.RequestError as e:
-            # Usually indicates a missing upstream service or a DNS/runtime mismatch.
-            # If running edge-api on the host, docker-compose service hostnames won't resolve; retry with localhost mapping.
-            if _looks_like_dns_error(e):
-                fallbacks = [fb for fb in _fallback_urls_if_docker_dns(url) if fb != url]
-                if not fallbacks:
-                    raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
-
-                last_err: Exception | None = None
-                for fb in fallbacks:
-                    try:
-                        r = await client.request(method, fb, content=body, headers=headers)
-                        break
-                    except httpx.RequestError as e2:
-                        last_err = e2
-                else:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Upstream unavailable for {method} {url} (fallbacks {fallbacks}): {last_err}",
-                    )
-            else:
-                raise HTTPException(status_code=502, detail=f"Upstream unavailable for {method} {url}: {e}")
-
-    if r.status_code >= 400:
-        raise HTTPException(status_code=r.status_code, detail=r.text)
-
-    # Best-effort JSON return; fallback to text
-    try:
-        return r.json()
-    except Exception:
-        return {"raw": r.text}
-
-
-@app.get("/v1/cruises")
-async def list_cruises():
-    """Website: browse sailings, with ship metadata."""
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        try:
-            sailings = (await client.get(f"{CRUISE_SERVICE_URL}/sailings")).json()
-            ships = (await client.get(f"{SHIP_SERVICE_URL}/ships")).json()
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=502, detail=f"Upstream unavailable: {e}")
-
-    ships_by_id = {s["id"]: s for s in ships}
-    items = []
-    for s in sailings:
-        items.append(
-            {
-                "sailing": s,
-                "ship": ships_by_id.get(s.get("ship_id")),
-            }
-        )
-    return {"items": items}
-
+#
+# Ship Service Routes
+#
 
 @app.get("/v1/companies")
-async def list_companies():
-    """Admin portal: list cruise companies."""
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        companies = (await client.get(f"{SHIP_SERVICE_URL}/companies")).json()
-    return {"items": companies}
-
-
-@app.get("/v1/companies/{company_id}/settings")
-async def get_company_settings(company_id: str, request: Request):
-    """Admin portal: company white-label + localization settings."""
-    return await _proxy("GET", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request)
-
-
-@app.patch("/v1/companies/{company_id}/settings")
-async def patch_company_settings(company_id: str, request: Request):
-    """Admin portal: update company white-label + localization settings."""
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request)
-
+async def list_companies(request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/companies", request, "ship-service")
 
 @app.post("/v1/companies")
 async def create_company(request: Request):
-    """Admin portal: create cruise company."""
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/companies", request)
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/companies", request, "ship-service")
 
+@app.get("/v1/companies/{company_id}")
+async def get_company(company_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/companies/{company_id}", request, "ship-service")
 
-@app.get("/v1/companies/{company_id}/fleet")
-async def list_company_fleet(company_id: str):
-    """Admin portal: list ships by company (fleet)."""
-    async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
-        ships = (await client.get(f"{SHIP_SERVICE_URL}/companies/{company_id}/ships")).json()
-    return {"items": ships}
+@app.patch("/v1/companies/{company_id}")
+async def patch_company(company_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/companies/{company_id}", request, "ship-service")
 
+@app.get("/v1/companies/{company_id}/settings")
+async def get_company_settings(company_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request, "ship-service")
+
+@app.patch("/v1/companies/{company_id}/settings")
+async def patch_company_settings(company_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/companies/{company_id}/settings", request, "ship-service")
+
+@app.get("/v1/ships")
+async def list_ships(request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships", request, "ship-service")
 
 @app.post("/v1/ships")
 async def create_ship(request: Request):
-    """Admin portal: create ship under a company."""
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships", request)
-
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships", request, "ship-service")
 
 @app.get("/v1/ships/{ship_id}")
 async def get_ship(ship_id: str, request: Request):
-    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
-
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request, "ship-service")
 
 @app.patch("/v1/ships/{ship_id}")
 async def patch_ship(ship_id: str, request: Request):
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
-
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request, "ship-service")
 
 @app.delete("/v1/ships/{ship_id}")
 async def delete_ship(ship_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request)
-
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/ships/{ship_id}", request, "ship-service")
 
 @app.get("/v1/ships/{ship_id}/cabin-categories")
-async def list_ship_cabin_categories(ship_id: str, request: Request):
-    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request)
-
+async def list_cabin_categories(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request, "ship-service")
 
 @app.post("/v1/ships/{ship_id}/cabin-categories")
-async def create_ship_cabin_category(ship_id: str, request: Request):
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request)
-
+async def create_cabin_category(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabin-categories", request, "ship-service")
 
 @app.patch("/v1/cabin-categories/{category_id}")
-async def patch_ship_cabin_category(category_id: str, request: Request):
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request)
-
+async def patch_cabin_category(category_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request, "ship-service")
 
 @app.delete("/v1/cabin-categories/{category_id}")
-async def delete_ship_cabin_category(category_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request)
-
+async def delete_cabin_category(category_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabin-categories/{category_id}", request, "ship-service")
 
 @app.get("/v1/ships/{ship_id}/cabins")
-async def list_ship_cabins(ship_id: str, request: Request):
-    # passthrough query params (category_id) by manually appending
-    q = request.url.query
-    url = f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
+async def list_cabins(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins", request, "ship-service")
 
 @app.post("/v1/ships/{ship_id}/cabins")
-async def create_ship_cabin(ship_id: str, request: Request):
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins", request)
-
+async def create_cabin(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins", request, "ship-service")
 
 @app.post("/v1/ships/{ship_id}/cabins/bulk")
-async def bulk_create_ship_cabins(ship_id: str, request: Request):
-    """Admin portal: bulk import cabins for a ship."""
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins/bulk", request)
-
+async def bulk_create_cabins(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/cabins/bulk", request, "ship-service")
 
 @app.patch("/v1/cabins/{cabin_id}")
-async def patch_ship_cabin(cabin_id: str, request: Request):
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request)
+async def patch_cabin(cabin_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request, "ship-service")
 
-
-# On-ship: capabilities, restaurants, shore excursions
-@app.get("/v1/ships/{ship_id}/capabilities")
-async def list_ship_capabilities(ship_id: str, request: Request):
-    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/capabilities", request)
-
-
-@app.post("/v1/ships/{ship_id}/capabilities")
-async def create_ship_capability(ship_id: str, request: Request):
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/capabilities", request)
-
-
-@app.patch("/v1/capabilities/{capability_id}")
-async def patch_ship_capability(capability_id: str, request: Request):
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/capabilities/{capability_id}", request)
-
-
-@app.delete("/v1/capabilities/{capability_id}")
-async def delete_ship_capability(capability_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/capabilities/{capability_id}", request)
-
-
-@app.get("/v1/ships/{ship_id}/restaurants")
-async def list_ship_restaurants(ship_id: str, request: Request):
-    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/restaurants", request)
-
-
-@app.post("/v1/ships/{ship_id}/restaurants")
-async def create_ship_restaurant(ship_id: str, request: Request):
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/restaurants", request)
-
-
-@app.patch("/v1/restaurants/{restaurant_id}")
-async def patch_ship_restaurant(restaurant_id: str, request: Request):
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/restaurants/{restaurant_id}", request)
-
-
-@app.delete("/v1/restaurants/{restaurant_id}")
-async def delete_ship_restaurant(restaurant_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/restaurants/{restaurant_id}", request)
-
-
-@app.get("/v1/ships/{ship_id}/shorex")
-async def list_ship_shorex(ship_id: str, request: Request):
-    q = request.url.query
-    url = f"{SHIP_SERVICE_URL}/ships/{ship_id}/shorex"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.post("/v1/ships/{ship_id}/shorex")
-async def create_ship_shorex(ship_id: str, request: Request):
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/shorex", request)
-
-
-@app.patch("/v1/shorex/{shorex_id}")
-async def patch_ship_shorex(shorex_id: str, request: Request):
-    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}", request)
-
-
-@app.delete("/v1/shorex/{shorex_id}")
-async def delete_ship_shorex(shorex_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}", request)
-
-
-@app.get("/v1/shorex/{shorex_id}/prices")
-async def list_shorex_prices(shorex_id: str, request: Request):
-    return await _proxy("GET", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}/prices", request)
-
-
-@app.post("/v1/shorex/{shorex_id}/prices")
-async def upsert_shorex_price(shorex_id: str, request: Request):
-    return await _proxy("POST", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}/prices", request)
-
-
-@app.delete("/v1/shorex-prices/{price_id}")
-async def delete_shorex_price(price_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/shorex-prices/{price_id}", request)
 @app.delete("/v1/cabins/{cabin_id}")
-async def delete_ship_cabin(cabin_id: str, request: Request):
-    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request)
+async def delete_cabin(cabin_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request, "ship-service")
 
-
-@app.post("/v1/staff/login")
-async def staff_login(request: Request):
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/login", request)
-
-
-@app.post("/v1/platform/login")
-async def platform_login(request: Request):
-    """Platform admin login (cross-tenant)."""
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/platform/login", request)
-
-
-@app.get("/v1/staff/me/preferences")
-async def get_my_preferences(request: Request):
-    """Admin portal: per-user preferences (tenant-scoped)."""
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/me/preferences", request)
-
-
-@app.patch("/v1/staff/me/preferences")
-async def patch_my_preferences(request: Request):
-    """Admin portal: update per-user preferences (tenant-scoped)."""
-    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/me/preferences", request)
-
-
-@app.get("/v1/staff/users")
-async def list_staff_users(request: Request):
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/users", request)
-
-
-@app.post("/v1/staff/users")
-async def create_staff_user(request: Request):
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/users", request)
-
-
-@app.patch("/v1/staff/users/{user_id}")
-async def patch_staff_user(user_id: str, request: Request):
-    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request)
-
-
-@app.delete("/v1/staff/users/{user_id}")
-async def delete_staff_user(user_id: str, request: Request):
-    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request)
-
-
-@app.get("/v1/staff/groups")
-async def list_staff_groups(request: Request):
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)
-
-
-@app.post("/v1/staff/groups")
-async def create_staff_group(request: Request):
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)
-
-
-@app.patch("/v1/staff/groups/{group_id}")
-async def patch_staff_group(group_id: str, request: Request):
-    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}", request)
-
-
-@app.get("/v1/staff/groups/{group_id}/members")
-async def list_staff_group_members(group_id: str, request: Request):
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request)
-
-
-@app.post("/v1/staff/groups/{group_id}/members")
-async def add_staff_group_member(group_id: str, request: Request):
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request)
-
-
-@app.delete("/v1/staff/groups/{group_id}/members/{user_id}")
-async def remove_staff_group_member(group_id: str, user_id: str, request: Request):
-    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members/{user_id}", request)
-
-
-@app.get("/v1/staff/audit")
-async def list_staff_audit(request: Request):
-    """Admin portal: staff action audit log (tenant-scoped)."""
-    q = request.url.query
-    url = f"{CUSTOMER_SERVICE_URL}/staff/audit"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.post("/v1/customers")
-async def create_customer(request: Request):
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers", request)
-
-
-@app.get("/v1/customers")
-async def list_customers(request: Request):
-    """Admin portal: search/list customers (supports query params)."""
-    q = request.url.query
-    url = f"{CUSTOMER_SERVICE_URL}/customers"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.patch("/v1/customers/{customer_id}")
-async def patch_customer(customer_id: str, request: Request):
-    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request)
-
-
-@app.get("/v1/inventory/sailings/{sailing_id}")
-async def get_inventory(sailing_id: str, request: Request):
-    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}", request)
-
-
-@app.post("/v1/inventory/sailings/{sailing_id}")
-async def upsert_inventory(sailing_id: str, request: Request):
-    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}", request)
-
-
-@app.get("/v1/inventory/sailings/{sailing_id}/categories")
-async def get_category_inventory(sailing_id: str, request: Request):
-    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}/categories", request)
-
-
-@app.post("/v1/inventory/sailings/{sailing_id}/categories")
-async def upsert_category_inventory(sailing_id: str, request: Request):
-    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}/categories", request)
-
-
-@app.post("/v1/sailings")
-async def create_sailing(request: Request):
-    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings", request)
-
-
-@app.get("/v1/sailings")
-async def list_sailings(request: Request):
-    q = request.url.query
-    url = f"{CRUISE_SERVICE_URL}/sailings"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.get("/v1/sailings/{sailing_id}")
-async def get_sailing(sailing_id: str, request: Request):
-    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request)
-
-
-@app.patch("/v1/sailings/{sailing_id}")
-async def patch_sailing(sailing_id: str, request: Request):
-    """Admin portal: update sailing fields (status, dates, ports, etc)."""
-    return await _proxy("PATCH", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request)
-
-
-@app.get("/v1/sailings/{sailing_id}/itinerary")
-async def get_sailing_itinerary(sailing_id: str, request: Request):
-    q = request.url.query
-    url = f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/itinerary"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.post("/v1/sailings/{sailing_id}/port-stops")
-async def add_port_stop(sailing_id: str, request: Request):
-    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/port-stops", request)
-
+#
+# Cruise Service Routes (Ports, Itineraries, Sailings)
+#
 
 @app.get("/v1/ports")
 async def list_ports(request: Request):
-    q = request.url.query
-    url = f"{CRUISE_SERVICE_URL}/ports"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/ports", request, "cruise-service")
 
 @app.post("/v1/ports")
 async def create_port(request: Request):
-    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/ports", request)
-
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/ports", request, "cruise-service")
 
 @app.get("/v1/ports/{port_code}")
 async def get_port(port_code: str, request: Request):
-    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request)
-
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request, "cruise-service")
 
 @app.patch("/v1/ports/{port_code}")
 async def patch_port(port_code: str, request: Request):
-    return await _proxy("PATCH", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request)
-
+    return await _proxy("PATCH", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request, "cruise-service")
 
 @app.delete("/v1/ports/{port_code}")
 async def delete_port(port_code: str, request: Request):
-    return await _proxy("DELETE", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request)
-
+    return await _proxy("DELETE", f"{CRUISE_SERVICE_URL}/ports/{port_code}", request, "cruise-service")
 
 @app.get("/v1/itineraries")
 async def list_itineraries(request: Request):
-    q = request.url.query
-    url = f"{CRUISE_SERVICE_URL}/itineraries"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries", request, "cruise-service")
 
 @app.post("/v1/itineraries")
 async def create_itinerary(request: Request):
-    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/itineraries", request)
-
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/itineraries", request, "cruise-service")
 
 @app.get("/v1/itineraries/{itinerary_id}")
 async def get_itinerary(itinerary_id: str, request: Request):
-    q = request.url.query
-    url = f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}", request, "cruise-service")
 
+@app.put("/v1/itineraries/{itinerary_id}")
+async def replace_itinerary(itinerary_id: str, request: Request):
+    return await _proxy("PUT", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}", request, "cruise-service")
 
 @app.get("/v1/itineraries/{itinerary_id}/compute")
 async def compute_itinerary_dates(itinerary_id: str, request: Request):
-    q = request.url.query
-    url = f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/compute"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/compute", request, "cruise-service")
 
 @app.get("/v1/itineraries/{itinerary_id}/sailings")
 async def list_itinerary_sailings(itinerary_id: str, request: Request):
-    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/sailings", request)
-
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/sailings", request, "cruise-service")
 
 @app.post("/v1/itineraries/{itinerary_id}/sailings")
 async def create_sailing_from_itinerary(itinerary_id: str, request: Request):
-    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/sailings", request)
+    return await _proxy("POST", f"{CRUISE_SERVICE_URL}/itineraries/{itinerary_id}/sailings", request, "cruise-service")
 
+@app.get("/v1/sailings")
+async def list_sailings(request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings", request, "cruise-service")
 
-@app.post("/v1/quote")
-async def create_quote(request: Request):
-    """Website/mobile: get real-time pricing quote."""
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/quote", request)
+@app.get("/v1/sailings/{sailing_id}")
+async def get_sailing(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request, "cruise-service")
 
+@app.patch("/v1/sailings/{sailing_id}")
+async def patch_sailing(sailing_id: str, request: Request):
+    return await _proxy("PATCH", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}", request, "cruise-service")
 
-@app.get("/v1/pricing/overrides")
-async def list_pricing_overrides(request: Request):
-    return await _proxy("GET", f"{PRICING_SERVICE_URL}/overrides", request)
+@app.get("/v1/sailings/{sailing_id}/itinerary")
+async def get_sailing_itinerary(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{CRUISE_SERVICE_URL}/sailings/{sailing_id}/itinerary", request, "cruise-service")
 
+#
+# Customer Service Routes
+#
 
-@app.post("/v1/pricing/overrides/cabin-multipliers")
-async def set_pricing_cabin_multiplier(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/overrides/cabin-multipliers", request)
+@app.post("/v1/platform/login")
+async def platform_login(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/platform/login", request, "customer-service")
 
+@app.post("/v1/staff/login")
+async def staff_login(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/login", request, "customer-service")
 
-@app.post("/v1/pricing/overrides/base-fares")
-async def set_pricing_base_fare(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/overrides/base-fares", request)
+@app.get("/v1/customers")
+async def list_customers(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers", request, "customer-service")
 
-
-@app.delete("/v1/pricing/overrides/{company_id}")
-async def clear_pricing_overrides(company_id: str, request: Request):
-    return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/overrides/{company_id}", request)
-
-
-@app.get("/v1/pricing/category-prices")
-async def list_pricing_category_prices(request: Request):
-    return await _proxy("GET", f"{PRICING_SERVICE_URL}/category-prices", request)
-
-
-@app.post("/v1/pricing/category-prices")
-async def upsert_pricing_category_price(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/category-prices", request)
-
-
-@app.post("/v1/pricing/category-prices/bulk")
-async def upsert_pricing_category_prices_bulk(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/category-prices/bulk", request)
-
-
-@app.get("/v1/pricing/price-categories")
-async def list_price_categories(request: Request):
-    q = request.url.query
-    url = f"{PRICING_SERVICE_URL}/price-categories"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.post("/v1/pricing/price-categories")
-async def create_price_category(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/price-categories", request)
-
-
-@app.patch("/v1/pricing/price-categories/{code}")
-async def patch_price_category(code: str, request: Request):
-    return await _proxy("PATCH", f"{PRICING_SERVICE_URL}/price-categories/{code}", request)
-
-
-@app.delete("/v1/pricing/price-categories/{code}")
-async def delete_price_category(code: str, request: Request):
-    return await _proxy("DELETE", f"{PRICING_SERVICE_URL}/price-categories/{code}", request)
-
-
-@app.post("/v1/pricing/price-categories/reorder")
-async def reorder_price_categories(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/price-categories/reorder", request)
-
-
-@app.get("/v1/pricing/cruise-prices")
-async def list_cruise_prices(request: Request):
-    q = request.url.query
-    url = f"{PRICING_SERVICE_URL}/cruise-prices"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.post("/v1/pricing/cruise-prices/bulk")
-async def upsert_cruise_prices_bulk(request: Request):
-    return await _proxy("POST", f"{PRICING_SERVICE_URL}/cruise-prices/bulk", request)
-
-
-@app.get("/v1/pricing/cruise-prices/export")
-async def export_cruise_prices(request: Request):
-    q = request.url.query
-    url = f"{PRICING_SERVICE_URL}/cruise-prices/export"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
-
-
-@app.post("/v1/holds")
-async def create_hold(request: Request):
-    """Website/call-center: place a temporary hold/lock."""
-    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/holds", request)
-
-
-@app.post("/v1/bookings/{booking_id}/confirm")
-async def confirm_booking(booking_id: str, request: Request):
-    """Website/mobile/call-center: confirm booking (payment integration stub)."""
-    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}/confirm", request)
-
-
-@app.get("/v1/bookings/{booking_id}")
-async def get_booking(booking_id: str, request: Request):
-    """Call-center: load booking details by id."""
-    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}", request)
-
+@app.post("/v1/customers")
+async def create_customer(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers", request, "customer-service")
 
 @app.get("/v1/customers/{customer_id}")
 async def get_customer(customer_id: str, request: Request):
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request)
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request, "customer-service")
 
+@app.patch("/v1/customers/{customer_id}")
+async def patch_customer(customer_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request, "customer-service")
 
-@app.get("/v1/customers/{customer_id}/bookings")
-async def get_customer_bookings(customer_id: str, request: Request):
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/bookings", request)
+@app.get("/v1/staff/me/preferences")
+async def get_my_preferences(request: Request):
+    # In a real app, we'd extract user_id from JWT.
+    # For this starter, we'll just use a hardcoded user_id or pass through.
+    # The customer-service handles /staff/me/preferences logic.
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/me/preferences", request, "customer-service")
 
+@app.patch("/v1/staff/me/preferences")
+async def patch_my_preferences(request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/me/preferences", request, "customer-service")
 
-@app.get("/v1/customers/{customer_id}/passengers")
-async def list_customer_passengers(customer_id: str, request: Request):
-    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/passengers", request)
+@app.get("/v1/staff/users")
+async def list_staff_users(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/users", request, "customer-service")
 
+@app.post("/v1/staff/users")
+async def create_staff_user(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/users", request, "customer-service")
 
-@app.post("/v1/customers/{customer_id}/passengers")
-async def create_customer_passenger(customer_id: str, request: Request):
-    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/passengers", request)
+@app.patch("/v1/staff/users/{user_id}")
+async def patch_staff_user(user_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request, "customer-service")
 
+@app.delete("/v1/staff/users/{user_id}")
+async def delete_staff_user(user_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request, "customer-service")
 
-@app.patch("/v1/passengers/{passenger_id}")
-async def patch_passenger(passenger_id: str, request: Request):
-    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/passengers/{passenger_id}", request)
+@app.get("/v1/staff/groups")
+async def list_staff_groups(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups", request, "customer-service")
 
+@app.post("/v1/staff/groups")
+async def create_staff_group(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups", request, "customer-service")
 
-@app.delete("/v1/passengers/{passenger_id}")
-async def delete_passenger(passenger_id: str, request: Request):
-    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/passengers/{passenger_id}", request)
+@app.patch("/v1/staff/groups/{group_id}")
+async def patch_staff_group(group_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}", request, "customer-service")
 
+@app.get("/v1/staff/groups/{group_id}/members")
+async def list_group_members(group_id: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request, "customer-service")
 
-@app.get("/v1/mobile/agenda")
-async def mobile_agenda(customer_id: str, sailing_id: str):
-    """Mobile: very small "What's On Today" starter (stub).
+@app.post("/v1/staff/groups/{group_id}/members")
+async def add_group_member(group_id: str, request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members", request, "customer-service")
 
-    In a full implementation this would call activity/event + dining + itinerary services.
-    """
-    today = datetime.utcnow().date().isoformat()
-    return {
-        "customer_id": customer_id,
-        "sailing_id": sailing_id,
-        "date": today,
-        "items": [
-            {
-                "time": "09:00",
-                "title": "Safety drill",
-                "location": "Main Theater",
-                "kind": "info",
-            },
-            {
-                "time": "19:00",
-                "title": "Dinner seating",
-                "location": "Oceanview Restaurant",
-                "kind": "dining",
-            },
-        ],
-    }
+@app.delete("/v1/staff/groups/{group_id}/members/{user_id}")
+async def remove_group_member(group_id: str, user_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/groups/{group_id}/members/{user_id}", request, "customer-service")
 
+@app.get("/v1/staff/audit")
+async def list_audit_logs(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/audit", request, "customer-service")
 
-@app.get("/v1/notifications")
-async def list_notifications(request: Request):
-    """Portal: in-app notifications feed (consumes domain events)."""
-    q = request.url.query
-    url = f"{NOTIFICATION_SERVICE_URL}/notifications"
-    if q:
-        url = f"{url}?{q}"
-    return await _proxy("GET", url, request)
+#
+# Booking Service Routes
+#
+
+@app.post("/v1/bookings")
+async def create_booking(request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings", request, "booking-service")
+
+@app.get("/v1/bookings")
+async def list_bookings(request: Request):
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/bookings", request, "booking-service")
+
+@app.get("/v1/bookings/{booking_id}")
+async def get_booking(booking_id: str, request: Request):
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}", request, "booking-service")
+
+@app.post("/v1/bookings/{booking_id}/cancel")
+async def cancel_booking(booking_id: str, request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}/cancel", request, "booking-service")
+
+@app.post("/v1/bookings/{booking_id}/payments")
+async def add_payment(booking_id: str, request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}/payments", request, "booking-service")
+
+#
+# Pricing Service Routes
+#
+
+@app.post("/v1/quotes")
+async def create_quote(request: Request):
+    return await _proxy("POST", f"{PRICING_SERVICE_URL}/quotes", request, "pricing-service")

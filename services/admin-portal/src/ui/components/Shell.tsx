@@ -391,8 +391,8 @@ const styles: Record<string, React.CSSProperties> = {
   sidebarSub: { color: 'var(--csp-muted)', fontSize: 12, marginTop: 2 },
   brandSub: { color: 'var(--csp-muted)', fontSize: 12, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   logo: {
-    width: 26,
-    height: 26,
+    width: 110,
+    height: 35,
     borderRadius: 8,
     backgroundImage: 'var(--csp-logo-url)',
     backgroundSize: 'cover',

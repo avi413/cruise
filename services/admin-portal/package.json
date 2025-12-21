@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 5173"
   },
   "dependencies": {
+    "@types/react-router-dom": "^5.3.3",
     "cookie": "^1.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

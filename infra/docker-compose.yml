@@ -43,12 +43,18 @@ services:
         condition: service_healthy
 
   cruise-service:
-    build: ../services/cruise-service
+    image: cruise-service
+    build:
+      context: ../services/cruise-service
     environment:
-      SERVICE_NAME: cruise-service
-      JWT_SECRET: dev-secret-change-me
+      SERVICE_NAME: "cruise-service"
+      JWT_SECRET: "dev-secret-change-me"
+      # Fixed: Added +psycopg to use the correct driver
+      CONTROL_PLANE_DATABASE_URL: "postgresql+psycopg://cruise:cruise@postgres:5432/cruise"
     ports:
-      - "8002:8000"
+      - "8003:8000"
+    depends_on:
+      - postgres
 
   customer-service:
     build: ../services/customer-service
@@ -67,7 +73,7 @@ services:
       ship-service:
         condition: service_started
     ports:
-      - "8003:8000"
+      - "8002:8000"
 
   pricing-service:
     build: ../services/pricing-service

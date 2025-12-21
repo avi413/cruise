@@ -128,8 +128,8 @@ const styles: Record<string, React.CSSProperties> = {
   title: { fontSize: 22, fontWeight: 900, display: 'flex', gap: 10, alignItems: 'center' },
   sub: { marginTop: 6, color: 'var(--csp-muted, rgba(230,237,243,0.72))', fontSize: 13 },
   logo: {
-    width: 28,
-    height: 28,
+    width: 110,
+    height: 35,
     borderRadius: 9,
     backgroundImage: 'var(--csp-logo-url)',
     backgroundSize: 'cover',

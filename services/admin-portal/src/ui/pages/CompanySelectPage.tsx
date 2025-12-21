@@ -24,9 +24,9 @@ export function CompanySelectPage(props: { apiBase: string }) {
     let cancelled = false
     setBusy(true)
     setErr(null)
-    apiFetch<{ items: Company[] }>(props.apiBase, endpoint, { auth: false, tenant: false })
+    apiFetch<Company[]>(props.apiBase, endpoint, { auth: false, tenant: false })
       .then((r) => {
-        if (!cancelled) setItems(r.items)
+        if (!cancelled) setItems(r)
       })
       .catch((e) => {
         if (!cancelled) setErr(String(e?.message || e))
@@ -191,4 +191,3 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
   },
 }
-
