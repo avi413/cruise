@@ -8,7 +8,6 @@ import { CompanySelectPage } from './pages/CompanySelectPage'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { CruisesPage } from './pages/CruisesPage'
-import { FleetPage } from './pages/FleetPage'
 import { OnboardPage } from './pages/OnboardPage'
 import { FleetLayoutPage } from './pages/fleet/FleetLayoutPage'
 import { FleetShipsPage } from './pages/fleet/FleetShipsPage'
@@ -72,7 +71,6 @@ export function App() {
               </RequirePerm>
             }
           />
-          <Route path="fleet" element={<FleetPage apiBase={apiBase} />} />
           <Route path="onboard" element={<OnboardPage apiBase={apiBase} />} />
           <Route path="fleet" element={<FleetLayoutPage />}>
             <Route index element={<Navigate to="ships" replace />} />
