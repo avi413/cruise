@@ -258,33 +258,33 @@ def list_customers(
             )
         rows = qry.offset(offset).limit(limit).all()
 
-    return [
-        CustomerOut(
-            id=r.id,
-            created_at=r.created_at,
-            updated_at=r.updated_at,
-            email=r.email,
-            title=r.title,
-            first_name=r.first_name,
-            last_name=r.last_name,
-            birth_date=r.birth_date,
-            loyalty_tier=r.loyalty_tier,
-            phone=r.phone,
-            address_line1=r.address_line1,
-            address_line2=r.address_line2,
-            city=r.city,
-            state=r.state,
-            postal_code=r.postal_code,
-            country=r.country,
-            national_id_number=r.national_id_number,
-            national_id_country=r.national_id_country,
-            passport_number=r.passport_number,
-            passport_country=r.passport_country,
-            passport_expiry=r.passport_expiry,
-            preferences=r.preferences or {},
-        )
-        for r in rows
-    ]
+        return [
+            CustomerOut(
+                id=r.id,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+                email=r.email,
+                title=r.title,
+                first_name=r.first_name,
+                last_name=r.last_name,
+                birth_date=r.birth_date,
+                loyalty_tier=r.loyalty_tier,
+                phone=r.phone,
+                address_line1=r.address_line1,
+                address_line2=r.address_line2,
+                city=r.city,
+                state=r.state,
+                postal_code=r.postal_code,
+                country=r.country,
+                national_id_number=r.national_id_number,
+                national_id_country=r.national_id_country,
+                passport_number=r.passport_number,
+                passport_country=r.passport_country,
+                passport_expiry=r.passport_expiry,
+                preferences=r.preferences or {},
+            )
+            for r in rows
+        ]
 
 
 @app.post("/customers", response_model=CustomerOut)
@@ -318,6 +318,7 @@ def create_customer(
         passport_expiry=payload.passport_expiry,
         preferences=payload.preferences or {},
     )
+    customer_id = cust.id
 
     with session(tenant_engine) as s:
         existing = s.query(Customer).filter(Customer.email == cust.email).first()
@@ -331,12 +332,12 @@ def create_customer(
         principal=principal,
         action="customer.create",
         entity_type="customer",
-        entity_id=cust.id,
+        entity_id=customer_id,
         meta={"request": payload.model_dump()},
     )
 
     # Return the persisted row (normalized email, defaults applied).
-    return get_customer(cust.id, tenant_engine=tenant_engine)
+    return get_customer(customer_id, tenant_engine=tenant_engine)
 
 
 @app.get("/customers/{customer_id}", response_model=CustomerOut)
@@ -350,30 +351,30 @@ def get_customer(
         if cust is None:
             raise HTTPException(status_code=404, detail="Customer not found")
 
-    return CustomerOut(
-        id=cust.id,
-        created_at=cust.created_at,
-        updated_at=cust.updated_at,
-        email=cust.email,
-        title=cust.title,
-        first_name=cust.first_name,
-        last_name=cust.last_name,
-        birth_date=cust.birth_date,
-        loyalty_tier=cust.loyalty_tier,
-        phone=cust.phone,
-        address_line1=cust.address_line1,
-        address_line2=cust.address_line2,
-        city=cust.city,
-        state=cust.state,
-        postal_code=cust.postal_code,
-        country=cust.country,
-        national_id_number=cust.national_id_number,
-        national_id_country=cust.national_id_country,
-        passport_number=cust.passport_number,
-        passport_country=cust.passport_country,
-        passport_expiry=cust.passport_expiry,
-        preferences=cust.preferences or {},
-    )
+        return CustomerOut(
+            id=cust.id,
+            created_at=cust.created_at,
+            updated_at=cust.updated_at,
+            email=cust.email,
+            title=cust.title,
+            first_name=cust.first_name,
+            last_name=cust.last_name,
+            birth_date=cust.birth_date,
+            loyalty_tier=cust.loyalty_tier,
+            phone=cust.phone,
+            address_line1=cust.address_line1,
+            address_line2=cust.address_line2,
+            city=cust.city,
+            state=cust.state,
+            postal_code=cust.postal_code,
+            country=cust.country,
+            national_id_number=cust.national_id_number,
+            national_id_country=cust.national_id_country,
+            passport_number=cust.passport_number,
+            passport_country=cust.passport_country,
+            passport_expiry=cust.passport_expiry,
+            preferences=cust.preferences or {},
+        )
 
 
 class CustomerPatch(BaseModel):
@@ -574,34 +575,34 @@ def list_customer_passengers(
 ):
     with session(tenant_engine) as s:
         rows = s.query(Passenger).filter(Passenger.customer_id == customer_id).order_by(Passenger.updated_at.desc()).all()
-    return [
-        PassengerOut(
-            id=r.id,
-            customer_id=r.customer_id,
-            created_at=r.created_at,
-            updated_at=r.updated_at,
-            title=r.title,
-            first_name=r.first_name,
-            last_name=r.last_name,
-            birth_date=r.birth_date,
-            gender=r.gender,
-            nationality=r.nationality,
-            email=r.email,
-            phone=r.phone,
-            address_line1=r.address_line1,
-            address_line2=r.address_line2,
-            city=r.city,
-            state=r.state,
-            postal_code=r.postal_code,
-            country=r.country,
-            national_id_number=r.national_id_number,
-            national_id_country=r.national_id_country,
-            passport_number=r.passport_number,
-            passport_country=r.passport_country,
-            passport_expiry=r.passport_expiry,
-        )
-        for r in rows
-    ]
+        return [
+            PassengerOut(
+                id=r.id,
+                customer_id=r.customer_id,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+                title=r.title,
+                first_name=r.first_name,
+                last_name=r.last_name,
+                birth_date=r.birth_date,
+                gender=r.gender,
+                nationality=r.nationality,
+                email=r.email,
+                phone=r.phone,
+                address_line1=r.address_line1,
+                address_line2=r.address_line2,
+                city=r.city,
+                state=r.state,
+                postal_code=r.postal_code,
+                country=r.country,
+                national_id_number=r.national_id_number,
+                national_id_country=r.national_id_country,
+                passport_number=r.passport_number,
+                passport_country=r.passport_country,
+                passport_expiry=r.passport_expiry,
+            )
+            for r in rows
+        ]
 
 
 @app.post("/customers/{customer_id}/passengers", response_model=PassengerOut)
