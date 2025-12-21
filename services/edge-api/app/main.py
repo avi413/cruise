@@ -412,3 +412,23 @@ async def upsert_cruise_prices_bulk(request: Request):
 @app.get("/v1/pricing/cruise-prices/export")
 async def export_cruise_prices(request: Request):
     return await _proxy("GET", f"{PRICING_SERVICE_URL}/cruise-prices/export", request, "pricing-service")
+
+#
+# Translations (via Customer Service)
+#
+
+@app.get("/v1/translations")
+async def list_translations(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/translations", request, "customer-service")
+
+@app.post("/v1/translations")
+async def create_translation(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/translations", request, "customer-service")
+
+@app.delete("/v1/translations/{translation_id}")
+async def delete_translation(translation_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/translations/{translation_id}", request, "customer-service")
+
+@app.get("/v1/translations/bundle/{lang}/{namespace}")
+async def get_translation_bundle(lang: str, namespace: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/translations/bundle/{lang}/{namespace}", request, "customer-service")

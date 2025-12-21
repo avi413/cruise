@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { decodeJwt, permsFromClaims } from './jwt'
 import { getCompany, getToken, setCompany, setToken } from './storage'
 import { applyCompanyTheme, fetchCompanySettings } from './theme'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 export function Shell(props: { apiBase: string }) {
   const { t } = useTranslation()
@@ -123,6 +124,7 @@ export function Shell(props: { apiBase: string }) {
 
       { key: 'users', label: t('nav.users'), to: '/app/users', show: canUsers, icon: <Icon name="shield" />, group: 'Administration' },
       { key: 'audit', label: t('nav.audit'), to: '/app/audit', show: canUsers, icon: <Icon name="clock" />, group: 'Administration' },
+      { key: 'translations', label: 'Translations', to: '/app/translations', show: canUsers, icon: <Icon name="book" />, group: 'Administration' },
       {
         key: 'company-settings',
         label: t('nav.branding'),
@@ -194,6 +196,7 @@ export function Shell(props: { apiBase: string }) {
           </Link>
           {!isNarrow && (
             <>
+              <LanguageSwitcher />
               <button style={styles.primaryBtn} onClick={switchCompany} title="Switch company">
                 {t('nav.switch_company')}
               </button>
@@ -272,6 +275,7 @@ export function Shell(props: { apiBase: string }) {
 
           {isNarrow && (
             <div style={{ marginTop: 20, display: 'grid', gap: 10 }}>
+              <LanguageSwitcher style={{ width: '100%' }} />
               <button style={styles.secondaryBtnFull} onClick={switchCompany}>
                 Switch Company
               </button>
