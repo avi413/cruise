@@ -372,6 +372,7 @@ def list_overrides(_principal=Depends(require_roles("staff", "admin"))):
 
 class PriceCategoryIn(BaseModel):
     code: str = Field(min_length=1, description="Unique code (e.g. internet, regular-pl)")
+    parent_code: str | None = Field(default=None, description="Optional parent category code (for hierarchy)")
     active: bool = Field(default=True)
     enabled_channels: list[str] = Field(default_factory=list, description="Sales channels where this category is available")
     room_selection_included: bool = Field(default=False, description="Protected/guaranteed room selection included")
@@ -382,6 +383,7 @@ class PriceCategoryIn(BaseModel):
 
 
 class PriceCategoryPatch(BaseModel):
+    parent_code: str | None = None
     active: bool | None = None
     enabled_channels: list[str] | None = None
     room_selection_included: bool | None = None
@@ -393,6 +395,7 @@ class PriceCategoryPatch(BaseModel):
 class PriceCategoryOut(BaseModel):
     company_id: str
     code: str
+    parent_code: str | None
     active: bool
     order: int
     enabled_channels: list[str]
@@ -419,11 +422,12 @@ def list_price_categories(
     if channel:
         ch = channel.strip()
         rows = [c for c in rows if (ch in (c.get("enabled_channels") or []))]
-    rows = sorted(rows, key=lambda c: int(c.get("order", 10_000)))
+    rows = sorted(rows, key=lambda c: (str(c.get("parent_code") or ""), int(c.get("order", 10_000))))
     return [
         PriceCategoryOut(
             company_id=key,
             code=str(c.get("code") or ""),
+            parent_code=(str(c.get("parent_code")) if c.get("parent_code") is not None else None),
             active=bool(c.get("active", True)),
             order=int(c.get("order", 10_000)),
             enabled_channels=list(c.get("enabled_channels") or []),
@@ -456,11 +460,19 @@ def create_price_category(
     if payload.room_selection_included and payload.room_category_only:
         raise HTTPException(status_code=400, detail="room_selection_included and room_category_only are mutually exclusive")
 
+    parent_code = (payload.parent_code or "").strip().lower() or None
+    if parent_code is not None:
+        if parent_code == code:
+            raise HTTPException(status_code=400, detail="parent_code must not equal code")
+        if not _find_price_category(key, parent_code):
+            raise HTTPException(status_code=400, detail="parent_code does not exist")
+
     now = datetime.now(tz=timezone.utc).isoformat()
     cats = _get_or_init_price_categories(key)
     max_order = max([int(c.get("order", 10_000)) for c in cats] or [0])
     row = {
         "code": code,
+        "parent_code": parent_code,
         "active": bool(payload.active),
         "order": max_order + 10,
         "enabled_channels": list(payload.enabled_channels or []),
@@ -487,6 +499,27 @@ def patch_price_category(
     row = _find_price_category(key, code)
     if not row:
         raise HTTPException(status_code=404, detail="Price category not found")
+
+    if payload.parent_code is not None:
+        pc = (payload.parent_code or "").strip().lower() or None
+        my = (row.get("code") or "").strip().lower()
+        if pc is not None:
+            if pc == my:
+                raise HTTPException(status_code=400, detail="parent_code must not equal code")
+            if not _find_price_category(key, pc):
+                raise HTTPException(status_code=400, detail="parent_code does not exist")
+            # Prevent trivial cycles by walking up parent chain.
+            seen = {my}
+            cur = pc
+            while cur is not None:
+                if cur in seen:
+                    raise HTTPException(status_code=400, detail="parent_code would create a cycle")
+                seen.add(cur)
+                parent = _find_price_category(key, cur)
+                if not parent:
+                    break
+                cur = (parent.get("parent_code") or "").strip().lower() or None
+        row["parent_code"] = pc
 
     if payload.room_selection_included is not None:
         row["room_selection_included"] = bool(payload.room_selection_included)
@@ -520,6 +553,10 @@ def delete_price_category(
     cats = [c for c in cats if (c.get("code") or "").strip().lower() != code_n]
     if len(cats) == before:
         raise HTTPException(status_code=404, detail="Price category not found")
+    # Detach children (avoid dangling parent references)
+    for c in cats:
+        if (c.get("parent_code") or "").strip().lower() == code_n:
+            c["parent_code"] = None
     _PRICE_CATEGORIES_BY_COMPANY[key] = cats
     # Also remove any cruise price cells for that price category
     tables = _CRUISE_PRICE_TABLES_BY_COMPANY.get(key) or {}
@@ -557,9 +594,15 @@ def reorder_price_categories(
     tail = [k for k in [((c.get("code") or "").strip().lower()) for c in cats] if k and k not in ordered]
     final = ordered + tail
     now = datetime.now(tz=timezone.utc).isoformat()
-    for idx, k in enumerate(final):
-        by_code[k]["order"] = (idx + 1) * 10
-        by_code[k]["updated_at"] = now
+    # Apply ordering within each parent group (CRM-like hierarchy reorder).
+    groups: dict[str, list[str]] = {}
+    for k in final:
+        parent = (by_code[k].get("parent_code") or "").strip().lower()
+        groups.setdefault(parent, []).append(k)
+    for parent, codes in groups.items():
+        for idx, k in enumerate(codes):
+            by_code[k]["order"] = (idx + 1) * 10
+            by_code[k]["updated_at"] = now
     _PRICE_CATEGORIES_BY_COMPANY[key] = sorted(cats, key=lambda c: int(c.get("order", 10_000)))
     return list_price_categories(x_company_id=key)  # reuse serialization
 
