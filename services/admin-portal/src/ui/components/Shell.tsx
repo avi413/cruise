@@ -159,6 +159,11 @@ export function Shell(props: { apiBase: string }) {
             </NavLink>
           ) : null}
           {canUsers ? (
+            <NavLink to="/app/agents" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
+              Agents
+            </NavLink>
+          ) : null}
+          {canUsers ? (
             <NavLink to="/app/users" style={({ isActive }) => (isActive ? styles.navActive : styles.navBtn)} onClick={() => setDrawerOpen(false)}>
               Users & Groups
             </NavLink>

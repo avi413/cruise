@@ -391,6 +391,11 @@ async def patch_staff_user(user_id: str, request: Request):
     return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request)
 
 
+@app.delete("/v1/staff/users/{user_id}")
+async def delete_staff_user(user_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/staff/users/{user_id}", request)
+
+
 @app.get("/v1/staff/groups")
 async def list_staff_groups(request: Request):
     return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/groups", request)

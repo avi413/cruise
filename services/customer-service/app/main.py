@@ -1293,6 +1293,56 @@ def patch_staff_user(
     )
 
 
+@app.delete("/staff/users/{user_id}")
+def delete_staff_user(
+    user_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("admin")),
+):
+    """
+    Delete a tenant-scoped portal user.
+
+    Notes:
+    - We explicitly delete dependent rows (group memberships, preferences) because
+      sqlite does not enforce FK cascades by default.
+    - Prevent deleting yourself / last remaining admin to avoid lockouts.
+    """
+    actor_id = str((principal or {}).get("sub") or "")
+    if actor_id and actor_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own user. Disable it instead.")
+
+    with session(tenant_engine) as s:
+        user = s.get(StaffUser, user_id)
+        if user is None:
+            return {"status": "ok"}
+
+        # Avoid tenant lockout: don't allow deleting the last admin.
+        if (user.role or "").strip().lower() == "admin":
+            admin_count = int(s.query(StaffUser).filter(StaffUser.role == "admin").count())
+            if admin_count <= 1:
+                raise HTTPException(status_code=400, detail="Cannot delete the last admin user for this tenant.")
+
+        before = {"email": user.email, "role": user.role, "disabled": bool(user.disabled)}
+
+        # Delete dependencies first (sqlite-safe)
+        s.query(StaffGroupMember).filter(StaffGroupMember.user_id == user_id).delete(synchronize_session=False)
+        s.query(StaffUserPreference).filter(StaffUserPreference.user_id == user_id).delete(synchronize_session=False)
+
+        s.delete(user)
+        s.commit()
+
+    _audit(
+        tenant_engine=tenant_engine,
+        principal=principal,
+        action="staff_user.delete",
+        entity_type="staff_user",
+        entity_id=user_id,
+        meta={"before": before},
+    )
+
+    return {"status": "ok"}
+
+
 @app.get("/staff/groups", response_model=list[StaffGroupOut])
 def list_staff_groups(
     tenant_engine=Depends(get_tenant_engine),
