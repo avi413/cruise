@@ -61,51 +61,62 @@ type CruisePriceCell = {
   updated_at: string
 }
 
+function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  const [hover, setHover] = useState(false)
+  return (
+    <tr
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        ...styles.tr,
+        background: hover ? 'var(--csp-border-strong, rgba(0,0,0,0.05))' : 'transparent',
+      }}
+    >
+      {children}
+    </tr>
+  )
+}
+
 export function PricingPage(props: { apiBase: string }) {
   const company = getCompany()
-  const [items, setItems] = useState<OverridesOut[]>([])
-
-  const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
-  const [multiplier, setMultiplier] = useState(1.0)
-
-  const [adult, setAdult] = useState(100000)
-  const [child, setChild] = useState(60000)
-  const [infant, setInfant] = useState(10000)
-
-  const [catCodesRaw, setCatCodesRaw] = useState('CO3')
-  const [catPriceTypesRaw, setCatPriceTypesRaw] = useState('regular')
-  const [catCurrency, setCatCurrency] = useState('USD')
-  const [defaultCurrency, setDefaultCurrency] = useState('USD')
-  const [catMinGuests, setCatMinGuests] = useState(2)
-  // Display/edit in major currency units (e.g. 300.00 EUR), send cents to API.
-  const [catPricePerPerson, setCatPricePerPerson] = useState(1200)
-  const [sailings, setSailings] = useState<Sailing[]>([])
-  const [selectedSailingId, setSelectedSailingId] = useState<string>('')
+  const companyId = company?.id || null
 
   const [tab, setTab] = useState<'categories' | 'cruise'>('categories')
+  
+  // Category View State
+  const [catView, setCatView] = useState<'list' | 'create' | 'edit'>('list')
+  const [catQ, setCatQ] = useState('')
 
-  // Flexible pricing model state
+  // Data
+  const [items, setItems] = useState<OverridesOut[]>([])
   const [priceCats, setPriceCats] = useState<PriceCategory[]>([])
-  const [newCatCode, setNewCatCode] = useState('internet')
-  const [newCatParentCode, setNewCatParentCode] = useState<string>('')
-  const [newCatName, setNewCatName] = useState('Internet')
-  const [newCatDescJson, setNewCatDescJson] = useState('{"en":"Online-only pricing"}')
-  const [newCatChannelsRaw, setNewCatChannelsRaw] = useState('website, api, mobile_app')
-  const [newCatRoomSelIncluded, setNewCatRoomSelIncluded] = useState(false)
-  const [newCatRoomCatOnly, setNewCatRoomCatOnly] = useState(false)
-  const [newCatActive, setNewCatActive] = useState(true)
+  const [sailings, setSailings] = useState<Sailing[]>([])
+  
+  // Create/Edit Category State
+  const [editingCode, setEditingCode] = useState<string | null>(null)
+  const [catCode, setCatCode] = useState('')
+  const [catParentCode, setCatParentCode] = useState<string>('')
+  const [catName, setCatName] = useState('')
+  const [catDesc, setCatDesc] = useState('')
+  const [catChannels, setCatChannels] = useState('')
+  const [catRoomSelIncluded, setCatRoomSelIncluded] = useState(false)
+  const [catRoomCatOnly, setCatRoomCatOnly] = useState(false)
+  const [catActive, setCatActive] = useState(true)
 
+  // Cruise Grid State
+  const [selectedSailingId, setSelectedSailingId] = useState<string>('')
   const [gridSailingId, setGridSailingId] = useState<string>('')
   const [gridCurrency, setGridCurrency] = useState('USD')
   const [gridMinGuests, setGridMinGuests] = useState(2)
   const [gridCabinCats, setGridCabinCats] = useState<CabinCategory[]>([])
   const [gridCells, setGridCells] = useState<Record<string, number>>({}) // key= cabin|priceCat -> cents
+  const [defaultCurrency, setDefaultCurrency] = useState('USD')
+  
   const fileRef = useRef<HTMLInputElement | null>(null)
-
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  const companyId = company?.id || null
   const listEndpoint = useMemo(() => `/v1/pricing/overrides`, [])
 
   useEffect(() => {
@@ -116,7 +127,7 @@ export function PricingPage(props: { apiBase: string }) {
         if (cancelled) return
         const cur = String(s?.localization?.default_currency || 'USD').trim().toUpperCase() || 'USD'
         setDefaultCurrency(cur)
-        setCatCurrency((prev) => (prev === 'USD' ? cur : prev))
+        setGridCurrency((prev) => (prev === 'USD' ? cur : prev))
       })
       .catch(() => {
         if (!cancelled) setDefaultCurrency('USD')
@@ -125,11 +136,6 @@ export function PricingPage(props: { apiBase: string }) {
       cancelled = true
     }
   }, [props.apiBase, companyId])
-
-  useEffect(() => {
-    // Keep flexible pricing grid currency aligned with company default (don't clobber user edits once changed)
-    setGridCurrency((prev) => (prev === 'USD' ? defaultCurrency : prev))
-  }, [defaultCurrency])
 
   useEffect(() => {
     let cancelled = false
@@ -176,151 +182,45 @@ export function PricingPage(props: { apiBase: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listEndpoint])
 
-  async function setCabinMultiplier() {
-    setBusy(true)
-    setErr(null)
-    try {
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/cabin-multipliers`, {
-        method: 'POST',
-        body: { cabin_type: cabinType, multiplier, company_id: companyId },
-      })
-      await refresh()
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function setBaseFares() {
-    setBusy(true)
-    setErr(null)
-    try {
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'adult', amount: adult, company_id: companyId } })
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'child', amount: child, company_id: companyId } })
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'infant', amount: infant, company_id: companyId } })
-      await refresh()
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function clearCompanyOverrides() {
-    const key = company?.id
-    if (!key?.trim()) {
-      setErr('Select a company first.')
-      return
-    }
-    setBusy(true)
-    setErr(null)
-    try {
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/${encodeURIComponent(key)}`, { method: 'DELETE' })
-      await refresh()
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function parseCodes(raw: string): string[] {
-    const tokens = String(raw || '')
-      .split(/[\s,]+/g)
-      .map((x) => x.trim().toUpperCase())
-      .filter(Boolean)
-    return Array.from(new Set(tokens))
-  }
-
-  function parsePriceTypes(raw: string): string[] {
-    const tokens = String(raw || '')
-      .split(/[\s,]+/g)
-      .map((x) => x.trim().toLowerCase())
-      .filter(Boolean)
-    return Array.from(new Set(tokens.length ? tokens : ['regular']))
-  }
-
-  async function upsertCategoryPricesBulk() {
-    setBusy(true)
-    setErr(null)
-    try {
-      if (!companyId) {
-        setErr('Select a company first.')
-        return
-      }
-      const codes = parseCodes(catCodesRaw)
-      const priceTypes = parsePriceTypes(catPriceTypesRaw)
-      if (!codes.length) {
-        setErr('Enter at least one category code.')
-        return
-      }
-
-      const pricePerPersonCents = Math.max(0, Math.round(Number(catPricePerPerson) * 100))
-
-      const sailing = sailings.find((s) => String(s.id) === String(selectedSailingId))
-      const effStart = sailing?.start_date || null
-      const effEnd = sailing?.end_date || null
-
-      const rows = codes.flatMap((code) =>
-        priceTypes.map((pt) => ({
-          category_code: code,
-          price_type: pt || 'regular',
-          currency: (catCurrency.trim().toUpperCase() || defaultCurrency || 'USD').trim().toUpperCase(),
-          min_guests: catMinGuests,
-          price_per_person: pricePerPersonCents,
-          // We don't ask for optional dates; we attach pricing to the selected cruise/sailing.
-          effective_start_date: effStart,
-          effective_end_date: effEnd,
-          company_id: companyId,
-        }))
-      )
-
-      await apiFetch(props.apiBase, `/v1/pricing/category-prices/bulk`, {
-        method: 'POST',
-        body: rows,
-      })
-      await refresh()
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  // --- Category Management ---
 
   function parseChannels(raw: string): string[] {
-    const tokens = String(raw || '')
+    return String(raw || '')
       .split(/[\s,]+/g)
       .map((x) => x.trim())
       .filter(Boolean)
-    return Array.from(new Set(tokens))
   }
 
-  function safeJsonObj(raw: string): Record<string, string> {
-    const s = String(raw || '').trim()
-    if (!s) return {}
-    const v = JSON.parse(s)
-    if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
-    const out: Record<string, string> = {}
-    for (const [k, val] of Object.entries(v)) out[String(k)] = String(val)
-    return out
+  function resetCatForm() {
+    setCatCode('')
+    setCatParentCode('')
+    setCatName('')
+    setCatDesc('')
+    setCatChannels('website, api, mobile_app')
+    setCatRoomSelIncluded(false)
+    setCatRoomCatOnly(false)
+    setCatActive(true)
   }
 
-  function downloadBlob(filename: string, blob: Blob) {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.rel = 'noreferrer'
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  function startCreateCat() {
+    resetCatForm()
+    setCatView('create')
   }
 
-  function downloadText(filename: string, text: string, mime: string) {
-    downloadBlob(filename, new Blob([text], { type: mime }))
+  function startEditCat(c: PriceCategory) {
+    setEditingCode(c.code)
+    setCatCode(c.code)
+    setCatParentCode(c.parent_code || '')
+    setCatName(c.name_i18n?.en || '')
+    setCatDesc(c.description_i18n?.en || '')
+    setCatChannels((c.enabled_channels || []).join(', '))
+    setCatRoomSelIncluded(c.room_selection_included)
+    setCatRoomCatOnly(c.room_category_only)
+    setCatActive(c.active)
+    setCatView('edit')
   }
 
-  async function createPriceCategory() {
+  async function createCategory() {
     setBusy(true)
     setErr(null)
     try {
@@ -328,18 +228,20 @@ export function PricingPage(props: { apiBase: string }) {
       await apiFetch(props.apiBase, `/v1/pricing/price-categories`, {
         method: 'POST',
         body: {
-          code: newCatCode,
-          parent_code: newCatParentCode || null,
-          active: newCatActive,
-          enabled_channels: parseChannels(newCatChannelsRaw),
-          room_selection_included: newCatRoomSelIncluded,
-          room_category_only: newCatRoomCatOnly,
-          name_i18n: { en: newCatName },
-          description_i18n: safeJsonObj(newCatDescJson),
+          code: catCode,
+          parent_code: catParentCode || null,
+          active: catActive,
+          enabled_channels: parseChannels(catChannels),
+          room_selection_included: catRoomSelIncluded,
+          room_category_only: catRoomCatOnly,
+          name_i18n: { en: catName },
+          description_i18n: { en: catDesc },
           company_id: companyId,
         },
       })
       await refresh()
+      setCatView('list')
+      resetCatForm()
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -347,23 +249,26 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function patchPriceCategory(code: string, patch: Partial<PriceCategory>) {
+  async function saveCategoryEdit() {
+    if (!editingCode) return
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/pricing/price-categories/${encodeURIComponent(code)}`, {
+      await apiFetch(props.apiBase, `/v1/pricing/price-categories/${encodeURIComponent(editingCode)}`, {
         method: 'PATCH',
         body: {
-          parent_code: patch.parent_code,
-          active: patch.active,
-          enabled_channels: patch.enabled_channels,
-          room_selection_included: patch.room_selection_included,
-          room_category_only: patch.room_category_only,
-          name_i18n: patch.name_i18n,
-          description_i18n: patch.description_i18n,
+          parent_code: catParentCode || null,
+          active: catActive,
+          enabled_channels: parseChannels(catChannels),
+          room_selection_included: catRoomSelIncluded,
+          room_category_only: catRoomCatOnly,
+          name_i18n: { en: catName },
+          description_i18n: { en: catDesc },
         },
       })
       await refresh()
+      setCatView('list')
+      setEditingCode(null)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -371,12 +276,16 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function deletePriceCategory(code: string) {
+  async function deleteCategory() {
+    if (!editingCode) return
+    if (!confirm(`Delete category ${editingCode}?`)) return
     setBusy(true)
     setErr(null)
     try {
-      await apiFetch(props.apiBase, `/v1/pricing/price-categories/${encodeURIComponent(code)}`, { method: 'DELETE' })
+      await apiFetch(props.apiBase, `/v1/pricing/price-categories/${encodeURIComponent(editingCode)}`, { method: 'DELETE' })
       await refresh()
+      setCatView('list')
+      setEditingCode(null)
     } catch (e: any) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
@@ -384,55 +293,7 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function reorderCats(codes: string[]) {
-    setBusy(true)
-    setErr(null)
-    try {
-      await apiFetch(props.apiBase, `/v1/pricing/price-categories/reorder`, {
-        method: 'POST',
-        body: { codes },
-      })
-      await refresh()
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function buildCategoryTreeOrder(): { flat: { c: PriceCategory; depth: number }[]; orderCodes: string[] } {
-    const byCode: Record<string, PriceCategory> = {}
-    for (const c of priceCats || []) byCode[String(c.code)] = c
-
-    const children: Record<string, PriceCategory[]> = {}
-    for (const c of priceCats || []) {
-      const p = String((c.parent_code as any) || '').trim()
-      if (!children[p]) children[p] = []
-      children[p].push(c)
-    }
-    for (const k of Object.keys(children)) children[k].sort((a, b) => (a.order || 0) - (b.order || 0))
-
-    const out: { c: PriceCategory; depth: number }[] = []
-    const seen = new Set<string>()
-
-    function walk(parent: string, depth: number) {
-      for (const c of children[parent] || []) {
-        if (seen.has(c.code)) continue
-        seen.add(c.code)
-        out.push({ c, depth })
-        walk(String(c.code), depth + 1)
-      }
-    }
-
-    walk('', 0)
-    // Any orphans/cycles fall back to root-level rendering
-    for (const c of (priceCats || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0))) {
-      if (seen.has(c.code)) continue
-      out.push({ c, depth: 0 })
-    }
-
-    return { flat: out, orderCodes: out.map((x) => x.c.code) }
-  }
+  // --- Grid Management ---
 
   async function loadGrid() {
     setBusy(true)
@@ -512,7 +373,6 @@ export function PricingPage(props: { apiBase: string }) {
       const sid = (gridSailingId || '').trim()
       if (!sid) throw new Error('Select a sailing first.')
 
-      // Authenticated download (fixes "Missing bearer token")
       if (fmt === 'json') {
         const rows = await apiFetch<CruisePriceCell[]>(props.apiBase, `/v1/pricing/cruise-prices?sailing_id=${encodeURIComponent(sid)}`)
         const payload = { company_id: companyId, sailing_id: sid, items: rows || [] }
@@ -520,7 +380,6 @@ export function PricingPage(props: { apiBase: string }) {
         return
       }
 
-      // CSV (client-side)
       const activeCats = (priceCats || []).filter((c) => c.active).slice().sort((a, b) => a.order - b.order)
       const header = ['sailing_id', 'cabin_category_code', 'price_category_code', 'currency', 'min_guests', 'price_per_person']
       const lines: string[] = [header.join(',')]
@@ -574,61 +433,6 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
-  async function exportCategoriesJson() {
-    setBusy(true)
-    setErr(null)
-    try {
-      const payload = { company_id: companyId, items: priceCats || [] }
-      downloadText(`price-categories-${companyId || 'company'}.json`, JSON.stringify(payload, null, 2) + '\n', 'application/json')
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function exportCategoriesExcel() {
-    setBusy(true)
-    setErr(null)
-    try {
-      const rows = (priceCats || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0))
-      const aoa: any[][] = []
-      aoa.push([
-        'code',
-        'parent_code',
-        'active',
-        'order',
-        'enabled_channels',
-        'room_selection_included',
-        'room_category_only',
-        'name_i18n',
-        'description_i18n',
-      ])
-      for (const c of rows) {
-        aoa.push([
-          c.code,
-          c.parent_code || '',
-          c.active ? 'true' : 'false',
-          c.order,
-          (c.enabled_channels || []).join(', '),
-          c.room_selection_included ? 'true' : 'false',
-          c.room_category_only ? 'true' : 'false',
-          JSON.stringify(c.name_i18n || {}),
-          JSON.stringify(c.description_i18n || {}),
-        ])
-      }
-      const ws = XLSX.utils.aoa_to_sheet(aoa)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'PriceCategories')
-      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-      downloadBlob(`price-categories-${companyId || 'company'}.xlsx`, new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
   async function importGridJson(file: File) {
     setBusy(true)
     setErr(null)
@@ -660,11 +464,206 @@ export function PricingPage(props: { apiBase: string }) {
     }
   }
 
+  // --- Utils ---
+
+  function downloadBlob(filename: string, blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.rel = 'noreferrer'
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  function downloadText(filename: string, text: string, mime: string) {
+    downloadBlob(filename, new Blob([text], { type: mime }))
+  }
+
+  async function clearCompanyOverrides() {
+     const key = company?.id
+     if (!key?.trim()) {
+       setErr('Select a company first.')
+       return
+     }
+     setBusy(true)
+     setErr(null)
+     try {
+       await apiFetch(props.apiBase, `/v1/pricing/overrides/${encodeURIComponent(key)}`, { method: 'DELETE' })
+       await refresh()
+     } catch (e: any) {
+       setErr(String(e?.detail || e?.message || e))
+     } finally {
+       setBusy(false)
+     }
+  }
+
+  async function exportCategoriesJson() {
+    setBusy(true)
+    setErr(null)
+    try {
+      const payload = { company_id: companyId, items: priceCats || [] }
+      downloadText(`price-categories-${companyId || 'company'}.json`, JSON.stringify(payload, null, 2) + '\n', 'application/json')
+    } catch (e: any) {
+      setErr(String(e?.detail || e?.message || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // --- Renderers ---
+
+  function renderCatList() {
+    const filtered = (priceCats || []).filter(c => {
+        if (!catQ) return true
+        const term = catQ.toLowerCase()
+        return c.code.toLowerCase().includes(term) || c.name_i18n?.en?.toLowerCase()?.includes(term)
+    })
+    
+    // Sort logic to match backend's likely sort or the tree view requirements
+    // Flattening the hierarchy for the table view as per "CRM style" requests usually implying list
+    // But we can sort by code
+    const sorted = filtered.sort((a, b) => (a.order || 0) - (b.order || 0))
+
+    return (
+        <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'var(--csp-surface-bg)', padding: 12, borderRadius: 8, border: '1px solid var(--csp-border)' }}>
+                <div style={{ flex: 1 }}>
+                    <Input 
+                        value={catQ} 
+                        onChange={(e) => setCatQ(e.target.value)} 
+                        placeholder="Search categories..." 
+                        style={{ width: '100%', maxWidth: 400 }}
+                    />
+                </div>
+                <Button variant="primary" onClick={startCreateCat}>New Category</Button>
+                <Button variant="secondary" onClick={() => void exportCategoriesJson()}>Export JSON</Button>
+            </div>
+
+            <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                        <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
+                            <th style={styles.th}>Code</th>
+                            <th style={styles.th}>Name</th>
+                            <th style={styles.th}>Parent</th>
+                            <th style={styles.th}>Channels</th>
+                            <th style={styles.th}>Active</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {sorted.map(c => (
+                            <HoverRow key={c.code} onClick={() => startEditCat(c)}>
+                                <td style={styles.td}><Mono>{c.code}</Mono></td>
+                                <td style={styles.td}>{c.name_i18n?.en || '—'}</td>
+                                <td style={styles.td}>{c.parent_code ? <Mono>{c.parent_code}</Mono> : <span style={{color:'var(--csp-muted)'}}>(none)</span>}</td>
+                                <td style={styles.td}>{(c.enabled_channels || []).join(', ')}</td>
+                                <td style={styles.td}>
+                                    {c.active ? (
+                                        <span style={{ color: 'var(--csp-green)', fontWeight: 500 }}>Active</span>
+                                    ) : (
+                                        <span style={{ color: 'var(--csp-muted)' }}>Inactive</span>
+                                    )}
+                                </td>
+                            </HoverRow>
+                        ))}
+                         {sorted.length === 0 && (
+                            <tr>
+                                <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
+                                    No categories found.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+  }
+
+  function renderCatForm(mode: 'create' | 'edit') {
+    return (
+        <Panel 
+            title={mode === 'create' ? "Create Price Category" : `Edit Category: ${editingCode}`}
+            subtitle="Manage pricing category details."
+            right={<Button variant="secondary" onClick={() => setCatView('list')}>Cancel</Button>}
+        >
+            <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
+                <TwoCol 
+                    left={<Input label="Code" value={catCode} onChange={(e) => setCatCode(e.target.value.replace(/\s+/g, '').toUpperCase())} placeholder="INTERNET" disabled={mode==='edit'} />}
+                    right={<Input label="Name (EN)" value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="Internet Package" />}
+                />
+                
+                <TwoCol 
+                    left={
+                        <Select label="Parent Category" value={catParentCode} onChange={(e) => setCatParentCode(e.target.value)}>
+                            <option value="">(none)</option>
+                            {priceCats
+                                .filter(x => x.code !== catCode) // can't be parent of self
+                                .sort((a, b) => (a.order || 0) - (b.order || 0))
+                                .map(c => (
+                                    <option key={c.code} value={c.code}>{c.code}</option>
+                            ))}
+                        </Select>
+                    }
+                    right={<Input label="Channels (comma-separated)" value={catChannels} onChange={(e) => setCatChannels(e.target.value)} />}
+                />
+
+                <TextArea 
+                    label="Description (EN)" 
+                    value={catDesc} 
+                    onChange={(e) => setCatDesc(e.target.value)} 
+                    rows={3} 
+                />
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
+                        <input type="checkbox" checked={catActive} onChange={(e) => setCatActive(e.target.checked)} /> 
+                        <span style={{fontWeight: 500}}>Active</span>
+                    </label>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
+                        <input
+                        type="checkbox"
+                        checked={catRoomSelIncluded}
+                        onChange={(e) => {
+                            setCatRoomSelIncluded(e.target.checked)
+                            if (e.target.checked) setCatRoomCatOnly(false)
+                        }}
+                        />
+                        Room Selection Included
+                    </label>
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
+                        <input
+                        type="checkbox"
+                        checked={catRoomCatOnly}
+                        onChange={(e) => {
+                            setCatRoomCatOnly(e.target.checked)
+                            if (e.target.checked) setCatRoomSelIncluded(false)
+                        }}
+                        />
+                        Room Category Only
+                    </label>
+                </div>
+
+                <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', gap: 12, justifyContent: 'space-between' }}>
+                    {mode === 'edit' ? (
+                        <Button variant="danger" disabled={busy} onClick={() => void deleteCategory()}>Delete</Button>
+                    ) : <div />}
+                    
+                    <Button variant="primary" disabled={busy || !catCode} onClick={() => void (mode === 'create' ? createCategory() : saveCategoryEdit())}>
+                        {busy ? 'Saving...' : (mode === 'create' ? 'Create Category' : 'Save Changes')}
+                    </Button>
+                </div>
+            </div>
+        </Panel>
+    )
+  }
+
   return (
     <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
         title="Pricing & Offers"
-        subtitle="Manage pricing. Use Overrides for legacy knobs, or Flexible model for admin-defined price categories and per-cruise price tables."
+        subtitle="Manage pricing categories and cruise price tables."
         right={
           <>
             <Button disabled={busy} onClick={() => void refresh()}>
@@ -690,262 +689,25 @@ export function PricingPage(props: { apiBase: string }) {
       <Tabs
         idBase="pricing"
         value={tab}
-        onChange={(k) => setTab(k as any)}
+        onChange={(k) => {
+            setTab(k as any)
+            // Reset view when switching tabs if needed, but keeping list is fine
+        }}
         tabs={[
           { key: 'categories', label: 'Price Categories', badge: (priceCats || []).filter((c) => c.active).length },
           { key: 'cruise', label: 'Cruise Price Tables' },
         ]}
       />
 
-      {tab === 'categories' ? (
-        <div style={{ display: 'grid', gap: 24 }}>
-          <TwoCol
-            left={
-              <Panel
-                title="Price Categories"
-                subtitle="CRM-style category management: create categories, assign optional parent (hierarchy), toggle availability flags, and export JSON/Excel."
-                right={
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                    <Button disabled={busy} onClick={() => void exportCategoriesJson()}>
-                      Export JSON
-                    </Button>
-                    <Button disabled={busy} onClick={() => void exportCategoriesExcel()}>
-                      Export Excel
-                    </Button>
-                  </div>
-                }
-              >
-                <div style={{ display: 'grid', gap: 16 }}>
-                  <TwoCol
-                    left={<Input label="Code" value={newCatCode} onChange={(e) => setNewCatCode(e.target.value.toUpperCase())} placeholder="internet" disabled={busy} />}
-                    right={<Input label="Name" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="Internet" disabled={busy} />}
-                  />
+      {tab === 'categories' && (
+          <>
+            {catView === 'list' && renderCatList()}
+            {catView === 'create' && renderCatForm('create')}
+            {catView === 'edit' && renderCatForm('edit')}
+          </>
+      )}
 
-                  <TwoCol
-                    left={
-                      <Select label="Parent (optional)" value={newCatParentCode} onChange={(e) => setNewCatParentCode(e.target.value)} disabled={busy}>
-                        <option value="">(none)</option>
-                        {(priceCats || [])
-                          .slice()
-                          .sort((a, b) => (a.order || 0) - (b.order || 0))
-                          .map((c) => (
-                            <option key={c.code} value={c.code}>
-                              {c.code}
-                            </option>
-                          ))}
-                      </Select>
-                    }
-                    right={
-                      <Input
-                        label="Enabled channels (comma-separated)"
-                        value={newCatChannelsRaw}
-                        onChange={(e) => setNewCatChannelsRaw(e.target.value)}
-                        placeholder="website, agent, api"
-                        disabled={busy}
-                      />
-                    }
-                  />
-
-                  <TextArea
-                    label="Description i18n (JSON)"
-                    value={newCatDescJson}
-                    onChange={(e) => setNewCatDescJson(e.target.value)}
-                    rows={3}
-                    disabled={busy}
-                  />
-
-                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', paddingTop: 8 }}>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
-                      <input type="checkbox" checked={newCatActive} onChange={(e) => setNewCatActive(e.target.checked)} /> Active
-                    </label>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
-                      <input
-                        type="checkbox"
-                        checked={newCatRoomSelIncluded}
-                        onChange={(e) => {
-                          setNewCatRoomSelIncluded(e.target.checked)
-                          if (e.target.checked) setNewCatRoomCatOnly(false)
-                        }}
-                      />
-                      Room Selection Included
-                    </label>
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
-                      <input
-                        type="checkbox"
-                        checked={newCatRoomCatOnly}
-                        onChange={(e) => {
-                          setNewCatRoomCatOnly(e.target.checked)
-                          if (e.target.checked) setNewCatRoomSelIncluded(false)
-                        }}
-                      />
-                      Room Category Only
-                    </label>
-                    <div style={{ flex: 1 }} />
-                    <Button variant="primary" disabled={busy || !company?.id} onClick={() => void createPriceCategory()}>
-                      Create category
-                    </Button>
-                  </div>
-                </div>
-              </Panel>
-            }
-            right={
-              <Panel title="Existing categories" subtitle="Toggle active, edit channels/flags, and move up/down to reorder.">
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {(() => {
-                    const tree = buildCategoryTreeOrder()
-                    return tree.flat.map(({ c, depth }, idx) => {
-                      const arr = tree.flat.map((x) => x.c)
-                      const name = c.name_i18n?.en || Object.values(c.name_i18n || {})[0] || c.code
-                      const parent = String((c.parent_code as any) || '')
-                      const siblings = arr.filter((x) => String((x.parent_code as any) || '') === parent)
-                      const sibIdx = siblings.findIndex((x) => x.code === c.code)
-                      return (
-                        <div
-                          key={c.code}
-                          style={{
-                            border: '1px solid var(--csp-border)',
-                            borderRadius: 8,
-                            padding: 12,
-                            display: 'grid',
-                            gap: 12,
-                            background: 'var(--csp-surface-bg)',
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                            <div>
-                              <div style={{ fontWeight: 600, color: 'var(--csp-text)' }}>
-                                <span style={{ display: 'inline-block', width: depth * 14 }} />
-                                <Mono>{c.code}</Mono> · {name}{' '}
-                                {!c.active ? <span style={{ color: 'var(--csp-muted)', fontWeight: 400 }}>(inactive)</span> : null}
-                              </div>
-                              <div style={{ fontSize: 12, color: 'var(--csp-muted)', marginTop: 4 }}>
-                                Channels: {(c.enabled_channels || []).join(', ') || '(none)'} ·{' '}
-                                {c.room_selection_included ? 'Room selection included' : c.room_category_only ? 'Room category only' : 'No room flag'}
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                              <Button
-                                disabled={busy || sibIdx <= 0}
-                                onClick={() => {
-                                  const sib = siblings.slice()
-                                  const tmp = sib[sibIdx - 1]
-                                  sib[sibIdx - 1] = sib[sibIdx]
-                                  sib[sibIdx] = tmp
-                                  // Build a full order list with updated sibling ordering
-                                  const current = buildCategoryTreeOrder()
-                                  const codes = current.orderCodes.slice()
-                                  const groupCodes = sib.map((x) => x.code)
-                                  // Replace occurrences of the group's codes in the codes list with the new order
-                                  const out: string[] = []
-                                  let gi = 0
-                                  for (const code of codes) {
-                                    if (groupCodes.includes(code)) {
-                                      out.push(groupCodes[gi++])
-                                    } else {
-                                      out.push(code)
-                                    }
-                                  }
-                                  void reorderCats(out)
-                                }}
-                              >
-                                ↑
-                              </Button>
-                              <Button
-                                disabled={busy || sibIdx === -1 || sibIdx >= siblings.length - 1}
-                                onClick={() => {
-                                  const sib = siblings.slice()
-                                  const tmp = sib[sibIdx + 1]
-                                  sib[sibIdx + 1] = sib[sibIdx]
-                                  sib[sibIdx] = tmp
-                                  const current = buildCategoryTreeOrder()
-                                  const codes = current.orderCodes.slice()
-                                  const groupCodes = sib.map((x) => x.code)
-                                  const out: string[] = []
-                                  let gi = 0
-                                  for (const code of codes) {
-                                    if (groupCodes.includes(code)) {
-                                      out.push(groupCodes[gi++])
-                                    } else {
-                                      out.push(code)
-                                    }
-                                  }
-                                  void reorderCats(out)
-                                }}
-                              >
-                                ↓
-                              </Button>
-                              <Button disabled={busy} onClick={() => void patchPriceCategory(c.code, { active: !c.active })} title="Toggle active">
-                                {c.active ? 'Deactivate' : 'Activate'}
-                              </Button>
-                              <Button variant="danger" disabled={busy} onClick={() => void deletePriceCategory(c.code)}>
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-
-                          <TwoCol
-                            left={
-                              <Input
-                                label="Channels (comma-separated)"
-                                value={(c.enabled_channels || []).join(', ')}
-                                onChange={(e) => void patchPriceCategory(c.code, { enabled_channels: parseChannels(e.target.value) })}
-                                disabled={busy}
-                              />
-                            }
-                            right={
-                              <div style={{ display: 'grid', gap: 12 }}>
-                                <Select
-                                  label="Parent"
-                                  value={(c.parent_code as any) || ''}
-                                  onChange={(e) => void patchPriceCategory(c.code, { parent_code: e.target.value || null })}
-                                  disabled={busy}
-                                >
-                                  <option value="">(none)</option>
-                                  {(priceCats || [])
-                                    .filter((x) => x.code !== c.code)
-                                    .slice()
-                                    .sort((a, b) => (a.order || 0) - (b.order || 0))
-                                    .map((p) => (
-                                      <option key={p.code} value={p.code}>
-                                        {p.code}
-                                      </option>
-                                    ))}
-                                </Select>
-                                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!!c.room_selection_included}
-                                    onChange={(e) => void patchPriceCategory(c.code, { room_selection_included: e.target.checked, room_category_only: false })}
-                                    disabled={busy}
-                                  />
-                                  Room Selection Included
-                                </label>
-                                <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!!c.room_category_only}
-                                    onChange={(e) => void patchPriceCategory(c.code, { room_category_only: e.target.checked, room_selection_included: false })}
-                                    disabled={busy}
-                                  />
-                                  Room Category Only
-                                </label>
-                                </div>
-                              </div>
-                            }
-                          />
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </Panel>
-            }
-          />
-        </div>
-      ) : null}
-
-      {tab === 'cruise' ? (
+      {tab === 'cruise' && (
         <Panel
           title="Cruise pricing table"
           subtitle="Pick a sailing (cruise). Rows are cabin categories; columns are active price categories. Enter per-person price in cents. Export JSON/CSV/Excel uses authenticated downloads."
@@ -1081,44 +843,9 @@ export function PricingPage(props: { apiBase: string }) {
               </div>
             </div>
         </Panel>
-      ) : null}
-
-      {/* Legacy overrides UI removed from tabs per requirements */}
+      )}
     </div>
   )
-}
-
-function groupCategoryPrices(
-  rows: NonNullable<OverridesOut['category_prices']>
-): { category_code: string; items: NonNullable<OverridesOut['category_prices']> }[] {
-  const by: Record<string, NonNullable<OverridesOut['category_prices']>> = {}
-  for (const r of rows) {
-    const k = (r.category_code || '').trim().toUpperCase()
-    if (!k) continue
-    if (!by[k]) by[k] = []
-    by[k].push(r)
-  }
-  const cats = Object.keys(by).sort()
-  return cats.map((category_code) => ({
-    category_code,
-    items: by[category_code].slice().sort((a, b) => {
-      const ap = (a.price_type || 'regular').toLowerCase()
-      const bp = (b.price_type || 'regular').toLowerCase()
-      if (ap !== bp) return ap.localeCompare(bp)
-      const ac = (a.currency || '').toUpperCase()
-      const bc = (b.currency || '').toUpperCase()
-      if (ac !== bc) return ac.localeCompare(bc)
-      const ag = Number(a.min_guests || 0)
-      const bg = Number(b.min_guests || 0)
-      if (ag !== bg) return ag - bg
-      const as = a.effective_start_date || ''
-      const bs = b.effective_start_date || ''
-      if (as !== bs) return as.localeCompare(bs)
-      const ae = a.effective_end_date || ''
-      const be = b.effective_end_date || ''
-      return ae.localeCompare(be)
-    }),
-  }))
 }
 
 const styles = {
@@ -1136,5 +863,9 @@ const styles = {
         borderBottom: '1px solid var(--csp-border)',
         color: 'var(--csp-text)',
         verticalAlign: 'top'
+    },
+    tr: {
+        cursor: 'pointer',
+        transition: 'background 0.15s ease'
     }
 }
