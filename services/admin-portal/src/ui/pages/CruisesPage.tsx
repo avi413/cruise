@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../api/client'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel } from '../components/ui'
@@ -18,6 +19,7 @@ function pickTitle(titles: Record<string, string> | undefined, preferred: string
 
 export function CruisesPage(props: { apiBase: string }) {
   const nav = useNavigate()
+  const { t } = useTranslation()
   const [q, setQ] = useState('')
   const [items, setItems] = useState<CruiseItem[]>([])
   const [itinerariesById, setItinerariesById] = useState<Record<string, Itinerary>>({})
@@ -80,12 +82,12 @@ export function CruisesPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Cruises"
-        subtitle="Browse available sailings with ship metadata. Use live search to quickly find by ship, date, port, or sailing code."
+        title={t('cruises.title')}
+        subtitle={t('cruises.subtitle')}
         right={
           <>
             <Button variant="secondary" disabled={busy} onClick={() => void refresh()}>
-              {busy ? 'Refreshing…' : 'Refresh'}
+              {busy ? t('cruises.refreshing') : t('cruises.refresh')}
             </Button>
           </>
         }
@@ -94,24 +96,24 @@ export function CruisesPage(props: { apiBase: string }) {
       {err ? <ErrorBanner message={err} /> : null}
 
       <Panel
-        title="Live search"
-        subtitle="Tip: paste a sailing id into Sales to place a hold. This screen helps you find it fast."
+        title={t('cruises.search_title')}
+        subtitle={t('cruises.search_subtitle')}
       >
         <div style={{ display: 'grid', gap: 10 }}>
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by ship name/code, sailing code, dates, ports…" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('cruises.search_placeholder')} />
         </div>
       </Panel>
 
-      <Panel title={`Results (${filtered.length})`} subtitle="Click ‘Open in Sales’ to prefill the workflow with that sailing id.">
+      <Panel title={`${t('cruises.results_title')} (${filtered.length})`} subtitle={t('cruises.open_in_sales_hint')}>
         <div style={{ overflow: 'auto' }}>
           <table style={tableStyles.table}>
             <thead>
               <tr>
-                <th style={tableStyles.th}>Sailing</th>
-                <th style={tableStyles.th}>Dates</th>
-                <th style={tableStyles.th}>Ports</th>
-                <th style={tableStyles.th}>Itinerary</th>
-                <th style={tableStyles.th}>Ship</th>
+                <th style={tableStyles.th}>{t('cruises.th_sailing')}</th>
+                <th style={tableStyles.th}>{t('cruises.th_dates')}</th>
+                <th style={tableStyles.th}>{t('cruises.th_ports')}</th>
+                <th style={tableStyles.th}>{t('cruises.th_itinerary')}</th>
+                <th style={tableStyles.th}>{t('cruises.th_ship')}</th>
                 <th style={tableStyles.th}></th>
               </tr>
             </thead>
@@ -153,7 +155,7 @@ export function CruisesPage(props: { apiBase: string }) {
                         onClick={() => nav(`/app/sales?sailing_id=${encodeURIComponent(String(s.id))}`)}
                         title="Jump to Sales and prefill sailing id"
                       >
-                        Open in Sales
+                        {t('cruises.open_in_sales')}
                       </Button>
                     </td>
                   </tr>
@@ -162,7 +164,7 @@ export function CruisesPage(props: { apiBase: string }) {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} style={tableStyles.empty}>
-                    {busy ? 'Loading…' : 'No results.'}
+                    {busy ? t('cruises.loading') : t('cruises.no_results')}
                   </td>
                 </tr>
               ) : null}
@@ -179,19 +181,18 @@ const tableStyles: Record<string, React.CSSProperties> = {
   th: {
     textAlign: 'left',
     padding: '10px 8px',
-    borderBottom: '1px solid rgba(255,255,255,0.10)',
-    color: 'rgba(230,237,243,0.75)',
+    borderBottom: '1px solid var(--csp-border)',
+    color: 'var(--csp-muted)',
     fontWeight: 900,
   },
-  td: { padding: '10px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', verticalAlign: 'top' },
+  td: { padding: '10px 8px', borderBottom: '1px solid var(--csp-border)', verticalAlign: 'top' },
   tdMono: {
     padding: '10px 8px',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    borderBottom: '1px solid var(--csp-border)',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
     fontSize: 12,
     verticalAlign: 'top',
   },
-  sub: { marginTop: 4, color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.35 },
-  empty: { padding: '14px 8px', color: 'rgba(230,237,243,0.60)' },
+  sub: { marginTop: 4, color: 'var(--csp-muted)', fontSize: 12, lineHeight: 1.35 },
+  empty: { padding: '14px 8px', color: 'var(--csp-muted)' },
 }
-

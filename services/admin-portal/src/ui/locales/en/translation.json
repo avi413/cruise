@@ -122,5 +122,23 @@
       "balcony": "balcony",
       "suite": "suite"
     }
+  "cruises": {
+    "title": "Cruises",
+    "subtitle": "Browse available sailings with ship metadata. Use live search to quickly find by ship, date, port, or sailing code.",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing…",
+    "search_title": "Live search",
+    "search_subtitle": "Tip: paste a sailing id into Sales to place a hold. This screen helps you find it fast.",
+    "search_placeholder": "Search by ship name/code, sailing code, dates, ports…",
+    "results_title": "Results",
+    "open_in_sales_hint": "Click ‘Open in Sales’ to prefill the workflow with that sailing id.",
+    "th_sailing": "Sailing",
+    "th_dates": "Dates",
+    "th_ports": "Ports",
+    "th_itinerary": "Itinerary",
+    "th_ship": "Ship",
+    "open_in_sales": "Open in Sales",
+    "loading": "Loading…",
+    "no_results": "No results."
   }
 }
