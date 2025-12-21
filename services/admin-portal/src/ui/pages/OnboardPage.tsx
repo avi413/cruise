@@ -88,6 +88,8 @@ export function OnboardPage(props: { apiBase: string }) {
   const [fleet, setFleet] = useState<Ship[]>([])
   const [shipId, setShipId] = useState<string>('')
 
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>(['USD'])
+
   const [ports, setPorts] = useState<Port[]>([])
 
   const [capabilities, setCapabilities] = useState<Capability[]>([])
