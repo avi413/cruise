@@ -3,7 +3,17 @@ import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 
-type QuoteOut = { currency: string; subtotal: number; discounts: number; taxes_fees: number; total: number; lines: { code: string; description: string; amount: number }[] }
+// --- Types ---
+
+type QuoteOut = {
+  currency: string
+  subtotal: number
+  discounts: number
+  taxes_fees: number
+  total: number
+  lines: { code: string; description: string; amount: number }[]
+}
+
 type BookingOut = {
   id: string
   status: string
@@ -18,12 +28,55 @@ type BookingOut = {
   quote: QuoteOut
 }
 
-type Sailing = { id: string; code: string; ship_id: string; start_date: string; end_date: string; embark_port_code: string; debark_port_code: string; status: string }
-type Customer = { id: string; email: string; first_name?: string | null; last_name?: string | null; loyalty_tier?: string | null; updated_at?: string }
-type CabinCategory = { id: string; ship_id: string; code: string; name: string; view: string; cabin_class: string; max_occupancy: number; meta: any }
-type Cabin = { id: string; cabin_no: string; deck: number; category_id: string | null; status: string }
-type CatInvRow = { sailing_id: string; category_code: string; capacity: number; held: number; confirmed: number; available: number }
+type Sailing = {
+  id: string
+  code: string
+  ship_id: string
+  start_date: string
+  end_date: string
+  embark_port_code: string
+  debark_port_code: string
+  status: string
+}
+
+type Port = {
+  code: string
+  names: Record<string, string>
+  cities: Record<string, string>
+  countries: Record<string, string>
+}
+
+type Customer = {
+  id: string
+  email: string
+  first_name?: string | null
+  last_name?: string | null
+  loyalty_tier?: string | null
+  updated_at?: string
+}
+
+type CabinCategory = {
+  id: string
+  ship_id: string
+  code: string
+  name: string
+  view: string
+  cabin_class: string
+  max_occupancy: number
+  meta: any
+}
+
+type Cabin = {
+  id: string
+  cabin_no: string
+  deck: number
+  category_id: string | null
+  status: string
+}
+
 type MePrefs = { user_id: string; updated_at: string; preferences: any }
+
+// --- Helpers ---
 
 function formatMoney(cents: number, currency: string, locale: string): string {
   const amount = Number(cents || 0) / 100
@@ -34,134 +87,196 @@ function formatMoney(cents: number, currency: string, locale: string): string {
   }
 }
 
+function getProp(obj: any, locale: string): string {
+  if (!obj) return ''
+  return obj[locale] || obj['en'] || Object.values(obj)[0] || ''
+}
+
+// --- Component ---
+
 export function SalesPage(props: { apiBase: string }) {
   const { t } = useTranslation()
-  const [searchParams] = useSearchParams()
-  const [sailingId, setSailingId] = useState('')
-  const [sailingDate, setSailingDate] = useState('')
-  const [cabinType, setCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
-  const [cabinCategoryCode, setCabinCategoryCode] = useState('')
-  const [priceType, setPriceType] = useState('regular')
-  const [adult, setAdult] = useState(2)
-  const [child, setChild] = useState(0)
-  const [infant, setInfant] = useState(0)
-  const [coupon, setCoupon] = useState('')
-  const [tier, setTier] = useState('')
-  const [customerId, setCustomerId] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const [quote, setQuote] = useState<QuoteOut | null>(null)
-  const [bookingId, setBookingId] = useState('')
-  const [booking, setBooking] = useState<BookingOut | null>(null)
-
-  const [invCabinType, setInvCabinType] = useState('inside')
-  const [invMode, setInvMode] = useState<'cabin_type' | 'category_code'>('cabin_type')
-  const [invCategoryCode, setInvCategoryCode] = useState('')
-  const [invCap, setInvCap] = useState(100)
-  const [inv, setInv] = useState<any[] | null>(null)
-  const [catInv, setCatInv] = useState<CatInvRow[] | null>(null)
-
-  const [rateCabinType, setRateCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
-  const [rateMultiplier, setRateMultiplier] = useState(1.0)
-  const [baseAdult, setBaseAdult] = useState(100000)
-  const [baseChild, setBaseChild] = useState(60000)
-  const [baseInfant, setBaseInfant] = useState(10000)
-
+  // -- Global State --
+  const [userLocale, setUserLocale] = useState('en')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  // -- Data Cache --
   const [sailings, setSailings] = useState<Sailing[]>([])
-  const [sailingQ, setSailingQ] = useState('')
-
-  const [customerQ, setCustomerQ] = useState('')
-  const [customerHits, setCustomerHits] = useState<Customer[]>([])
-
+  const [ports, setPorts] = useState<Port[]>([])
   const [cabinCats, setCabinCats] = useState<CabinCategory[]>([])
   const [cabins, setCabins] = useState<Cabin[]>([])
   const [unavailableCabins, setUnavailableCabins] = useState<string[]>([])
-  const [specificCabinId, setSpecificCabinId] = useState('')
 
-  const [userLocale, setUserLocale] = useState('en')
+  // -- Search State --
+  const [searchDest, setSearchDest] = useState('')
+  const [searchDateStart, setSearchDateStart] = useState('')
+  const [searchDateEnd, setSearchDateEnd] = useState('')
+  const [searchGuests, setSearchGuests] = useState(2)
+
+  // -- Flow State --
+  // step: search -> selection -> quote -> booking -> payment -> confirm
+  const [step, setStep] = useState<'search' | 'selection' | 'quote' | 'booking' | 'payment' | 'confirm'>('search')
+  
+  const [selectedSailingId, setSelectedSailingId] = useState('')
+  const [selectedDeck, setSelectedDeck] = useState<number | null>(null)
+  const [selectedCabinId, setSelectedCabinId] = useState('')
+  const [selectedCabinType, setSelectedCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside') // Fallback if no specific cabin
+  const [selectedCatCode, setSelectedCatCode] = useState('')
+
+  const [quote, setQuote] = useState<QuoteOut | null>(null)
+  
+  // -- Booking State --
+  const [customerId, setCustomerId] = useState('')
+  const [customerQ, setCustomerQ] = useState('')
+  const [customerHits, setCustomerHits] = useState<Customer[]>([])
+  const [booking, setBooking] = useState<BookingOut | null>(null)
+  
+  // -- Guests Breakdown --
+  const [adults, setAdults] = useState(2)
+  const [children, setChildren] = useState(0)
+  const [infants, setInfants] = useState(0)
+
+  // -- Init --
 
   useEffect(() => {
+    // Load Prefs
     apiFetch<MePrefs>(props.apiBase, `/v1/staff/me/preferences`)
-      .then((r) => {
-        const loc = String(r?.preferences?.locale || 'en')
-        setUserLocale(loc)
-      })
-      .catch(() => {
-        /* ignore */
-      })
+      .then((r) => setUserLocale(String(r?.preferences?.locale || 'en')))
+      .catch(() => {})
+
+    // Load Sailings & Ports
+    Promise.all([
+      apiFetch<Sailing[]>(props.apiBase, `/v1/sailings`, { auth: false, tenant: false }),
+      apiFetch<Port[]>(props.apiBase, `/v1/ports`)
+    ]).then(([s, p]) => {
+      setSailings(s || [])
+      setPorts(p || [])
+    }).catch(e => setErr(String(e)))
   }, [props.apiBase])
 
+  // Deep Link Support
   useEffect(() => {
     const sid = searchParams.get('sailing_id')
-    const bid = searchParams.get('booking_id')
-    const cid = searchParams.get('customer_id')
-    if (sid && !sailingId) setSailingId(sid)
-    if (bid && !bookingId) setBookingId(bid)
-    if (cid && !customerId) setCustomerId(cid)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
-
-  useEffect(() => {
-    // Auto-load booking when deep-linking from Notifications.
-    if (!bookingId.trim()) return
-    if (!searchParams.get('booking_id')) return
-    if (booking) return
-    loadBooking().catch(() => {
-      /* ignore */
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId])
-
-  useEffect(() => {
-    apiFetch<Sailing[]>(props.apiBase, `/v1/sailings`, { auth: false, tenant: false })
-      .then((r) => setSailings(r || []))
-      .catch(() => {
-        /* ignore; the module still works with manual IDs */
-      })
-  }, [props.apiBase])
-
-  useEffect(() => {
-    // Load cabin categories for the selected sailing's ship (for picklist).
-    const s = sailings.find((x) => x.id === sailingId)
-    const shipId = s?.ship_id
-    if (!shipId) {
-      setCabinCats([])
-      return
+    if (sid && sailings.length > 0 && !selectedSailingId) {
+       const s = sailings.find(x => x.id === sid)
+       if (s) selectSailing(s)
     }
-    apiFetch<CabinCategory[]>(props.apiBase, `/v1/ships/${encodeURIComponent(shipId)}/cabin-categories`)
-      .then((r) => setCabinCats(r || []))
-      .catch(() => setCabinCats([]))
-  }, [props.apiBase, sailings, sailingId])
-
-  useEffect(() => {
-    if (!sailingId.trim()) return
-    loadInventory().catch(() => {
-      /* ignore */
-    })
-    loadCabinsAndAvailability().catch(() => {
-        /* ignore */
-    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sailingId])
+  }, [searchParams, sailings])
 
-  async function loadCabinsAndAvailability() {
-     if (!sailingId) return
-     const s = sailings.find(x => x.id === sailingId)
-     if (!s?.ship_id) return
-     
-     // Load all cabins for ship
-     apiFetch<Cabin[]>(props.apiBase, `/v1/ships/${encodeURIComponent(s.ship_id)}/cabins`)
-       .then(r => setCabins(r || []))
-       .catch(() => setCabins([]))
+  // -- Filtered Results --
 
-     // Load unavailable for sailing
-     apiFetch<string[]>(props.apiBase, `/v1/inventory/sailings/${encodeURIComponent(sailingId)}/unavailable-cabins`)
-       .then(r => setUnavailableCabins(r || []))
-       .catch(() => setUnavailableCabins([]))
+  const filteredSailings = useMemo(() => {
+    return sailings.filter(s => {
+      if (searchDest && s.embark_port_code !== searchDest) return false
+      if (searchDateStart && s.start_date < searchDateStart) return false
+      if (searchDateEnd && s.end_date > searchDateEnd) return false
+      return true
+    })
+  }, [sailings, searchDest, searchDateStart, searchDateEnd])
+
+  // -- Actions --
+
+  async function selectSailing(s: Sailing) {
+    setSelectedSailingId(s.id)
+    setStep('selection')
+    setBusy(true)
+    try {
+      // Load Ship Metadata
+      const cats = await apiFetch<CabinCategory[]>(props.apiBase, `/v1/ships/${s.ship_id}/cabin-categories`)
+      setCabinCats(cats || [])
+      const cabs = await apiFetch<Cabin[]>(props.apiBase, `/v1/ships/${s.ship_id}/cabins`)
+      setCabins(cabs || [])
+      const unavail = await apiFetch<string[]>(props.apiBase, `/v1/inventory/sailings/${s.id}/unavailable-cabins`)
+      setUnavailableCabins(unavail || [])
+    } catch (e: any) {
+      setErr(String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
+  async function getQuote() {
+    if (!selectedSailingId) return
+    setBusy(true)
+    setErr(null)
+    try {
+      // Prepare guests list
+      const guests = []
+      for(let i=0; i<adults; i++) guests.push({ paxtype: 'adult' })
+      for(let i=0; i<children; i++) guests.push({ paxtype: 'child' })
+      for(let i=0; i<infants; i++) guests.push({ paxtype: 'infant' })
+
+      const q = await apiFetch<QuoteOut>(props.apiBase, `/v1/quote`, {
+        method: 'POST',
+        body: {
+          sailing_id: selectedSailingId,
+          sailing_date: null, // derived from ID
+          cabin_type: selectedCabinType,
+          cabin_category_code: selectedCatCode || null,
+          price_type: 'regular',
+          guests,
+          coupon_code: null,
+          loyalty_tier: null
+        },
+        tenant: true
+      })
+      setQuote(q)
+      setStep('quote')
+    } catch (e: any) {
+      setErr(String(e?.detail || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function createHold() {
+    setBusy(true)
+    setErr(null)
+    try {
+       const r = await apiFetch<BookingOut>(props.apiBase, `/v1/holds`, {
+        method: 'POST',
+        body: {
+          customer_id: customerId || null,
+          sailing_id: selectedSailingId,
+          cabin_type: selectedCabinType,
+          cabin_category_code: selectedCatCode || null,
+          cabin_id: selectedCabinId || null,
+          price_type: 'regular',
+          guests: { adult: adults, child: children, infant: infants },
+          hold_minutes: 30,
+        },
+      })
+      setBooking(r)
+      setStep('payment')
+    } catch (e: any) {
+      setErr(String(e?.detail || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function processPayment() {
+    if (!booking) return
+    setBusy(true)
+    try {
+      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${booking.id}/confirm`, {
+        method: 'POST',
+        body: { payment_token: 'demo-pos-terminal' }
+      })
+      setBooking(r)
+      setStep('confirm')
+    } catch (e: any) {
+      setErr(String(e?.detail || e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // -- Customer Search --
   useEffect(() => {
     const q = customerQ.trim()
     if (!q) {
@@ -169,661 +284,397 @@ export function SalesPage(props: { apiBase: string }) {
       return
     }
     const t = window.setTimeout(() => {
-      const params = new URLSearchParams()
-      params.set('q', q)
-      params.set('limit', '10')
-      apiFetch<Customer[]>(props.apiBase, `/v1/customers?${params.toString()}`)
-        .then((r) => setCustomerHits(r || []))
+      apiFetch<Customer[]>(props.apiBase, `/v1/customers?q=${encodeURIComponent(q)}&limit=5`)
+        .then(r => setCustomerHits(r || []))
         .catch(() => setCustomerHits([]))
-    }, 250)
-    return () => window.clearTimeout(t)
+    }, 300)
+    return () => clearTimeout(t)
   }, [customerQ, props.apiBase])
 
-  const sailingOptions = useMemo(() => {
-    const needle = sailingQ.trim().toLowerCase()
-    if (!needle) return sailings
-    return sailings.filter((s) => `${s.code} ${s.start_date} ${s.end_date} ${s.ship_id} ${s.embark_port_code} ${s.debark_port_code}`.toLowerCase().includes(needle))
-  }, [sailings, sailingQ])
 
-  function guestsList() {
-    const guests: any[] = []
-    for (let i = 0; i < adult; i++) guests.push({ paxtype: 'adult' })
-    for (let i = 0; i < child; i++) guests.push({ paxtype: 'child' })
-    for (let i = 0; i < infant; i++) guests.push({ paxtype: 'infant' })
-    return guests
-  }
+  // -- Render Helpers --
 
-  async function doQuote() {
-    setBusy(true)
-    setErr(null)
-    try {
-      const r = await apiFetch<QuoteOut>(props.apiBase, `/v1/quote`, {
-        method: 'POST',
-        body: {
-          sailing_id: sailingId || null,
-          sailing_date: sailingDate || null,
-          cabin_type: cabinType,
-          cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
-          price_type: priceType.trim().toLowerCase() || 'regular',
-          guests: guestsList(),
-          coupon_code: coupon || null,
-          loyalty_tier: tier || null,
-        },
-        auth: false,
-        // Quote in the portal should be tenant-aware (company-specific rates)
-        tenant: true,
-      })
-      setQuote(r)
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const decks = useMemo(() => {
+    const d = new Set<number>()
+    cabins.forEach(c => d.add(c.deck))
+    return Array.from(d).sort((a,b) => a - b)
+  }, [cabins])
 
-  async function placeHold() {
-    setBusy(true)
-    setErr(null)
-    try {
-      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/holds`, {
-        method: 'POST',
-        body: {
-          customer_id: customerId || null,
-          sailing_id: sailingId,
-          sailing_date: sailingDate ? `${sailingDate}T00:00:00Z` : null,
-          cabin_type: cabinType,
-          cabin_category_code: cabinCategoryCode.trim() ? cabinCategoryCode.trim().toUpperCase() : null,
-          cabin_id: specificCabinId || null,
-          price_type: priceType.trim().toLowerCase() || 'regular',
-          guests: { adult, child, infant },
-          coupon_code: coupon || null,
-          loyalty_tier: tier || null,
-          hold_minutes: 15,
-        },
-      })
-      setBooking(r)
-      setBookingId(r.id)
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const cabinsOnDeck = useMemo(() => {
+    if (!selectedDeck) return []
+    return cabins.filter(c => c.deck === selectedDeck).sort((a,b) => a.cabin_no.localeCompare(b.cabin_no, undefined, { numeric: true }))
+  }, [cabins, selectedDeck])
 
-  async function confirm() {
-    if (!bookingId) return
-    setBusy(true)
-    setErr(null)
-    try {
-      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${bookingId}/confirm`, { method: 'POST', body: { payment_token: 'demo' } })
-      setBooking(r)
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const selectedSailing = sailings.find(s => s.id === selectedSailingId)
 
-  async function loadBooking() {
-    if (!bookingId) return
-    setBusy(true)
-    setErr(null)
-    try {
-      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${bookingId}`)
-      setBooking(r)
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  // -- Views --
 
-  async function setInventory() {
-    if (!sailingId) return
-    setBusy(true)
-    setErr(null)
-    try {
-      if (invMode === 'category_code') {
-        const code = (invCategoryCode || cabinCategoryCode || '').trim().toUpperCase()
-        if (!code) throw new Error('Select a cabin category code to set category inventory.')
-        await apiFetch(props.apiBase, `/v1/inventory/sailings/${sailingId}/categories`, { method: 'POST', body: { category_code: code, capacity: invCap } })
-        const r = await apiFetch<CatInvRow[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}/categories`)
-        setCatInv(r)
-        setInv(null)
-      } else {
-        await apiFetch(props.apiBase, `/v1/inventory/sailings/${sailingId}`, { method: 'POST', body: { cabin_type: invCabinType, capacity: invCap } })
-        const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
-        setInv(r)
-        setCatInv(null)
-      }
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  if (step === 'search') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <div style={styles.title}>{t('sales.title')}</div>
+          <div style={styles.subtitle}>{t('sales.subtitle')}</div>
+        </div>
 
-  async function loadInventory() {
-    if (!sailingId) return
-    setBusy(true)
-    setErr(null)
-    try {
-      if (invMode === 'category_code' || cabinCategoryCode.trim()) {
-        const r = await apiFetch<CatInvRow[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}/categories`)
-        setCatInv(r)
-        setInv(null)
-      } else {
-        const r = await apiFetch<any[]>(props.apiBase, `/v1/inventory/sailings/${sailingId}`)
-        setInv(r)
-        setCatInv(null)
-      }
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function setCabinMultiplier() {
-    setBusy(true)
-    setErr(null)
-    try {
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/cabin-multipliers`, {
-        method: 'POST',
-        // Company-managed pricing (tenant-scoped via X-Company-Id)
-        body: { cabin_type: rateCabinType, multiplier: rateMultiplier },
-      })
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function setBaseFares() {
-    setBusy(true)
-    setErr(null)
-    try {
-      // Company-managed pricing (tenant-scoped via X-Company-Id)
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'adult', amount: baseAdult } })
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'child', amount: baseChild } })
-      await apiFetch(props.apiBase, `/v1/pricing/overrides/base-fares`, { method: 'POST', body: { paxtype: 'infant', amount: baseInfant } })
-    } catch (e: any) {
-      setErr(String(e?.detail || e?.message || e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div style={styles.wrap}>
-      <div style={styles.hTitle}>{t('sales.title')}</div>
-      <div style={styles.hSub}>{t('sales.subtitle')}</div>
-
-      {err ? <div style={styles.error}>{err}</div> : null}
-
-      <div style={styles.grid}>
-        <section style={styles.panel}>
-          <div style={styles.panelTitle}>{t('sales.quote_panel')}</div>
-          <div style={styles.form}>
-            <label style={styles.label}>
-              {t('sales.sailing_label')}
-              <input style={styles.input} value={sailingQ} onChange={(e) => setSailingQ(e.target.value)} placeholder={t('sales.sailing_placeholder')} />
-            </label>
-            <label style={styles.label}>
-              {t('sales.sailing_id_label')}
-              <select
-                style={styles.input}
-                value={sailingId}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setSailingId(v)
-                  const s = sailings.find((x) => x.id === v)
-                  if (s && !sailingDate) setSailingDate(s.start_date)
-                }}
-              >
-                <option value="">{t('sales.none')}</option>
-                {sailingOptions.slice(0, 150).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} · {s.start_date}→{s.end_date} · {s.embark_port_code}→{s.debark_port_code}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={styles.label}>
-              {t('sales.sailing_date_label')}
-              <input style={styles.input} value={sailingDate} onChange={(e) => setSailingDate(e.target.value)} type="date" />
-            </label>
-            <label style={styles.label}>
-              {t('sales.cabin_cat_label')}
-              <select style={styles.input} value={cabinCategoryCode} onChange={(e) => setCabinCategoryCode(e.target.value)}>
-                <option value="">{t('sales.none')}</option>
-                {cabinCats.map((c) => (
-                  <option key={c.id} value={c.code}>
-                    {c.code} · {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={styles.label}>
-              {t('sales.price_type_label')}
-              <input
-                style={styles.input}
-                value={priceType}
-                onChange={(e) => setPriceType(e.target.value)}
-                placeholder={t('sales.price_type_placeholder')}
-              />
-            </label>
-            <label style={styles.label}>
-              {t('sales.cabin_type_label')}
-              <select style={styles.input} value={cabinType} onChange={(e) => setCabinType(e.target.value as any)}>
-                <option value="inside">{t('sales.cabin_types.inside')}</option>
-                <option value="oceanview">{t('sales.cabin_types.oceanview')}</option>
-                <option value="balcony">{t('sales.cabin_types.balcony')}</option>
-                <option value="suite">{t('sales.cabin_types.suite')}</option>
-              </select>
-            </label>
-            <label style={styles.label}>
-              {t('sales.specific_cabin_label')}
-              <select style={styles.input} value={specificCabinId} onChange={(e) => setSpecificCabinId(e.target.value)}>
-                <option value="">{t('sales.tba_random')}</option>
-                {cabins
-                  .filter(c => {
-                     // Filter by category if selected
-                     if (cabinCategoryCode) {
-                       const cat = cabinCats.find(cat => cat.code === cabinCategoryCode)
-                       return c.category_id === cat?.id
-                     }
-                     return true
-                  })
-                  .sort((a, b) => a.cabin_no.localeCompare(b.cabin_no, undefined, { numeric: true }))
-                  .map(c => {
-                    const isTaken = unavailableCabins.includes(c.id)
-                    return (
-                      <option key={c.id} value={c.id} disabled={isTaken}>
-                        {c.cabin_no} (Deck {c.deck}) {isTaken ? `— ${t('sales.taken')}` : ''}
-                      </option>
-                    )
-                  })}
-              </select>
-            </label>
-            <div style={styles.row3}>
-              <label style={styles.label}>
-                {t('sales.adults')}
-                <input style={styles.input} value={adult} onChange={(e) => setAdult(Number(e.target.value))} type="number" min={1} step={1} />
-              </label>
-              <label style={styles.label}>
-                {t('sales.children')}
-                <input style={styles.input} value={child} onChange={(e) => setChild(Number(e.target.value))} type="number" min={0} step={1} />
-              </label>
-              <label style={styles.label}>
-                {t('sales.infants')}
-                <input style={styles.input} value={infant} onChange={(e) => setInfant(Number(e.target.value))} type="number" min={0} step={1} />
-              </label>
-            </div>
-            <div style={styles.row2}>
-              <label style={styles.label}>
-                {t('sales.coupon_label')}
-                <input style={styles.input} value={coupon} onChange={(e) => setCoupon(e.target.value)} placeholder={t('sales.coupon_placeholder')} />
-              </label>
-              <label style={styles.label}>
-                {t('sales.loyalty_label')}
-                <input style={styles.input} value={tier} onChange={(e) => setTier(e.target.value)} placeholder={t('sales.loyalty_placeholder')} />
-              </label>
-            </div>
-            <button style={styles.primaryBtn} disabled={busy} onClick={() => void doQuote()}>
-              {busy ? t('sales.working') : t('sales.get_quote')}
-            </button>
-
-            {quote ? (
-              <div style={styles.card}>
-                <div style={styles.cardTitle}>
-                  {t('sales.total')} {formatMoney(quote.total, quote.currency, userLocale)}
-                </div>
-                <div style={styles.muted}>
-                  {t('sales.subtotal')} {formatMoney(quote.subtotal, quote.currency, userLocale)} · {t('sales.discounts')} {formatMoney(quote.discounts, quote.currency, userLocale)} · {t('sales.taxes')} {formatMoney(quote.taxes_fees, quote.currency, userLocale)}
-                </div>
-                <ul style={styles.ul}>
-                  {quote.lines.map((l) => (
-                    <li key={l.code} style={styles.li}>
-                      <span style={styles.mono}>{l.code}</span> — {l.description} ({formatMoney(l.amount, quote.currency, userLocale)})
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+        {/* Search Bar */}
+        <div style={styles.searchBar}>
+          <div style={styles.searchField}>
+            <label style={styles.label}>{t('sales.destination')}</label>
+            <select style={styles.input} value={searchDest} onChange={e => setSearchDest(e.target.value)}>
+              <option value="">{t('sales.all_destinations')}</option>
+              {ports.map(p => (
+                <option key={p.code} value={p.code}>{getProp(p.names, userLocale)} ({p.code})</option>
+              ))}
+            </select>
           </div>
-        </section>
-
-        <section style={styles.panel}>
-          <div style={styles.panelTitle}>{t('sales.hold_confirm_panel')}</div>
-          <div style={styles.form}>
-            <label style={styles.label}>
-              {t('sales.sailing_id')}
-              <input list="sailing-ids" style={styles.input} value={sailingId} onChange={(e) => setSailingId(e.target.value)} placeholder={t('sales.pick_list_placeholder')} />
-              <datalist id="sailing-ids">
-                {sailings.slice(0, 200).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} {s.start_date} {s.embark_port_code}→{s.debark_port_code}
-                  </option>
-                ))}
-              </datalist>
-            </label>
-            <label style={styles.label}>
-              {t('sales.customer_search_label')}
-              <input style={styles.input} value={customerQ} onChange={(e) => setCustomerQ(e.target.value)} placeholder={t('sales.customer_placeholder')} />
-            </label>
-            {customerHits.length ? (
-              <div style={styles.card}>
-                <div style={styles.cardTitle}>{t('sales.matches')}</div>
-                <div style={styles.muted}>{t('sales.click_to_select')}</div>
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {customerHits.slice(0, 6).map((c) => (
-                    <button
-                      key={c.id}
-                      style={{ ...styles.secondaryBtn, textAlign: 'left' as const }}
-                      disabled={busy}
-                      onClick={() => {
-                        setCustomerId(c.id)
-                        setCustomerQ(c.email)
-                      }}
-                    >
-                      <span style={styles.mono}>{c.email}</span> — {([c.first_name, c.last_name].filter(Boolean).join(' ') || '—')} · <span style={styles.mono}>{c.id}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <label style={styles.label}>
-              {t('sales.customer_id_label')}
-              <input list="customer-ids" style={styles.input} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder={t('sales.customer_id_placeholder')} />
-              <datalist id="customer-ids">
-                {customerHits.slice(0, 10).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.email}
-                  </option>
-                ))}
-              </datalist>
-            </label>
-
-            <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void placeHold()}>
-              {busy ? t('sales.working') : t('sales.place_hold')}
-            </button>
-
-            <div style={styles.row2}>
-              <button style={styles.secondaryBtn} disabled={busy || !bookingId.trim()} onClick={() => void loadBooking()}>
-                {t('sales.load_booking')}
-              </button>
-              <button style={styles.secondaryBtn} disabled={busy || !bookingId.trim()} onClick={() => void confirm()}>
-                {t('sales.confirm_booking')}
-              </button>
-            </div>
-
-            <label style={styles.label}>
-              {t('sales.booking_id_label')}
-              <input style={styles.input} value={bookingId} onChange={(e) => setBookingId(e.target.value)} placeholder={t('sales.booking_id_placeholder')} />
-            </label>
-
-            {booking ? (
-              <div style={styles.card}>
-                <div style={styles.cardTitle}>
-                  {t('sales.booking')} {booking.id} · {booking.status}
-                </div>
-                <div style={styles.muted}>
-                  {t('sales.sailing')} <span style={styles.mono}>{booking.sailing_id}</span> · {t('sales.cabin')} <span style={styles.mono}>{booking.cabin_type}</span> {booking.cabin_id ? <span> · {t('sales.room')} <span style={styles.mono}>{cabins.find(c => c.id === booking.cabin_id)?.cabin_no || booking.cabin_id}</span></span> : ` ${t('sales.tba')}`}
-                </div>
-                <div style={styles.muted}>{t('sales.hold_expires')} {booking.hold_expires_at || '—'}</div>
-                <div style={styles.muted}>
-                  {t('sales.total')} {formatMoney(booking.quote.total, booking.quote.currency, userLocale)}
-                </div>
-              </div>
-            ) : null}
+          <div style={styles.searchField}>
+            <label style={styles.label}>{t('sales.departing_after')}</label>
+            <input type="date" style={styles.input} value={searchDateStart} onChange={e => setSearchDateStart(e.target.value)} />
           </div>
-        </section>
+          <div style={styles.searchField}>
+             <label style={styles.label}>{t('sales.departing_before')}</label>
+             <input type="date" style={styles.input} value={searchDateEnd} onChange={e => setSearchDateEnd(e.target.value)} />
+          </div>
+          <div style={styles.searchField}>
+            <label style={styles.label}>{t('sales.guests')}</label>
+            <input type="number" style={styles.input} min={1} value={searchGuests} onChange={e => setSearchGuests(Number(e.target.value))} />
+          </div>
+        </div>
+
+        {/* Results */}
+        <div style={styles.resultsGrid}>
+          {filteredSailings.map(s => {
+             const embark = ports.find(p => p.code === s.embark_port_code)
+             const debark = ports.find(p => p.code === s.debark_port_code)
+             return (
+               <div key={s.id} style={styles.sailingCard} onClick={() => selectSailing(s)}>
+                 <div style={styles.cardHeader}>
+                   <span style={styles.mono}>{s.code}</span>
+                   <span style={styles.badge}>{s.status}</span>
+                 </div>
+                 <div style={styles.cardBody}>
+                   <div style={styles.route}>
+                     {getProp(embark?.names, userLocale) || s.embark_port_code} 
+                     {' → '} 
+                     {getProp(debark?.names, userLocale) || s.debark_port_code}
+                   </div>
+                   <div style={styles.dates}>
+                     {s.start_date} — {s.end_date}
+                   </div>
+                   <div style={styles.ship}>Ship ID: {s.ship_id}</div>
+                 </div>
+                 <button style={styles.selectBtn}>{t('sales.select_sailing')}</button>
+               </div>
+             )
+          })}
+          {filteredSailings.length === 0 && (
+            <div style={styles.emptyState}>{t('sales.no_sailings_found')}</div>
+          )}
+        </div>
       </div>
+    )
+  }
 
-      <div style={styles.grid}>
-        <section style={styles.panel}>
-          <div style={styles.panelTitle}>{t('sales.inventory_capacity_panel')}</div>
-          <div style={styles.form}>
-            <label style={styles.label}>
-              {t('sales.inventory_mode')}
-              <select style={styles.input} value={invMode} onChange={(e) => setInvMode(e.target.value as any)}>
-                <option value="cabin_type">{t('sales.mode_cabin_type')}</option>
-                <option value="category_code">{t('sales.mode_cabin_cat')}</option>
-              </select>
-            </label>
-            <div style={styles.row2}>
-              {invMode === 'category_code' ? (
-                <label style={styles.label}>
-                  {t('sales.category_code')}
-                  <select style={styles.input} value={invCategoryCode || cabinCategoryCode} onChange={(e) => setInvCategoryCode(e.target.value)}>
-                    <option value="">{t('sales.select')}</option>
-                    {cabinCats.map((c) => (
-                      <option key={c.id} value={c.code}>
-                        {c.code} · {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <label style={styles.label}>
-                  {t('sales.cabin_type_label')}
-                  <select style={styles.input} value={invCabinType} onChange={(e) => setInvCabinType(e.target.value)}>
-                    <option value="inside">{t('sales.cabin_types.inside')}</option>
-                    <option value="oceanview">{t('sales.cabin_types.oceanview')}</option>
-                    <option value="balcony">{t('sales.cabin_types.balcony')}</option>
-                    <option value="suite">{t('sales.cabin_types.suite')}</option>
-                  </select>
-                </label>
-              )}
-              <label style={styles.label}>
-                {t('sales.capacity')}
-                <input style={styles.input} value={invCap} onChange={(e) => setInvCap(Number(e.target.value))} type="number" min={0} step={1} />
-              </label>
-            </div>
-            <div style={styles.row2}>
-              <button style={styles.primaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void setInventory()}>
-                {busy ? t('sales.working') : t('sales.set_capacity')}
-              </button>
-              <button style={styles.secondaryBtn} disabled={busy || !sailingId.trim()} onClick={() => void loadInventory()}>
-                {t('sales.refresh_inventory')}
-              </button>
-            </div>
-
-            {inv ? (
-              <div style={styles.tableWrap}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>{t('sales.th_cabin_type')}</th>
-                      <th style={styles.th}>{t('sales.th_capacity')}</th>
-                      <th style={styles.th}>{t('sales.th_held')}</th>
-                      <th style={styles.th}>{t('sales.th_confirmed')}</th>
-                      <th style={styles.th}>{t('sales.th_available')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inv.map((r) => (
-                      <tr key={r.cabin_type}>
-                        <td style={styles.tdMono}>{r.cabin_type}</td>
-                        <td style={styles.tdMono}>{r.capacity}</td>
-                        <td style={styles.tdMono}>{r.held}</td>
-                        <td style={styles.tdMono}>{r.confirmed}</td>
-                        <td style={styles.tdMono}>{r.available}</td>
-                      </tr>
-                    ))}
-                    {inv.length === 0 ? (
-                      <tr>
-                        <td style={styles.tdMuted} colSpan={5}>
-                          {t('sales.no_inv_rows')}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-
-            {catInv ? (
-              <div style={styles.tableWrap}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>{t('sales.th_category')}</th>
-                      <th style={styles.th}>{t('sales.th_capacity')}</th>
-                      <th style={styles.th}>{t('sales.th_held')}</th>
-                      <th style={styles.th}>{t('sales.th_confirmed')}</th>
-                      <th style={styles.th}>{t('sales.th_available')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catInv.map((r) => (
-                      <tr key={r.category_code}>
-                        <td style={styles.tdMono}>{r.category_code}</td>
-                        <td style={styles.tdMono}>{r.capacity}</td>
-                        <td style={styles.tdMono}>{r.held}</td>
-                        <td style={styles.tdMono}>{r.confirmed}</td>
-                        <td style={styles.tdMono}>{r.available}</td>
-                      </tr>
-                    ))}
-                    {catInv.length === 0 ? (
-                      <tr>
-                        <td style={styles.tdMuted} colSpan={5}>
-                          {t('sales.no_cat_inv_rows')}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section style={styles.panel}>
-          <div style={styles.panelTitle}>{t('sales.rates_panel')}</div>
-          <div style={styles.muted}>{t('sales.rates_note')}</div>
-          <div style={styles.form}>
-            <label style={styles.label}>
-              {t('sales.cabin_type_label')}
-              <select style={styles.input} value={rateCabinType} onChange={(e) => setRateCabinType(e.target.value as any)}>
-                <option value="inside">{t('sales.cabin_types.inside')}</option>
-                <option value="oceanview">{t('sales.cabin_types.oceanview')}</option>
-                <option value="balcony">{t('sales.cabin_types.balcony')}</option>
-                <option value="suite">{t('sales.cabin_types.suite')}</option>
-              </select>
-            </label>
-            <label style={styles.label}>
-              {t('sales.cabin_multiplier')}
-              <input style={styles.input} value={rateMultiplier} onChange={(e) => setRateMultiplier(Number(e.target.value))} type="number" step="0.05" min="0.1" />
-            </label>
-            <button style={styles.primaryBtn} disabled={busy} onClick={() => void setCabinMultiplier()}>
-              {busy ? t('sales.working') : t('sales.set_multiplier')}
-            </button>
-
-            <div style={styles.row3}>
-              <label style={styles.label}>
-                {t('sales.base_adult')}
-                <input style={styles.input} value={baseAdult} onChange={(e) => setBaseAdult(Number(e.target.value))} type="number" min={0} step={1000} />
-              </label>
-              <label style={styles.label}>
-                {t('sales.base_child')}
-                <input style={styles.input} value={baseChild} onChange={(e) => setBaseChild(Number(e.target.value))} type="number" min={0} step={1000} />
-              </label>
-              <label style={styles.label}>
-                {t('sales.base_infant')}
-                <input style={styles.input} value={baseInfant} onChange={(e) => setBaseInfant(Number(e.target.value))} type="number" min={0} step={1000} />
-              </label>
-            </div>
-            <button style={styles.primaryBtn} disabled={busy} onClick={() => void setBaseFares()}>
-              {busy ? t('sales.working') : t('sales.set_base_fares')}
-            </button>
-          </div>
-        </section>
+  // --- Common Header for Steps > Search ---
+  const header = (
+    <div style={styles.stepHeader}>
+      <button style={styles.backBtn} onClick={() => setStep('search')}>← {t('sales.back_to_search')}</button>
+      <div style={styles.stepInfo}>
+        <span style={styles.mono}>{selectedSailing?.code}</span>
+        <span>{selectedSailing?.start_date}</span>
       </div>
     </div>
   )
+
+  if (step === 'selection') {
+    return (
+      <div style={styles.container}>
+        {header}
+        <div style={styles.splitView}>
+           {/* Filters / Config */}
+           <div style={styles.panel}>
+             <div style={styles.panelTitle}>{t('sales.configure_trip')}</div>
+             <div style={styles.form}>
+               <div style={styles.row3}>
+                 <label style={styles.label}>{t('sales.adults')} <input style={styles.input} type="number" value={adults} onChange={e => setAdults(Number(e.target.value))} /></label>
+                 <label style={styles.label}>{t('sales.children')} <input style={styles.input} type="number" value={children} onChange={e => setChildren(Number(e.target.value))} /></label>
+                 <label style={styles.label}>{t('sales.infants')} <input style={styles.input} type="number" value={infants} onChange={e => setInfants(Number(e.target.value))} /></label>
+               </div>
+               
+               <div style={styles.divider} />
+               
+               <label style={styles.label}>{t('sales.select_deck')}</label>
+               <div style={styles.deckList}>
+                 {decks.map(d => (
+                   <button 
+                    key={d} 
+                    style={selectedDeck === d ? styles.deckBtnActive : styles.deckBtn}
+                    onClick={() => setSelectedDeck(d)}
+                   >
+                     {t('sales.deck')} {d}
+                   </button>
+                 ))}
+               </div>
+             </div>
+           </div>
+
+           {/* Cabin Map / List */}
+           <div style={styles.mainPanel}>
+             <div style={styles.panelTitle}>
+               {selectedDeck ? `${t('sales.cabins_on_deck')} ${selectedDeck}` : t('sales.select_deck_msg')}
+             </div>
+             
+             {selectedDeck && (
+               <div style={styles.cabinGrid}>
+                 {cabinsOnDeck.map(c => {
+                   const isTaken = unavailableCabins.includes(c.id)
+                   const isSelected = selectedCabinId === c.id
+                   const cat = cabinCats.find(cat => cat.id === c.category_id)
+                   return (
+                     <button
+                       key={c.id}
+                       disabled={isTaken}
+                       style={isSelected ? styles.cabinBtnSelected : (isTaken ? styles.cabinBtnDisabled : styles.cabinBtn)}
+                       onClick={() => {
+                         setSelectedCabinId(c.id)
+                         if (cat) {
+                           setSelectedCatCode(cat.code)
+                           // simplistic mapping, ideal world we map cabin_class to cabin_type enum
+                           // assuming cabin_class is compatible or we fallback
+                           // Here we just keep "inside" as default or try to map
+                           const typeMap: any = { 'inside': 'inside', 'ocean': 'oceanview', 'balcony': 'balcony', 'suite': 'suite' }
+                           setSelectedCabinType(typeMap[cat.cabin_class.toLowerCase()] || 'inside')
+                         }
+                       }}
+                     >
+                       <div style={styles.cabinNo}>{c.cabin_no}</div>
+                       <div style={styles.cabinCat}>{cat?.code || '-'}</div>
+                     </button>
+                   )
+                 })}
+               </div>
+             )}
+             
+             <div style={styles.actions}>
+               <button 
+                 style={styles.primaryBtn} 
+                 disabled={!selectedCabinId}
+                 onClick={() => getQuote()}
+               >
+                 {t('sales.view_price_quote')}
+               </button>
+             </div>
+           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'quote') {
+    return (
+      <div style={styles.container}>
+        {header}
+        <div style={styles.centerCard}>
+          <div style={styles.panelTitle}>{t('sales.quote_summary')}</div>
+          {quote && (
+            <div style={styles.quoteDetails}>
+               <div style={styles.bigPrice}>{formatMoney(quote.total, quote.currency, userLocale)}</div>
+               <div style={styles.breakdown}>
+                 {quote.lines.map(l => (
+                   <div key={l.code} style={styles.lineItem}>
+                     <span>{l.description}</span>
+                     <span>{formatMoney(l.amount, quote.currency, userLocale)}</span>
+                   </div>
+                 ))}
+                 <div style={styles.lineItemBold}>
+                   <span>{t('sales.taxes_fees')}</span>
+                   <span>{formatMoney(quote.taxes_fees, quote.currency, userLocale)}</span>
+                 </div>
+               </div>
+               
+               <div style={styles.actionsRow}>
+                 <button style={styles.secondaryBtn} onClick={() => setStep('selection')}>{t('sales.change_selection')}</button>
+                 <button style={styles.primaryBtn} onClick={() => setStep('booking')}>{t('sales.proceed_to_book')}</button>
+               </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'booking') {
+    return (
+      <div style={styles.container}>
+        {header}
+        <div style={styles.centerCard}>
+           <div style={styles.panelTitle}>{t('sales.customer_details')}</div>
+           
+           <div style={styles.form}>
+             <label style={styles.label}>{t('sales.search_customer')}</label>
+             <input 
+               style={styles.input} 
+               value={customerQ} 
+               onChange={e => setCustomerQ(e.target.value)} 
+               placeholder="Email or Name..."
+             />
+             
+             {customerHits.length > 0 && (
+               <div style={styles.hitList}>
+                 {customerHits.map(c => (
+                   <div 
+                     key={c.id} 
+                     style={customerId === c.id ? styles.hitItemActive : styles.hitItem}
+                     onClick={() => {
+                       setCustomerId(c.id)
+                       setCustomerQ(c.email)
+                       setCustomerHits([])
+                     }}
+                   >
+                     {c.email} ({c.first_name} {c.last_name})
+                   </div>
+                 ))}
+               </div>
+             )}
+             
+             {customerId && <div style={styles.successMsg}>{t('sales.customer_selected')}</div>}
+             
+             <button style={styles.primaryBtn} disabled={!customerId || busy} onClick={() => createHold()}>
+               {busy ? t('sales.working') : t('sales.create_hold')}
+             </button>
+           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'payment') {
+    return (
+      <div style={styles.container}>
+        {header}
+        <div style={styles.centerCard}>
+          <div style={styles.panelTitle}>{t('sales.payment')}</div>
+          <div style={styles.infoBlock}>
+            {t('sales.booking_held_msg')} <br/>
+            <strong>{t('sales.expires_in_15_mins')}</strong>
+          </div>
+          
+          <div style={styles.paymentForm}>
+             <div style={styles.fakeCardInput}>
+               •••• •••• •••• 4242
+             </div>
+             <div style={styles.row2}>
+               <div style={styles.fakeCardInput}>12/25</div>
+               <div style={styles.fakeCardInput}>123</div>
+             </div>
+             
+             <button style={styles.payBtn} disabled={busy} onClick={() => processPayment()}>
+               {busy ? t('sales.processing') : `${t('sales.pay')} ${quote ? formatMoney(quote.total, quote.currency, userLocale) : ''}`}
+             </button>
+             
+             {err && <div style={styles.error}>{err}</div>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'confirm') {
+    return (
+      <div style={styles.container}>
+        <div style={styles.successCard}>
+           <div style={styles.checkIcon}>✓</div>
+           <div style={styles.bigTitle}>{t('sales.booking_confirmed')}</div>
+           <div style={styles.refNum}>{t('sales.ref_num')}: {booking?.id}</div>
+           
+           <div style={styles.actions}>
+             <button style={styles.primaryBtn} onClick={() => {
+               // Reset
+               setStep('search')
+               setBooking(null)
+               setQuote(null)
+               setSelectedCabinId('')
+             }}>{t('sales.new_booking')}</button>
+           </div>
+        </div>
+      </div>
+    )
+  }
+
+  return null
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  wrap: { display: 'grid', gap: 12 },
-  hTitle: { fontSize: 22, fontWeight: 900 },
-  hSub: { color: 'var(--csp-muted, rgba(230,237,243,0.7))', fontSize: 13 },
-  grid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' },
-  panel: {
-    border: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
-    borderRadius: 14,
-    background: 'var(--csp-surface-bg, rgba(255,255,255,0.04))',
-    padding: 14,
-    color: 'var(--csp-text, #e6edf3)',
-  },
-  panelTitle: { fontWeight: 900, marginBottom: 10 },
-  form: { display: 'grid', gap: 10 },
-  row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
+  container: { padding: 20, maxWidth: 1200, margin: '0 auto', color: '#e6edf3' },
+  header: { marginBottom: 30 },
+  title: { fontSize: 28, fontWeight: 900 },
+  subtitle: { color: 'rgba(230,237,243,0.6)' },
+  
+  searchBar: { display: 'flex', gap: 15, background: 'rgba(255,255,255,0.05)', padding: 20, borderRadius: 12, marginBottom: 30, flexWrap: 'wrap' },
+  searchField: { display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 150 },
+  label: { fontSize: 12, color: 'rgba(230,237,243,0.7)', fontWeight: 600 },
+  input: { background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: 10, borderRadius: 8 },
+  
+  resultsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 20 },
+  sailingCard: { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: 16, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: 10 },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  badge: { fontSize: 10, background: 'rgba(56,139,253,0.2)', color: '#58a6ff', padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase', fontWeight: 700 },
+  cardBody: { fontSize: 14, color: 'rgba(230,237,243,0.8)' },
+  route: { fontWeight: 600, marginBottom: 4 },
+  selectBtn: { marginTop: 'auto', background: '#238636', color: 'white', border: 'none', padding: 8, borderRadius: 6, fontWeight: 600, cursor: 'pointer' },
+  emptyState: { gridColumn: '1/-1', textAlign: 'center', padding: 40, color: 'rgba(230,237,243,0.5)' },
+  
+  stepHeader: { display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 15 },
+  backBtn: { background: 'none', border: 'none', color: '#58a6ff', cursor: 'pointer', fontSize: 14 },
+  stepInfo: { display: 'flex', gap: 15, fontSize: 14, color: 'rgba(230,237,243,0.7)' },
+  
+  splitView: { display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 },
+  panel: { background: 'rgba(255,255,255,0.03)', padding: 20, borderRadius: 12 },
+  mainPanel: { background: 'rgba(255,255,255,0.03)', padding: 20, borderRadius: 12, minHeight: 500 },
+  panelTitle: { fontSize: 16, fontWeight: 700, marginBottom: 15 },
+  form: { display: 'flex', flexDirection: 'column', gap: 15 },
   row3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 },
-  label: { display: 'grid', gap: 6, fontSize: 13, color: 'var(--csp-text, rgba(230,237,243,0.85))' },
-  input: {
-    padding: '10px 10px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-input-border, rgba(255,255,255,0.12))',
-    background: 'var(--csp-input-bg, rgba(0,0,0,0.25))',
-    color: 'var(--csp-text, #e6edf3)',
-  },
-  primaryBtn: {
-    padding: '10px 12px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-primary-border, rgba(56,139,253,0.55))',
-    background: 'var(--csp-primary-soft, rgba(56,139,253,0.22))',
-    color: 'var(--csp-text, #e6edf3)',
-    cursor: 'pointer',
-    fontWeight: 900,
-  },
-  secondaryBtn: {
-    padding: '10px 12px',
-    borderRadius: 10,
-    border: '1px solid var(--csp-border-strong, rgba(255,255,255,0.12))',
-    background: 'color-mix(in srgb, var(--csp-surface-bg, rgba(255,255,255,0.06)) 88%, transparent)',
-    color: 'var(--csp-text, #e6edf3)',
-    cursor: 'pointer',
-    fontWeight: 900,
-  },
-  error: {
-    padding: 12,
-    borderRadius: 12,
-    background: 'rgba(220, 38, 38, 0.10)',
-    border: '1px solid rgba(220, 38, 38, 0.35)',
-    color: 'rgb(185, 28, 28)',
-    whiteSpace: 'pre-wrap',
-    fontSize: 13,
-  },
-  card: {
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 12,
-    border: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
-    background: 'var(--csp-surface-2-bg, rgba(0,0,0,0.22))',
-    color: 'var(--csp-text, #e6edf3)',
-  },
-  cardTitle: { fontWeight: 900, marginBottom: 6 },
-  muted: { color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.5 },
-  ul: { margin: '8px 0 0 0', paddingLeft: 18, color: 'var(--csp-text, rgba(230,237,243,0.85))', fontSize: 12, lineHeight: 1.55 },
-  li: { marginBottom: 4 },
-  mono: { fontFamily: 'ui-monospace, Menlo, Consolas, monospace', fontSize: 12 },
-  tableWrap: { overflow: 'auto', marginTop: 10 },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: {
-    textAlign: 'left',
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.10))',
-    color: 'var(--csp-muted, rgba(230,237,243,0.75))',
-    fontWeight: 900,
-  },
-  tdMono: {
-    padding: '10px 8px',
-    borderBottom: '1px solid var(--csp-border, rgba(255,255,255,0.06))',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    fontSize: 12,
-  },
-  tdMuted: { padding: '14px 8px', color: 'var(--csp-muted, rgba(230,237,243,0.60))' },
+  divider: { height: 1, background: 'rgba(255,255,255,0.1)', margin: '10px 0' },
+  
+  deckList: { display: 'flex', flexDirection: 'column', gap: 6 },
+  deckBtn: { textAlign: 'left', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(230,237,243,0.7)', padding: 10, borderRadius: 6, cursor: 'pointer' },
+  deckBtnActive: { textAlign: 'left', background: 'rgba(56,139,253,0.2)', border: '1px solid #58a6ff', color: 'white', padding: 10, borderRadius: 6, cursor: 'pointer' },
+  
+  cabinGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 10 },
+  cabinBtn: { aspectRatio: '1', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'white' },
+  cabinBtnSelected: { aspectRatio: '1', background: '#238636', border: '1px solid #2ea043', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'white' },
+  cabinBtnDisabled: { aspectRatio: '1', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, cursor: 'not-allowed', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'rgba(255,255,255,0.2)' },
+  cabinNo: { fontSize: 12, fontWeight: 700 },
+  cabinCat: { fontSize: 10, opacity: 0.7 },
+  
+  actions: { marginTop: 20, display: 'flex', justifyContent: 'flex-end' },
+  primaryBtn: { background: '#238636', color: 'white', border: 'none', padding: '12px 20px', borderRadius: 6, fontWeight: 700, cursor: 'pointer' },
+  secondaryBtn: { background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '12px 20px', borderRadius: 6, fontWeight: 700, cursor: 'pointer' },
+  
+  centerCard: { maxWidth: 600, margin: '40px auto', background: 'rgba(255,255,255,0.03)', padding: 30, borderRadius: 16, border: '1px solid rgba(255,255,255,0.1)' },
+  quoteDetails: { marginTop: 20 },
+  bigPrice: { fontSize: 36, fontWeight: 900, textAlign: 'center', marginBottom: 20, color: '#2ea043' },
+  breakdown: { display: 'flex', flexDirection: 'column', gap: 8, padding: 20, background: 'rgba(0,0,0,0.2)', borderRadius: 8 },
+  lineItem: { display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'rgba(230,237,243,0.7)' },
+  lineItemBold: { display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 700, marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 10 },
+  actionsRow: { display: 'flex', gap: 10, marginTop: 20, justifyContent: 'center' },
+  
+  hitList: { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10, maxHeight: 150, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: 4, borderRadius: 6 },
+  hitItem: { padding: 8, cursor: 'pointer', borderRadius: 4, fontSize: 13 },
+  hitItemActive: { padding: 8, cursor: 'pointer', borderRadius: 4, fontSize: 13, background: 'rgba(56,139,253,0.3)' },
+  successMsg: { color: '#2ea043', fontSize: 13, marginTop: 5 },
+  
+  infoBlock: { textAlign: 'center', color: '#e6edf3', marginBottom: 20, lineHeight: 1.5 },
+  paymentForm: { display: 'flex', flexDirection: 'column', gap: 15 },
+  fakeCardInput: { background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', padding: 12, borderRadius: 6, fontFamily: 'monospace', color: 'rgba(255,255,255,0.6)' },
+  row2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 15 },
+  payBtn: { background: '#1f6feb', color: 'white', border: 'none', padding: '15px', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: 16 },
+  
+  successCard: { textAlign: 'center', padding: 60 },
+  checkIcon: { fontSize: 60, color: '#2ea043', marginBottom: 20 },
+  bigTitle: { fontSize: 32, fontWeight: 900, marginBottom: 10 },
+  refNum: { fontSize: 16, opacity: 0.7, fontFamily: 'monospace' },
+  mono: { fontFamily: 'monospace' },
+  error: { color: '#ff7b72', marginTop: 10, fontSize: 13, textAlign: 'center' }
 }
