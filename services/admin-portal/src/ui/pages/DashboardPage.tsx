@@ -9,11 +9,35 @@ type MePrefs = { user_id: string; updated_at: string; preferences: any }
 type Notification = { id?: string; created_at?: string; kind?: string; title?: string; message?: string; meta?: any }
 type NotificationsOut = { items: Notification[] }
 
+type Announcement = {
+  id: string
+  created_at: string
+  created_by: string
+  title: string
+  message: string
+  priority: string
+  read_at: string | null
+}
+type Booking = {
+  booking_id: string
+  sailing_id: string
+  status: string
+  updated_at: string
+  meta: any
+}
+type Sailing = {
+  sailing: { id: string; departure_date: string; duration_days: number; itinerary_id: string; ship_id: string }
+  ship: { name: string; code: string }
+}
+
 const ALL_WIDGETS: { key: string; title: string; description: string }[] = [
   { key: 'quick_actions', title: 'Quick actions', description: 'Fast navigation for agents (few clicks).' },
   { key: 'kpis', title: 'KPIs', description: 'At-a-glance counters (starter).' },
   { key: 'notifications', title: 'Agenda & notifications', description: 'Newest in-app notifications.' },
   { key: 'notes', title: 'My notes', description: 'Scratchpad saved per user.' },
+  { key: 'manager_notes', title: 'Team Announcements', description: 'Important updates from management.' },
+  { key: 'sales_tracking', title: 'Recent Sales', description: 'Track recent bookings and holds.' },
+  { key: 'featured_cruises', title: 'Featured Sailings', description: 'Upcoming cruises to push.' },
 ]
 
 function normalizeLayout(input: any): string[] {
@@ -28,7 +52,7 @@ function normalizeLayout(input: any): string[] {
 }
 
 function defaultLayout(): string[] {
-  return ['quick_actions', 'kpis', 'notifications', 'notes']
+  return ['quick_actions', 'kpis', 'notifications', 'notes', 'manager_notes', 'sales_tracking', 'featured_cruises']
 }
 
 function moveInArray<T>(xs: T[], fromIdx: number, toIdx: number): T[] {
@@ -52,6 +76,10 @@ export function DashboardPage(props: { apiBase: string }) {
 
   const [notes, setNotes] = useState('')
   const [notifs, setNotifs] = useState<Notification[]>([])
+  
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [cruises, setCruises] = useState<Sailing[]>([])
 
   const [cols, setCols] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 980 ? 1 : 2))
 
@@ -101,6 +129,41 @@ export function DashboardPage(props: { apiBase: string }) {
     }
   }, [props.apiBase])
 
+  // Fetch new widgets data
+  useEffect(() => {
+    let cancelled = false
+    if (!layout.includes('manager_notes')) return
+    
+    apiFetch<Announcement[]>(props.apiBase, `/v1/staff/announcements`)
+      .then((r) => { if (!cancelled) setAnnouncements(r || []) })
+      .catch(() => { if (!cancelled) setAnnouncements([]) })
+      
+    return () => { cancelled = true }
+  }, [props.apiBase, layout])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!layout.includes('sales_tracking')) return
+    
+    // We borrow list_bookings but maybe should have a dedicated endpoint
+    apiFetch<Booking[]>(props.apiBase, `/v1/bookings`)
+      .then((r) => { if (!cancelled) setBookings((r || []).slice(0, 5)) })
+      .catch(() => { if (!cancelled) setBookings([]) })
+      
+    return () => { cancelled = true }
+  }, [props.apiBase, layout])
+  
+  useEffect(() => {
+    let cancelled = false
+    if (!layout.includes('featured_cruises')) return
+    
+    apiFetch<{ items: Sailing[] }>(props.apiBase, `/v1/cruises`)
+      .then((r) => { if (!cancelled) setCruises((r?.items || []).slice(0, 5)) })
+      .catch(() => { if (!cancelled) setCruises([]) })
+      
+    return () => { cancelled = true }
+  }, [props.apiBase, layout])
+
   const availableToAdd = useMemo(() => {
     return ALL_WIDGETS.filter((w) => !layout.includes(w.key)).map((w) => ({
       ...w,
@@ -138,6 +201,15 @@ export function DashboardPage(props: { apiBase: string }) {
       setErr(String(e?.detail || e?.message || e))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function markRead(id: string) {
+    try {
+        await apiFetch(props.apiBase, `/v1/staff/announcements/${id}/read`, { method: 'POST' })
+        setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, read_at: new Date().toISOString() } : a))
+    } catch(e) {
+        console.error(e)
     }
   }
 
@@ -329,6 +401,68 @@ export function DashboardPage(props: { apiBase: string }) {
                   {edit ? <div style={styles.mutedSmall}>Notes will be saved when you click “Save layout”.</div> : null}
                 </div>
               ) : null}
+              
+              {k === 'manager_notes' ? (
+                <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                  <div style={styles.muted}>Latest updates from the team.</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {announcements.map((a) => (
+                      <div key={a.id} style={{ ...styles.notifRow, borderLeft: !a.read_at ? '4px solid #f90' : styles.notifRow.border }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ fontWeight: 800 }}>{a.title}</div>
+                            {!a.read_at && (
+                                <button style={{ ...styles.pill, padding: '2px 6px', fontSize: 10 }} onClick={() => markRead(a.id)}>Mark Read</button>
+                            )}
+                        </div>
+                        <div style={{ fontSize: 13, marginTop: 4 }}>{a.message}</div>
+                        <div style={styles.mutedSmall}>
+                          <Mono>{a.created_at}</Mono> · Priority: {a.priority}
+                        </div>
+                      </div>
+                    ))}
+                    {!announcements.length ? <div style={styles.muted}>No announcements.</div> : null}
+                  </div>
+                </div>
+              ) : null}
+              
+              {k === 'sales_tracking' ? (
+                <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                  <div style={styles.muted}>Your recent bookings and holds.</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {bookings.map((b) => (
+                      <div key={b.booking_id} style={styles.notifRow}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                             <div style={{ fontWeight: 800 }}>{b.status.toUpperCase()}</div>
+                             <div style={styles.mutedSmall}>{b.sailing_id}</div>
+                        </div>
+                        <div style={styles.mutedSmall}>
+                          ID: <Mono>{b.booking_id}</Mono> · {b.updated_at}
+                        </div>
+                      </div>
+                    ))}
+                    {!bookings.length ? <div style={styles.muted}>No recent activity.</div> : null}
+                  </div>
+                </div>
+              ) : null}
+              
+              {k === 'featured_cruises' ? (
+                 <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                  <div style={styles.muted}>Featured upcoming sailings (check availability).</div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {cruises.map((c) => (
+                      <div key={c.sailing.id} style={styles.notifRow}>
+                        <div style={{ fontWeight: 800 }}>{c.ship?.name} ({c.sailing.duration_days} days)</div>
+                        <div style={{ fontSize: 13, marginTop: 4 }}>Departs: {c.sailing.departure_date}</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                             <span style={{...styles.pill, background: 'rgba(0,255,0,0.1)', color: '#cfc' }}>Available</span>
+                             <Link to={`/app/cruises`} style={styles.pill}>Book Now</Link>
+                        </div>
+                      </div>
+                    ))}
+                    {!cruises.length ? <div style={styles.muted}>No sailings loaded.</div> : null}
+                  </div>
+                </div>
+              ) : null}
             </section>
           )
         })}
@@ -383,4 +517,3 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 10,
   },
 }
-

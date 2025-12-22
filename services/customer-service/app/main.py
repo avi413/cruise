@@ -29,6 +29,8 @@ from .models import (
     StaffGroupMember,
     StaffUser,
     StaffUserPreference,
+    StaffAnnouncement,
+    StaffAnnouncementRead,
 )
 from .security import get_principal_optional, issue_token, require_roles
 from .tenancy import get_tenant_engine
@@ -1599,3 +1601,131 @@ def get_translation_bundle(
         d[parts[-1]] = value
 
     return result
+
+
+# ----------------------------
+# Staff Announcements
+# ----------------------------
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    message: str
+    priority: str = "normal"
+    expires_at: datetime | None = None
+
+
+class AnnouncementOut(BaseModel):
+    id: str
+    created_at: datetime
+    created_by: str
+    title: str
+    message: str
+    priority: str
+    expires_at: datetime | None
+    read_at: datetime | None = None  # For the current user
+
+
+@app.get("/staff/announcements", response_model=list[AnnouncementOut])
+def list_announcements(
+    limit: int = 50,
+    offset: int = 0,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    user_id = str((principal or {}).get("sub") or "")
+    now = _now()
+
+    with session(tenant_engine) as s:
+        # Get active announcements
+        qry = s.query(StaffAnnouncement).filter(
+            or_(StaffAnnouncement.expires_at == None, StaffAnnouncement.expires_at > now)
+        ).order_by(StaffAnnouncement.created_at.desc())
+
+        rows = qry.offset(offset).limit(limit).all()
+
+        # Get read status for this user
+        read_rows = s.query(StaffAnnouncementRead).filter(
+            StaffAnnouncementRead.user_id == user_id,
+            StaffAnnouncementRead.announcement_id.in_([r.id for r in rows])
+        ).all()
+        read_map = {r.announcement_id: r.read_at for r in read_rows}
+
+        return [
+            AnnouncementOut(
+                id=r.id,
+                created_at=r.created_at,
+                created_by=r.created_by,
+                title=r.title,
+                message=r.message,
+                priority=r.priority,
+                expires_at=r.expires_at,
+                read_at=read_map.get(r.id)
+            )
+            for r in rows
+        ]
+
+
+@app.post("/staff/announcements", response_model=AnnouncementOut)
+def create_announcement(
+    payload: AnnouncementCreate,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("admin")),  # Only admins/managers can create
+):
+    user_id = str((principal or {}).get("sub") or "")
+    now = _now()
+
+    with session(tenant_engine) as s:
+        a = StaffAnnouncement(
+            id=str(uuid4()),
+            created_at=now,
+            created_by=user_id,
+            title=payload.title,
+            message=payload.message,
+            priority=payload.priority,
+            expires_at=payload.expires_at
+        )
+        s.add(a)
+        s.commit()
+        s.refresh(a)
+
+    return AnnouncementOut(
+        id=a.id,
+        created_at=a.created_at,
+        created_by=a.created_by,
+        title=a.title,
+        message=a.message,
+        priority=a.priority,
+        expires_at=a.expires_at,
+        read_at=None
+    )
+
+
+@app.post("/staff/announcements/{announcement_id}/read")
+def mark_announcement_read(
+    announcement_id: str,
+    tenant_engine=Depends(get_tenant_engine),
+    principal=Depends(require_roles("agent", "staff", "admin")),
+):
+    user_id = str((principal or {}).get("sub") or "")
+    now = _now()
+
+    with session(tenant_engine) as s:
+        exists = s.get(StaffAnnouncement, announcement_id)
+        if not exists:
+            raise HTTPException(status_code=404, detail="Announcement not found")
+
+        read_record = s.query(StaffAnnouncementRead).filter(
+            StaffAnnouncementRead.announcement_id == announcement_id,
+            StaffAnnouncementRead.user_id == user_id
+        ).first()
+
+        if not read_record:
+            read_record = StaffAnnouncementRead(
+                announcement_id=announcement_id,
+                user_id=user_id,
+                read_at=now
+            )
+            s.add(read_record)
+            s.commit()
+
+    return {"status": "ok"}

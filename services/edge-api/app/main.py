@@ -566,3 +566,19 @@ async def delete_translation(translation_id: str, request: Request):
 @app.get("/v1/translations/bundle/{lang}/{namespace}")
 async def get_translation_bundle(lang: str, namespace: str, request: Request):
     return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/translations/bundle/{lang}/{namespace}", request, "customer-service")
+
+#
+# Staff Announcements (via Customer Service)
+#
+
+@app.get("/v1/staff/announcements")
+async def list_announcements(request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/staff/announcements", request, "customer-service")
+
+@app.post("/v1/staff/announcements")
+async def create_announcement(request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/announcements", request, "customer-service")
+
+@app.post("/v1/staff/announcements/{announcement_id}/read")
+async def mark_announcement_read(announcement_id: str, request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/announcements/{announcement_id}/read", request, "customer-service")
