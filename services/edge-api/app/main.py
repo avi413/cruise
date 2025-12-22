@@ -429,6 +429,22 @@ async def cancel_booking(booking_id: str, request: Request):
 async def add_payment(booking_id: str, request: Request):
     return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}/payments", request, "booking-service")
 
+@app.post("/v1/bookings/{booking_id}/confirm")
+async def confirm_booking(booking_id: str, request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/bookings/{booking_id}/confirm", request, "booking-service")
+
+@app.post("/v1/holds")
+async def create_hold(request: Request):
+    return await _proxy("POST", f"{BOOKING_SERVICE_URL}/holds", request, "booking-service")
+
+@app.get("/v1/inventory/sailings/{sailing_id}/unavailable-cabins")
+async def list_unavailable_cabins(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}/unavailable-cabins", request, "booking-service")
+
+@app.get("/v1/inventory/sailings/{sailing_id}")
+async def get_inventory(sailing_id: str, request: Request):
+    return await _proxy("GET", f"{BOOKING_SERVICE_URL}/inventory/sailings/{sailing_id}", request, "booking-service")
+
 #
 # Pricing Service Routes
 #

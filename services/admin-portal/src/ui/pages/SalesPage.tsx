@@ -255,7 +255,7 @@ export function SalesPage(props: { apiBase: string }) {
       for(let i=0; i<children; i++) guests.push({ paxtype: 'child' })
       for(let i=0; i<infants; i++) guests.push({ paxtype: 'infant' })
 
-      const q = await apiFetch<QuoteOut>(props.apiBase, `/v1/quote`, {
+      const q = await apiFetch<QuoteOut>(props.apiBase, `/v1/quotes`, {
         method: 'POST',
         body: {
           sailing_id: selectedSailingId,
