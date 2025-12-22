@@ -18,3 +18,4 @@ dist/
 build/
 
 infra/postgres-data/
+infra/pricing-data/
