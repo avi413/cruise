@@ -413,6 +413,7 @@ TRANSLATIONS = {
             "sales.base_child": "Base Child",
             "sales.base_infant": "Base Infant",
             "sales.set_base_fares": "Set Base Fares",
+            "sales.cabins_on_deck": "Cabins on Deck",
 
             # Preferences
             "preferences.title": "Preferences",
