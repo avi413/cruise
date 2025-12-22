@@ -646,5 +646,47 @@
       "label_chip_bg": "רקע שבב",
       "msg_builtin_readonly": "לא ניתן לערוך ערכות נושא מובנות ישירות."
     }
+  },
+  "ports": {
+    "title": "ניהול נמלים",
+    "subtitle": "ניהול הגדרות נמל גלובליות, ערים ומדינות.",
+    "list": {
+      "search_placeholder": "חפש נמלים לפי קוד, שם, עיר...",
+      "btn_new": "נמל חדש",
+      "btn_refresh": "רענן",
+      "th_code": "קוד",
+      "th_name": "שם",
+      "th_city": "עיר",
+      "th_country": "מדינה",
+      "empty": "לא נמצאו נמלים."
+    },
+    "create": {
+      "title": "צור נמל חדש",
+      "subtitle": "הזן פרטי נמל ותרגומים.",
+      "label_code": "קוד נמל (ייחודי)",
+      "placeholder_code": "לדוגמה: ATH",
+      "translations_title": "תרגומים",
+      "btn_add_lang": "+ הוסף שפה",
+      "btn_create": "צור נמל",
+      "btn_creating": "יוצר...",
+      "btn_cancel": "ביטול"
+    },
+    "edit": {
+      "title": "ערוך נמל: {{code}}",
+      "subtitle": "עדכן תרגומים או מחק נמל זה.",
+      "translations_title": "תרגומים",
+      "btn_add_lang": "+ הוסף שפה",
+      "btn_save": "שמור שינויים",
+      "btn_saving": "שומר...",
+      "btn_delete": "מחק נמל",
+      "confirm_delete": "למחוק נמל {{code}}?",
+      "btn_back": "חזרה לרשימה"
+    },
+    "labels": {
+      "lang": "שפה",
+      "name": "שם",
+      "city": "עיר",
+      "country": "מדינה"
+    }
   }
 }
