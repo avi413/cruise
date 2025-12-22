@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from . import domain
+from . import persistence
 from .security import get_principal_optional, issue_token, require_roles
 
 app = FastAPI(
@@ -21,14 +22,17 @@ app = FastAPI(
     description="Dynamic pricing, promotions, coupon codes, and real-time quote calculation.",
 )
 
-_OVERRIDES_BY_COMPANY: dict[str, domain.PricingOverrides] = {}  # company_id -> overrides; "*" for global
-_FX_RATES_BY_COMPANY: dict[str, dict[tuple[str, str], dict]] = {}  # company_id -> {(base, quote) -> row}
+_OVERRIDES_BY_COMPANY, _PRICE_CATEGORIES_BY_COMPANY, _CRUISE_PRICE_TABLES_BY_COMPANY, _FX_RATES_BY_COMPANY = persistence.load_data()
 
-# Flexible pricing model (tenant-scoped, in-memory for this starter repo):
-# - price categories: admin-defined list (unlimited) with ordering + flags + i18n
-# - cruise (sailing) price table: per sailing, per cabin category, per price category
-_PRICE_CATEGORIES_BY_COMPANY: dict[str, list[dict]] = {}  # company_id -> ordered list of categories
-_CRUISE_PRICE_TABLES_BY_COMPANY: dict[str, dict[str, dict[tuple[str, str], dict]]] = {}  # company_id -> sailing_id -> {(cabin_cat, price_cat)->cell}
+
+def _save():
+    persistence.save_data(
+        _OVERRIDES_BY_COMPANY,
+        _PRICE_CATEGORIES_BY_COMPANY,
+        _CRUISE_PRICE_TABLES_BY_COMPANY,
+        _FX_RATES_BY_COMPANY
+    )
+
 
 SHIP_SERVICE_URL = os.getenv("SHIP_SERVICE_URL", "http://localhost:8001")
 _DEFAULT_CURRENCY_CACHE: dict[str, tuple[str, float]] = {}  # company_id -> (currency, expires_at_epoch_s)
@@ -485,6 +489,7 @@ def create_price_category(
     }
     cats.append(row)
     _PRICE_CATEGORIES_BY_COMPANY[key] = cats
+    _save()
     return PriceCategoryOut(company_id=key, **row)  # type: ignore[arg-type]
 
 
@@ -537,6 +542,7 @@ def patch_price_category(
     if payload.description_i18n is not None:
         row["description_i18n"] = dict(payload.description_i18n or {})
     row["updated_at"] = datetime.now(tz=timezone.utc).isoformat()
+    _save()
     return PriceCategoryOut(company_id=key, **row)  # type: ignore[arg-type]
 
 
@@ -566,6 +572,7 @@ def delete_price_category(
             cells.pop(k, None)
         tables[sailing_id] = cells
     _CRUISE_PRICE_TABLES_BY_COMPANY[key] = tables
+    _save()
     return {"status": "ok"}
 
 
@@ -604,6 +611,7 @@ def reorder_price_categories(
             by_code[k]["order"] = (idx + 1) * 10
             by_code[k]["updated_at"] = now
     _PRICE_CATEGORIES_BY_COMPANY[key] = sorted(cats, key=lambda c: int(c.get("order", 10_000)))
+    _save()
     return list_price_categories(x_company_id=key)  # reuse serialization
 
 
@@ -700,6 +708,7 @@ def upsert_cruise_prices_bulk(
         tables[sid] = t
 
     _CRUISE_PRICE_TABLES_BY_COMPANY[key] = tables
+    _save()
     # Return the whole table for the first sailing in the payload (admin UI uses one sailing at a time).
     return list_cruise_prices(sailing_id=payload[0].sailing_id, x_company_id=key)
 
@@ -755,6 +764,7 @@ def set_cabin_multiplier(
         demand_multiplier=cur.demand_multiplier,
         category_prices=cur.category_prices,
     )
+    _save()
     v = _OVERRIDES_BY_COMPANY[key]
     return OverridesOut(
         company_id=key,
@@ -796,6 +806,7 @@ def set_base_fare(
         demand_multiplier=cur.demand_multiplier,
         category_prices=cur.category_prices,
     )
+    _save()
     v = _OVERRIDES_BY_COMPANY[key]
     return OverridesOut(
         company_id=key,
@@ -917,6 +928,7 @@ def upsert_category_price(
         demand_multiplier=cur.demand_multiplier,
         category_prices=rules,
     )
+    _save()
     v = _OVERRIDES_BY_COMPANY[key]
     return CategoryPricesOut(
         company_id=key,
@@ -1015,6 +1027,7 @@ def upsert_category_prices_bulk(
         demand_multiplier=cur.demand_multiplier,
         category_prices=rules,
     )
+    _save()
     v = _OVERRIDES_BY_COMPANY[key]
     return CategoryPricesOut(
         company_id=key,
@@ -1084,6 +1097,7 @@ def upsert_fx_rate(
     rates = dict(_FX_RATES_BY_COMPANY.get(key) or {})
     rates[(base, quote)] = {"base": base, "quote": quote, "rate": float(payload.rate), "as_of": as_of}
     _FX_RATES_BY_COMPANY[key] = rates
+    _save()
     r = rates[(base, quote)]
     return FxRateOut(company_id=key, base=r["base"], quote=r["quote"], rate=float(r["rate"]), as_of=r["as_of"])
 
@@ -1103,6 +1117,7 @@ def delete_fx_rate(
     rates = dict(_FX_RATES_BY_COMPANY.get(key) or {})
     rates.pop((b, q), None)
     _FX_RATES_BY_COMPANY[key] = rates
+    _save()
     return {"status": "ok"}
 
 
@@ -1112,4 +1127,5 @@ def clear_overrides(company_id: str, _principal=Depends(require_roles("staff", "
     if not key or key == "*":
         raise HTTPException(status_code=400, detail="Global overrides are not supported.")
     _OVERRIDES_BY_COMPANY.pop(key, None)
+    _save()
     return {"status": "ok"}
