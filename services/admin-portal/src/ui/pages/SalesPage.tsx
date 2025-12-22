@@ -72,6 +72,13 @@ type Cabin = {
   deck: number
   category_id: string | null
   status: string
+  meta?: {
+    x?: number
+    y?: number
+    w?: number
+    h?: number
+    shape?: string
+  }
 }
 
 type CruisePrice = {
@@ -132,6 +139,7 @@ export function SalesPage(props: { apiBase: string }) {
   // step: search -> selection -> quote -> booking -> payment -> confirm
   const [step, setStep] = useState<'search' | 'selection' | 'quote' | 'booking' | 'payment' | 'confirm'>('search')
   
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('map')
   const [selectedSailingId, setSelectedSailingId] = useState('')
   const [selectedDeck, setSelectedDeck] = useState<number | null>(null)
   const [selectedCabinId, setSelectedCabinId] = useState('')
@@ -435,41 +443,128 @@ export function SalesPage(props: { apiBase: string }) {
 
            {/* Cabin Map / List */}
            <div style={styles.mainPanel}>
-             <div style={styles.panelTitle}>
-               {selectedDeck ? `${t('sales.cabins_on_deck')} ${selectedDeck}` : t('sales.select_deck_msg')}
+             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+                <div style={styles.panelTitle}>
+                  {selectedDeck ? `${t('sales.cabins_on_deck')} ${selectedDeck}` : t('sales.select_deck_msg')}
+                </div>
+                {selectedDeck && (
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <button style={viewMode === 'grid' ? styles.viewBtnActive : styles.viewBtn} onClick={() => setViewMode('grid')}>Grid</button>
+                    <button style={viewMode === 'map' ? styles.viewBtnActive : styles.viewBtn} onClick={() => setViewMode('map')}>Deck Plan</button>
+                  </div>
+                )}
              </div>
              
              {selectedDeck && (
-               <div style={styles.cabinGrid}>
-                 {cabinsOnDeck.map(c => {
-                   const isTaken = unavailableCabins.includes(c.id)
-                   const isSelected = selectedCabinId === c.id
-                   const cat = cabinCats.find(cat => cat.id === c.category_id)
-                   const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
-                   return (
-                     <button
-                       key={c.id}
-                       disabled={isTaken}
-                       style={isSelected ? styles.cabinBtnSelected : (isTaken ? styles.cabinBtnDisabled : styles.cabinBtn)}
-                       onClick={() => {
-                         setSelectedCabinId(c.id)
-                         if (cat) {
-                           setSelectedCatCode(cat.code)
-                           // simplistic mapping, ideal world we map cabin_class to cabin_type enum
-                           // assuming cabin_class is compatible or we fallback
-                           // Here we just keep "inside" as default or try to map
-                           const typeMap: any = { 'inside': 'inside', 'ocean': 'oceanview', 'balcony': 'balcony', 'suite': 'suite' }
-                           setSelectedCabinType(typeMap[cat.cabin_class.toLowerCase()] || 'inside')
-                         }
-                       }}
-                     >
-                       <div style={styles.cabinNo}>{c.cabin_no}</div>
-                       <div style={styles.cabinCat}>{cat?.code || '-'}</div>
-                       {price && <div style={{ fontSize: 9, opacity: 0.8 }}>{formatMoney(price.price_per_person, price.currency, userLocale)}</div>}
-                     </button>
-                   )
-                 })}
-               </div>
+               <>
+                 {viewMode === 'grid' ? (
+                   <div style={styles.cabinGrid}>
+                     {cabinsOnDeck.map(c => {
+                       const isTaken = unavailableCabins.includes(c.id)
+                       const isSelected = selectedCabinId === c.id
+                       const cat = cabinCats.find(cat => cat.id === c.category_id)
+                       const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
+                       return (
+                         <button
+                           key={c.id}
+                           disabled={isTaken}
+                           style={isSelected ? styles.cabinBtnSelected : (isTaken ? styles.cabinBtnDisabled : styles.cabinBtn)}
+                           onClick={() => {
+                             setSelectedCabinId(c.id)
+                             if (cat) {
+                               setSelectedCatCode(cat.code)
+                               // simplistic mapping, ideal world we map cabin_class to cabin_type enum
+                               const typeMap: any = { 'inside': 'inside', 'ocean': 'oceanview', 'balcony': 'balcony', 'suite': 'suite' }
+                               setSelectedCabinType(typeMap[cat.cabin_class.toLowerCase()] || 'inside')
+                             }
+                           }}
+                         >
+                           <div style={styles.cabinNo}>{c.cabin_no}</div>
+                           <div style={styles.cabinCat}>{cat?.code || '-'}</div>
+                           {price && <div style={{ fontSize: 9, opacity: 0.8 }}>{formatMoney(price.price_per_person, price.currency, userLocale)}</div>}
+                         </button>
+                       )
+                     })}
+                   </div>
+                 ) : (
+                   <div style={styles.deckMapContainer}>
+                      {/* Simulated Deck Plan Visualization */}
+                      <div style={styles.deckMapScroll}>
+                        <div style={styles.deckMapPaper}>
+                           <div style={styles.shipBow}>BOW</div>
+                           {cabinsOnDeck.map((c, idx) => {
+                             // --- VISUALIZATION LOGIC ---
+                             // If we have real coords in meta, use them.
+                             // Otherwise, generate a "fake" layout based on index to simulate the deck plan.
+                             // Logic: Odd on top (Port), Even on bottom (Starboard).
+                             let x = c.meta?.x || 0
+                             let y = c.meta?.y || 0
+                             let w = c.meta?.w || 60
+                             let h = c.meta?.h || 80
+                             
+                             if (!c.meta?.x && !c.meta?.y) {
+                               const isEven = parseInt(c.cabin_no.replace(/\D/g, '')) % 2 === 0
+                               const offset = Math.floor(idx / 2) * 70 + 100
+                               x = offset
+                               y = isEven ? 200 : 50 // Even bottom, Odd top
+                             }
+
+                             const isTaken = unavailableCabins.includes(c.id)
+                             const isSelected = selectedCabinId === c.id
+                             const cat = cabinCats.find(cat => cat.id === c.category_id)
+                             const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
+                             
+                             return (
+                               <div
+                                 key={c.id}
+                                 style={{
+                                   position: 'absolute',
+                                   left: x,
+                                   top: y,
+                                   width: w,
+                                   height: h,
+                                   background: isSelected ? 'var(--csp-primary)' : (isTaken ? '#eee' : 'white'),
+                                   border: isSelected ? '2px solid var(--csp-primary-dark)' : '1px solid #ccc',
+                                   borderRadius: 4,
+                                   display: 'flex',
+                                   flexDirection: 'column',
+                                   alignItems: 'center',
+                                   justifyContent: 'center',
+                                   fontSize: 10,
+                                   cursor: isTaken ? 'not-allowed' : 'pointer',
+                                   opacity: isTaken ? 0.6 : 1,
+                                   boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+                                   zIndex: isSelected ? 10 : 1,
+                                   transition: 'transform 0.1s'
+                                 }}
+                                 onClick={() => {
+                                   if (isTaken) return
+                                   setSelectedCabinId(c.id)
+                                   if (cat) {
+                                     setSelectedCatCode(cat.code)
+                                     const typeMap: any = { 'inside': 'inside', 'ocean': 'oceanview', 'balcony': 'balcony', 'suite': 'suite' }
+                                     setSelectedCabinType(typeMap[cat.cabin_class.toLowerCase()] || 'inside')
+                                   }
+                                 }}
+                                 title={`${c.cabin_no} - ${cat?.name}`}
+                               >
+                                 <div style={{fontWeight: 700}}>{c.cabin_no}</div>
+                                 <div style={{fontSize: 8}}>{cat?.code}</div>
+                                 {price && <div style={{fontSize: 8, marginTop: 2, fontWeight: 600, color: isSelected ? 'white' : 'green'}}>{formatMoney(price.price_per_person, price.currency, userLocale)}</div>}
+                               </div>
+                             )
+                           })}
+                           <div style={styles.shipStern}>STERN</div>
+                        </div>
+                      </div>
+                      <div style={styles.mapLegend}>
+                         <div style={{display:'flex', gap:5, alignItems:'center'}}><div style={{width:12, height:12, border:'1px solid #ccc', background:'white'}}></div> Available</div>
+                         <div style={{display:'flex', gap:5, alignItems:'center'}}><div style={{width:12, height:12, border:'1px solid #ccc', background:'#eee'}}></div> Not Available</div>
+                         <div style={{display:'flex', gap:5, alignItems:'center'}}><div style={{width:12, height:12, background:'var(--csp-primary)'}}></div> Selected</div>
+                      </div>
+                   </div>
+                 )}
+               </>
              )}
              
              <div style={styles.actions}>
@@ -663,6 +758,16 @@ const styles: Record<string, React.CSSProperties> = {
   cabinBtnDisabled: { aspectRatio: '1', background: 'var(--csp-surface-2-bg)', border: '1px solid var(--csp-border)', borderRadius: 8, cursor: 'not-allowed', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'var(--csp-muted)', opacity: 0.5 },
   cabinNo: { fontSize: 12, fontWeight: 700 },
   cabinCat: { fontSize: 10, opacity: 0.7 },
+  
+  viewBtn: { padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--csp-border)', background: 'transparent', cursor: 'pointer', color: 'var(--csp-text)' },
+  viewBtnActive: { padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--csp-primary)', background: 'var(--csp-primary-soft)', color: 'var(--csp-primary)', cursor: 'pointer', fontWeight: 600 },
+  
+  deckMapContainer: { position: 'relative', height: 400, border: '1px solid var(--csp-border)', borderRadius: 8, background: '#f5f7fa', overflow: 'hidden' },
+  deckMapScroll: { width: '100%', height: '100%', overflow: 'auto', padding: 20 },
+  deckMapPaper: { position: 'relative', minWidth: 2000, height: 350, background: 'white', borderRadius: 40, border: '2px solid #ddd', margin: '0 auto', top: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' },
+  shipBow: { position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', fontWeight: 900, fontSize: 24, color: '#eee', writingMode: 'vertical-rl' },
+  shipStern: { position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', fontWeight: 900, fontSize: 24, color: '#eee', writingMode: 'vertical-rl' },
+  mapLegend: { position: 'absolute', bottom: 10, left: 10, background: 'rgba(255,255,255,0.9)', padding: '5px 10px', borderRadius: 6, display: 'flex', gap: 15, fontSize: 11, border: '1px solid #ddd' },
   
   actions: { marginTop: 20, display: 'flex', justifyContent: 'flex-end' },
   primaryBtn: { background: 'var(--csp-primary)', color: 'white', border: 'none', padding: '12px 20px', borderRadius: 6, fontWeight: 700, cursor: 'pointer' },
