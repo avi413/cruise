@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import random
+import string
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import uuid4
@@ -62,6 +64,7 @@ class QuoteOut(BaseModel):
 
 class BookingOut(BaseModel):
     id: str
+    booking_ref: str | None = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -77,6 +80,10 @@ class BookingOut(BaseModel):
 
 def _now() -> datetime:
     return datetime.now(tz=timezone.utc)
+
+
+def _generate_ref() -> str:
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
 def _release_expired_holds(tenant_engine) -> int:
@@ -345,10 +352,12 @@ async def create_hold(
 
     now = _now()
     hold_expires_at = now + timedelta(minutes=max(1, min(payload.hold_minutes, 60)))
+    booking_ref = _generate_ref()
 
     booking = Booking(
         id=str(uuid4()),
         company_id=company_id,
+        booking_ref=booking_ref,
         status="held",
         created_at=now,
         updated_at=now,
@@ -412,6 +421,7 @@ async def create_hold(
 
     return BookingOut(
         id=booking.id,
+        booking_ref=booking.booking_ref,
         status=booking.status,
         created_at=booking.created_at,
         updated_at=booking.updated_at,
@@ -446,6 +456,7 @@ def get_booking(
 
     return BookingOut(
         id=booking.id,
+        booking_ref=booking.booking_ref,
         status=booking.status,
         created_at=booking.created_at,
         updated_at=booking.updated_at,
@@ -544,6 +555,7 @@ async def confirm_booking(
 
     return BookingOut(
         id=booking.id,
+        booking_ref=booking.booking_ref,
         status=booking.status,
         created_at=booking.created_at,
         updated_at=booking.updated_at,

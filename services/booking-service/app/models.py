@@ -58,6 +58,8 @@ class Booking(Base):
     customer_id: Mapped[str | None] = mapped_column(String, index=True)
     sailing_id: Mapped[str] = mapped_column(String, index=True)
 
+    booking_ref: Mapped[str | None] = mapped_column(String, index=True)
+
     cabin_type: Mapped[str] = mapped_column(String, index=True)
     cabin_category_code: Mapped[str | None] = mapped_column(String, index=True)
     cabin_id: Mapped[str | None] = mapped_column(String, index=True)
