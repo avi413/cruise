@@ -148,6 +148,7 @@ class ShipCreate(BaseModel):
     operator: str | None = None
     decks: int = 0
     status: Literal["active", "inactive", "maintenance"] = "active"
+    deck_plans: dict[str, str] = Field(default_factory=dict, description="Map of deck number to image URL")
 
 
 class Ship(ShipCreate):
@@ -329,6 +330,7 @@ def create_ship(payload: ShipCreate, _principal=Depends(require_roles("staff", "
             status=payload.status,
             amenities=[],
             maintenance_records=[],
+            deck_plans=payload.deck_plans,
         )
         s.add(row)
         s.commit()
@@ -344,6 +346,7 @@ def create_ship(payload: ShipCreate, _principal=Depends(require_roles("staff", "
         status=row.status,
         amenities=[Amenity(**a) for a in (row.amenities or [])],
         maintenance_records=[MaintenanceRecord(**m) for m in (row.maintenance_records or [])],
+        deck_plans=row.deck_plans or {},
     )
 
 
@@ -367,6 +370,7 @@ def list_ships(company_id: str | None = None):
             status=r.status,
             amenities=[Amenity(**a) for a in (r.amenities or [])],
             maintenance_records=[MaintenanceRecord(**m) for m in (r.maintenance_records or [])],
+            deck_plans=r.deck_plans or {},
         )
         for r in rows
     ]
@@ -396,6 +400,7 @@ def get_ship(ship_id: str):
         status=r.status,
         amenities=[Amenity(**a) for a in (r.amenities or [])],
         maintenance_records=[MaintenanceRecord(**m) for m in (r.maintenance_records or [])],
+        deck_plans=r.deck_plans or {},
     )
 
 
@@ -1251,6 +1256,7 @@ class ShipPatch(BaseModel):
     operator: str | None = None
     decks: int | None = None
     status: Literal["active", "inactive", "maintenance"] | None = None
+    deck_plans: dict[str, str] | None = None
 
 
 @app.patch("/ships/{ship_id}", response_model=Ship)
@@ -1272,6 +1278,8 @@ def patch_ship(
             r.decks = payload.decks
         if payload.status is not None:
             r.status = payload.status
+        if payload.deck_plans is not None:
+            r.deck_plans = payload.deck_plans
 
         s.add(r)
         s.commit()

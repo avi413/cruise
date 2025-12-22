@@ -65,6 +65,7 @@ class Ship(Base):
 
     amenities: Mapped[list] = mapped_column(JSON, default=list)
     maintenance_records: Mapped[list] = mapped_column(JSON, default=list)
+    deck_plans: Mapped[dict] = mapped_column(JSON, default=dict)
 
     company: Mapped[Company] = relationship(back_populates="ships")
 
