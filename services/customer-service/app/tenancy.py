@@ -19,6 +19,8 @@ from .models import (
     StaffGroupMember,
     StaffUser,
     StaffUserPreference,
+    StaffAnnouncement,
+    StaffAnnouncementRead,
 )
 
 CONTROL_PLANE_DATABASE_URL = os.getenv(

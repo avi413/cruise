@@ -91,6 +91,28 @@ class StaffUserPreference(Base):
     preferences: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
+class StaffAnnouncement(Base):
+    __tablename__ = "staff_announcements"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_by: Mapped[str] = mapped_column(String, ForeignKey("staff_users.id"))
+
+    title: Mapped[str] = mapped_column(String)
+    message: Mapped[str] = mapped_column(String)
+    priority: Mapped[str] = mapped_column(String, default="normal") # normal, high, urgent
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class StaffAnnouncementRead(Base):
+    __tablename__ = "staff_announcement_reads"
+    __table_args__ = (UniqueConstraint("announcement_id", "user_id", name="uq_staff_announcement_read"),)
+
+    announcement_id: Mapped[str] = mapped_column(String, ForeignKey("staff_announcements.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, ForeignKey("staff_users.id"), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class Customer(Base):
     __tablename__ = "customers"
 
@@ -199,4 +221,3 @@ class AuditLog(Base):
     entity_id: Mapped[str | None] = mapped_column(String, index=True)
 
     meta: Mapped[dict] = mapped_column(JSON)  # {before, after, request, ...}
-
