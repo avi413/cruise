@@ -181,6 +181,24 @@ TRANSLATIONS = {
             "sailings.add_stop_button": "Add stop",
             "sailings.loading": "Loading...",
             "sailings.label_code_inline": "Code",
+
+            # Itineraries
+            "itineraries.title": "Itineraries",
+            "itineraries.page_title": "Itineraries Management",
+            "itineraries.page_subtitle": "Manage cruise itineraries and their details.",
+            "itineraries.search_placeholder": "Search itineraries...",
+            "itineraries.new_itinerary": "New Itinerary",
+            "itineraries.create_title": "Create Itinerary",
+            "itineraries.edit_title": "Edit Itinerary",
+            "itineraries.table_name": "Name",
+            "itineraries.table_duration": "Duration",
+            "itineraries.table_ports": "Ports",
+            "itineraries.no_results": "No itineraries found.",
+            "itineraries.label_name": "Name",
+            "itineraries.label_description": "Description",
+            "itineraries.label_duration": "Duration (days)",
+            "itineraries.delete_confirm": "Are you sure you want to delete this itinerary?",
+
             # Preferences
             "preferences.title": "Preferences",
             "preferences.subtitle": "Manage your personal settings.",
@@ -371,6 +389,24 @@ TRANSLATIONS = {
             "sailings.add_stop_button": "הוסף עצירה",
             "sailings.loading": "טוען...",
             "sailings.label_code_inline": "קוד",
+
+            # Itineraries
+            "itineraries.title": "מסלולים",
+            "itineraries.page_title": "ניהול מסלולים",
+            "itineraries.page_subtitle": "ניהול מסלולי שייט ופרטיהם.",
+            "itineraries.search_placeholder": "חפש מסלולים...",
+            "itineraries.new_itinerary": "מסלול חדש",
+            "itineraries.create_title": "יצירת מסלול",
+            "itineraries.edit_title": "עריכת מסלול",
+            "itineraries.table_name": "שם",
+            "itineraries.table_duration": "משך",
+            "itineraries.table_ports": "נמלים",
+            "itineraries.no_results": "לא נמצאו מסלולים.",
+            "itineraries.label_name": "שם",
+            "itineraries.label_description": "תיאור",
+            "itineraries.label_duration": "משך (ימים)",
+            "itineraries.delete_confirm": "האם אתה בטוח שברצונך למחוק מסלול זה?",
+
             # Preferences
             "preferences.title": "הגדרות",
             "preferences.subtitle": "ניהול הגדרות אישיות.",
