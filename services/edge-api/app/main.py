@@ -189,6 +189,67 @@ async def patch_cabin(cabin_id: str, request: Request):
 async def delete_cabin(cabin_id: str, request: Request):
     return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/cabins/{cabin_id}", request, "ship-service")
 
+@app.get("/v1/ships/{ship_id}/capabilities")
+async def list_ship_capabilities(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/capabilities", request, "ship-service")
+
+@app.post("/v1/ships/{ship_id}/capabilities")
+async def create_ship_capabilities(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/capabilities", request, "ship-service")
+
+@app.patch("/v1/capabilities/{capability_id}")
+async def patch_capability(capability_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/capabilities/{capability_id}", request, "ship-service")
+
+@app.delete("/v1/capabilities/{capability_id}")
+async def delete_capability(capability_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/capabilities/{capability_id}", request, "ship-service")
+
+@app.get("/v1/ships/{ship_id}/restaurants")
+async def list_ship_restaurants(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/restaurants", request, "ship-service")
+
+@app.post("/v1/ships/{ship_id}/restaurants")
+async def create_ship_restaurants(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/restaurants", request, "ship-service")
+
+@app.patch("/v1/restaurants/{restaurant_id}")
+async def patch_restaurant(restaurant_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/restaurants/{restaurant_id}", request, "ship-service")
+
+@app.delete("/v1/restaurants/{restaurant_id}")
+async def delete_restaurant(restaurant_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/restaurants/{restaurant_id}", request, "ship-service")
+
+@app.get("/v1/ships/{ship_id}/shorex")
+async def list_ship_shorex(ship_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/ships/{ship_id}/shorex", request, "ship-service")
+
+@app.post("/v1/ships/{ship_id}/shorex")
+async def create_ship_shorex(ship_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/ships/{ship_id}/shorex", request, "ship-service")
+
+@app.patch("/v1/shorex/{shorex_id}")
+async def patch_shorex(shorex_id: str, request: Request):
+    return await _proxy("PATCH", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}", request, "ship-service")
+
+@app.delete("/v1/shorex/{shorex_id}")
+async def delete_shorex(shorex_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}", request, "ship-service")
+
+@app.get("/v1/shorex/{shorex_id}/prices")
+async def list_shorex_prices(shorex_id: str, request: Request):
+    return await _proxy("GET", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}/prices", request, "ship-service")
+
+@app.post("/v1/shorex/{shorex_id}/prices")
+async def upsert_shorex_price(shorex_id: str, request: Request):
+    return await _proxy("POST", f"{SHIP_SERVICE_URL}/shorex/{shorex_id}/prices", request, "ship-service")
+
+@app.delete("/v1/shorex-prices/{price_id}")
+async def delete_shorex_price(price_id: str, request: Request):
+    return await _proxy("DELETE", f"{SHIP_SERVICE_URL}/shorex-prices/{price_id}", request, "ship-service")
+
+
 #
 # Cruise Service Routes (Ports, Itineraries, Sailings)
 #
