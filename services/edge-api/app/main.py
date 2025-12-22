@@ -1,5 +1,6 @@
 import os
 import httpx
+import asyncio
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -100,6 +101,42 @@ async def _proxy(method: str, url: str, request: Request, service_name: str | No
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/v1/cruises")
+async def list_cruises(request: Request):
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+
+    # Fetch sailings and ships in parallel
+    url_sailings = f"{CRUISE_SERVICE_URL}/sailings"
+    url_ships = f"{SHIP_SERVICE_URL}/ships"
+    
+    t1 = client.get(url_sailings, headers=headers, params=request.query_params)
+    t2 = client.get(url_ships, headers=headers)
+    
+    r_sailings, r_ships = await asyncio.gather(t1, t2, return_exceptions=True)
+    
+    # Check for connection errors or non-200 responses
+    if isinstance(r_sailings, Exception) or r_sailings.status_code != 200:
+        # If cruise service fails, we can't show cruises
+        if isinstance(r_sailings, Exception):
+             return Response(content=f"Cruise service unavailable: {r_sailings}", status_code=502)
+        return Response(content=r_sailings.content, status_code=r_sailings.status_code)
+
+    sailings = r_sailings.json()
+    
+    ships_by_id = {}
+    if not isinstance(r_ships, Exception) and r_ships.status_code == 200:
+        ships = r_ships.json()
+        ships_by_id = {s["id"]: s for s in ships}
+    
+    items = []
+    for s in sailings:
+        ship = ships_by_id.get(s.get("ship_id"))
+        items.append({"sailing": s, "ship": ship})
+        
+    return {"items": items}
 
 #
 # Ship Service Routes
