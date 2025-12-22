@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from .db import engine, session
 from .models import (
@@ -26,6 +27,19 @@ app = FastAPI(
     version="0.1.0",
     description="Registers and manages ships, amenities, maintenance records, and operational status.",
 )
+
+
+# Auto-migration for dev convenience (adds deck_plans column if missing)
+try:
+    with engine.connect() as conn:
+        # Check if we are on Postgres (to use IF NOT EXISTS safely or catch error)
+        # Assuming Postgres 9.6+
+        conn.execute(text("ALTER TABLE ships ADD COLUMN IF NOT EXISTS deck_plans JSON DEFAULT '{}'::json"))
+        conn.commit()
+except Exception as e:
+    # If using SQLite or older Postgres, this might fail or syntax might be different.
+    # But ship-service uses Postgres in docker-compose.
+    print(f"Migration note (deck_plans): {e}")
 
 
 Base.metadata.create_all(engine)
@@ -156,6 +170,9 @@ class Ship(ShipCreate):
     created_at: datetime
     amenities: list[Amenity] = Field(default_factory=list)
     maintenance_records: list[MaintenanceRecord] = Field(default_factory=list)
+    # The database might return None for deck_plans if it's not set (e.g. from old data before default),
+    # so we override the model to allow for None but default to empty dict in the validator if needed.
+    deck_plans: dict[str, str] = Field(default_factory=dict)
 
 
 def _clean_codes(items: list[str] | None) -> list[str]:

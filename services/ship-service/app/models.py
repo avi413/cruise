@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -65,7 +65,7 @@ class Ship(Base):
 
     amenities: Mapped[list] = mapped_column(JSON, default=list)
     maintenance_records: Mapped[list] = mapped_column(JSON, default=list)
-    deck_plans: Mapped[dict] = mapped_column(JSON, default=dict)
+    deck_plans: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'::json"))
 
     company: Mapped[Company] = relationship(back_populates="ships")
 
