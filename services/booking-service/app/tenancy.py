@@ -53,7 +53,12 @@ def _ensure_schema(engine: Engine) -> None:
             with engine.begin() as conn:
                 conn.exec_driver_sql("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cabin_category_code VARCHAR;")
         except Exception:
-            return
+            pass
+        try:
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_ref VARCHAR;")
+        except Exception:
+            pass
     elif "sqlite" in backend:
         try:
             with engine.begin() as conn:
@@ -61,6 +66,8 @@ def _ensure_schema(engine: Engine) -> None:
                 names = {r[1] for r in cols}  # (cid, name, type, notnull, dflt_value, pk)
                 if "cabin_category_code" not in names:
                     conn.exec_driver_sql("ALTER TABLE bookings ADD COLUMN cabin_category_code TEXT;")
+                if "booking_ref" not in names:
+                    conn.exec_driver_sql("ALTER TABLE bookings ADD COLUMN booking_ref TEXT;")
         except Exception:
             return
 

@@ -417,6 +417,15 @@ TRANSLATIONS = {
             "sales.base_infant": "Base Infant",
             "sales.set_base_fares": "Set Base Fares",
             "sales.cabins_on_deck": "Cabins on Deck",
+            "sales.payment": "Payment",
+            "sales.booking_held_msg": "bookings held.",
+            "sales.expires_in_15_mins": "Expires in 15 minutes",
+            "sales.pay": "Pay",
+            "sales.booking_confirmed": "Booking Confirmed",
+            "sales.new_booking": "New Booking",
+            "sales.passenger_count": "Passengers",
+            "sales.price_per_room": "Price per room",
+            "sales.booking_ref": "Booking Ref",
 
             # Preferences
             "preferences.title": "Preferences",
@@ -1172,6 +1181,15 @@ TRANSLATIONS = {
             "sales.base_child": "בסיס ילד",
             "sales.base_infant": "בסיס תינוק",
             "sales.set_base_fares": "הגדר מחירי בסיס",
+            "sales.payment": "תשלום",
+            "sales.booking_held_msg": "הזמנות מוחזקות.",
+            "sales.expires_in_15_mins": "פג תוקף בעוד 15 דקות",
+            "sales.pay": "שלם",
+            "sales.booking_confirmed": "הזמנה אושרה",
+            "sales.new_booking": "הזמנה חדשה",
+            "sales.passenger_count": "נוסעים",
+            "sales.price_per_room": "מחיר לחדר",
+            "sales.booking_ref": "מספר הזמנה",
 
             # Preferences
             "preferences.title": "הגדרות",

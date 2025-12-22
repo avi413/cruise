@@ -16,6 +16,7 @@ type QuoteOut = {
 
 type BookingOut = {
   id: string
+  booking_ref?: string
   status: string
   created_at: string
   updated_at: string
@@ -827,12 +828,35 @@ export function SalesPage(props: { apiBase: string }) {
           </div>
           
           <div style={{marginBottom: 20}}>
-            {confirmedBookings.map(b => (
-                <div key={b.id} style={{display:'flex', justifyContent:'space-between', fontSize: 14, marginBottom: 5}}>
-                   <span>Booking #{b.id.substring(0,8)}</span>
-                   <span>{formatMoney(b.quote.total, b.quote.currency, userLocale)}</span>
+            {confirmedBookings.map(b => {
+                const totalGuests = (b.guests.adult || 0) + (b.guests.child || 0) + (b.guests.infant || 0)
+                return (
+                <div key={b.id} style={{
+                    background: 'white', border: '1px solid #eee', borderRadius: 8, padding: 15, marginBottom: 10,
+                    display:'flex', justifyContent:'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                }}>
+                   <div>
+                       <div style={{fontWeight:'bold', fontSize: 16, color: 'var(--csp-primary)'}}>
+                           {t('sales.booking_ref')}: {b.booking_ref || b.id.substring(0,8)}
+                       </div>
+                       <div style={{fontSize: 12, color: '#666', marginTop: 4}}>
+                          {t('sales.passenger_count')}: {totalGuests} ({b.guests.adult} Ad, {b.guests.child} Ch)
+                       </div>
+                       <div style={{fontSize: 12, color: '#666'}}>
+                          {t('sales.price_per_room')}: {formatMoney(b.quote.total, b.quote.currency, userLocale)}
+                       </div>
+                       <div style={{fontSize: 11, color: '#999', marginTop: 2}}>
+                          {t('sales.cabin')}: {b.cabin_id ? (cabins.find(c => c.id === b.cabin_id)?.cabin_no || b.cabin_id) : 'TBA'} ({b.cabin_type})
+                       </div>
+                   </div>
+                   <div style={{textAlign: 'right'}}>
+                       <div style={{fontWeight: 'bold', fontSize: 16}}>
+                           {formatMoney(b.quote.total, b.quote.currency, userLocale)}
+                       </div>
+                   </div>
                 </div>
-            ))}
+                )
+            })}
             <div style={{borderTop: '1px solid #eee', marginTop: 10, paddingTop: 10, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
                 <span>Total</span>
                 <span>{formatMoney(confirmedBookings.reduce((sum, b) => sum + b.quote.total, 0), confirmedBookings[0]?.quote.currency || 'USD', userLocale)}</span>
@@ -867,7 +891,7 @@ export function SalesPage(props: { apiBase: string }) {
            <div style={styles.bigTitle}>{t('sales.booking_confirmed')}</div>
            <div style={{marginBottom: 20}}>
              {confirmedBookings.map(b => (
-                 <div key={b.id} style={styles.refNum}>Ref: {b.id}</div>
+                 <div key={b.id} style={styles.refNum}>{t('sales.booking_ref')}: {b.booking_ref || b.id}</div>
              ))}
            </div>
            
