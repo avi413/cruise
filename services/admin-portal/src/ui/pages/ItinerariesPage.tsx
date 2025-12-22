@@ -1131,7 +1131,7 @@ export function ItinerariesPage(props: { apiBase: string }) {
                           key={`${selectedItinerary.id}-${s.day_offset}-${idx}`}
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '70px 1fr',
+                            gridTemplateColumns: '70px 80px 1fr',
                             gap: 10,
                             padding: '10px 12px',
                             border: '1px solid rgba(255,255,255,0.10)',
@@ -1141,6 +1141,31 @@ export function ItinerariesPage(props: { apiBase: string }) {
                         >
                           <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: 12, color: 'rgba(230,237,243,0.75)' }}>
                             Day {s.day_offset + 1}
+                          </div>
+                          <div>
+                            {String(s.image_url || '').trim() ? (
+                              <img
+                                src={s.image_url}
+                                alt="Stop"
+                                style={{
+                                  width: 64,
+                                  height: 40,
+                                  objectFit: 'cover',
+                                  borderRadius: 6,
+                                  border: '1px solid rgba(255,255,255,0.10)',
+                                  background: 'rgba(255,255,255,0.04)',
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: 64,
+                                  height: 40,
+                                  borderRadius: 6,
+                                  background: 'rgba(255,255,255,0.04)',
+                                }}
+                              />
+                            )}
                           </div>
                           <div style={{ display: 'grid', gap: 4 }}>
                             <div style={{ fontWeight: 800 }}>
