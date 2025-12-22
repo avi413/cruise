@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../components/ui'
 
@@ -67,6 +68,7 @@ function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: (
 }
 
 export function PortsPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -214,7 +216,7 @@ export function PortsPage(props: { apiBase: string }) {
 
   async function deletePort() {
     if (!selectedCode) return
-    if (!confirm(`Delete port ${selectedCode}?`)) return
+    if (!confirm(t('ports.edit.confirm_delete', { code: selectedCode }))) return
     setBusy(true)
     setErr(null)
     try {
@@ -239,7 +241,7 @@ export function PortsPage(props: { apiBase: string }) {
                 <Input 
                     value={q} 
                     onChange={(e) => setQ(e.target.value)} 
-                    placeholder="Search ports by code, name, city..." 
+                    placeholder={t('ports.list.search_placeholder')} 
                     style={{ width: '100%', maxWidth: 400 }}
                 />
             </div>
@@ -252,18 +254,18 @@ export function PortsPage(props: { apiBase: string }) {
                     <option value="es">Spanish (es)</option>
                 </Select>
             </div>
-            <Button variant="primary" onClick={() => setView('create')}>New Port</Button>
-            <Button variant="secondary" onClick={() => void refresh()}>Refresh</Button>
+            <Button variant="primary" onClick={() => setView('create')}>{t('ports.list.btn_new')}</Button>
+            <Button variant="secondary" onClick={() => void refresh()}>{t('ports.list.btn_refresh')}</Button>
         </div>
 
         <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                     <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
-                        <th style={styles.th}>Code</th>
-                        <th style={styles.th}>Name</th>
-                        <th style={styles.th}>City</th>
-                        <th style={styles.th}>Country</th>
+                        <th style={styles.th}>{t('ports.list.th_code')}</th>
+                        <th style={styles.th}>{t('ports.list.th_name')}</th>
+                        <th style={styles.th}>{t('ports.list.th_city')}</th>
+                        <th style={styles.th}>{t('ports.list.th_country')}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -284,7 +286,7 @@ export function PortsPage(props: { apiBase: string }) {
                     {ports.length === 0 && (
                         <tr>
                             <td colSpan={4} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
-                                No ports found.
+                                {t('ports.list.empty')}
                             </td>
                         </tr>
                     )}
@@ -298,34 +300,34 @@ export function PortsPage(props: { apiBase: string }) {
   function renderCreate() {
     return (
         <Panel 
-            title="Create New Port" 
-            subtitle="Enter port details and translations."
-            right={<Button variant="secondary" onClick={() => setView('list')}>Cancel</Button>}
+            title={t('ports.create.title')}
+            subtitle={t('ports.create.subtitle')}
+            right={<Button variant="secondary" onClick={() => setView('list')}>{t('ports.create.btn_cancel')}</Button>}
         >
             <div style={{ maxWidth: 800, display: 'grid', gap: 20 }}>
                 <div style={{ maxWidth: 200 }}>
-                    <Input label="Port Code (Unique)" value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. ATH" />
+                    <Input label={t('ports.create.label_code')} value={code} onChange={(e) => setCode(e.target.value)} placeholder={t('ports.create.placeholder_code')} />
                 </div>
                 
                 <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>Translations</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{t('ports.create.translations_title')}</div>
                     {rows.map((r, idx) => (
                         <div key={idx} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-                            <Input label={idx === 0 ? "Lang" : undefined} value={r.lang} onChange={(e) => setRow(idx, { lang: e.target.value })} placeholder="en" />
-                            <Input label={idx === 0 ? "Name" : undefined} value={r.name} onChange={(e) => setRow(idx, { name: e.target.value })} placeholder="Name" />
-                            <Input label={idx === 0 ? "City" : undefined} value={r.city} onChange={(e) => setRow(idx, { city: e.target.value })} placeholder="City" />
-                            <Input label={idx === 0 ? "Country" : undefined} value={r.country} onChange={(e) => setRow(idx, { country: e.target.value })} placeholder="Country" />
+                            <Input label={idx === 0 ? t('ports.labels.lang') : undefined} value={r.lang} onChange={(e) => setRow(idx, { lang: e.target.value })} placeholder="en" />
+                            <Input label={idx === 0 ? t('ports.labels.name') : undefined} value={r.name} onChange={(e) => setRow(idx, { name: e.target.value })} placeholder="Name" />
+                            <Input label={idx === 0 ? t('ports.labels.city') : undefined} value={r.city} onChange={(e) => setRow(idx, { city: e.target.value })} placeholder="City" />
+                            <Input label={idx === 0 ? t('ports.labels.country') : undefined} value={r.country} onChange={(e) => setRow(idx, { country: e.target.value })} placeholder="Country" />
                             <Button variant="danger" disabled={busy || rows.length <= 1} onClick={() => removeRow(idx)}>X</Button>
                         </div>
                     ))}
                     <div>
-                        <Button variant="secondary" onClick={addRow}>+ Add Language</Button>
+                        <Button variant="secondary" onClick={addRow}>{t('ports.create.btn_add_lang')}</Button>
                     </div>
                 </div>
 
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)' }}>
                     <Button variant="primary" disabled={busy || !code.trim()} onClick={() => void createPort()}>
-                        {busy ? 'Creating...' : 'Create Port'}
+                        {busy ? t('ports.create.btn_creating') : t('ports.create.btn_create')}
                     </Button>
                 </div>
             </div>
@@ -336,33 +338,33 @@ export function PortsPage(props: { apiBase: string }) {
   function renderEdit() {
     return (
         <Panel 
-            title={`Edit Port: ${selectedCode}`} 
-            subtitle="Update translations or delete this port."
-            right={<Button variant="secondary" onClick={() => setView('list')}>Back to List</Button>}
+            title={t('ports.edit.title', { code: selectedCode })}
+            subtitle={t('ports.edit.subtitle')}
+            right={<Button variant="secondary" onClick={() => setView('list')}>{t('ports.edit.btn_back')}</Button>}
         >
              <div style={{ maxWidth: 800, display: 'grid', gap: 20 }}>
                 <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>Translations</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{t('ports.edit.translations_title')}</div>
                     {editRows.map((r, idx) => (
                         <div key={idx} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
-                            <Input label={idx === 0 ? "Lang" : undefined} value={r.lang} onChange={(e) => setEditRow(idx, { lang: e.target.value })} />
-                            <Input label={idx === 0 ? "Name" : undefined} value={r.name} onChange={(e) => setEditRow(idx, { name: e.target.value })} />
-                            <Input label={idx === 0 ? "City" : undefined} value={r.city} onChange={(e) => setEditRow(idx, { city: e.target.value })} />
-                            <Input label={idx === 0 ? "Country" : undefined} value={r.country} onChange={(e) => setEditRow(idx, { country: e.target.value })} />
+                            <Input label={idx === 0 ? t('ports.labels.lang') : undefined} value={r.lang} onChange={(e) => setEditRow(idx, { lang: e.target.value })} />
+                            <Input label={idx === 0 ? t('ports.labels.name') : undefined} value={r.name} onChange={(e) => setEditRow(idx, { name: e.target.value })} />
+                            <Input label={idx === 0 ? t('ports.labels.city') : undefined} value={r.city} onChange={(e) => setEditRow(idx, { city: e.target.value })} />
+                            <Input label={idx === 0 ? t('ports.labels.country') : undefined} value={r.country} onChange={(e) => setEditRow(idx, { country: e.target.value })} />
                             <Button variant="danger" disabled={busy || editRows.length <= 1} onClick={() => removeEditRow(idx)}>X</Button>
                         </div>
                     ))}
                     <div>
-                        <Button variant="secondary" onClick={addEditRow}>+ Add Language</Button>
+                        <Button variant="secondary" onClick={addEditRow}>{t('ports.edit.btn_add_lang')}</Button>
                     </div>
                 </div>
 
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', justifyContent: 'space-between' }}>
                      <Button variant="danger" disabled={busy} onClick={() => void deletePort()}>
-                        Delete Port
+                        {t('ports.edit.btn_delete')}
                     </Button>
                     <Button variant="primary" disabled={busy} onClick={() => void savePort()}>
-                        {busy ? 'Saving...' : 'Save Changes'}
+                        {busy ? t('ports.edit.btn_saving') : t('ports.edit.btn_save')}
                     </Button>
                 </div>
             </div>
@@ -373,8 +375,8 @@ export function PortsPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
-        title="Ports Management"
-        subtitle="Manage global port definitions, cities, and countries."
+        title={t('ports.title')}
+        subtitle={t('ports.subtitle')}
       />
 
       {err ? <ErrorBanner message={err} /> : null}

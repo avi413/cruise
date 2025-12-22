@@ -646,5 +646,47 @@
       "label_chip_bg": "Chip background",
       "msg_builtin_readonly": "Built-in themes can\u2019t be edited directly. Create a new theme above to customize all portal colors."
     }
+  },
+  "ports": {
+    "title": "Ports Management",
+    "subtitle": "Manage global port definitions, cities, and countries.",
+    "list": {
+      "search_placeholder": "Search ports by code, name, city...",
+      "btn_new": "New Port",
+      "btn_refresh": "Refresh",
+      "th_code": "Code",
+      "th_name": "Name",
+      "th_city": "City",
+      "th_country": "Country",
+      "empty": "No ports found."
+    },
+    "create": {
+      "title": "Create New Port",
+      "subtitle": "Enter port details and translations.",
+      "label_code": "Port Code (Unique)",
+      "placeholder_code": "e.g. ATH",
+      "translations_title": "Translations",
+      "btn_add_lang": "+ Add Language",
+      "btn_create": "Create Port",
+      "btn_creating": "Creating...",
+      "btn_cancel": "Cancel"
+    },
+    "edit": {
+      "title": "Edit Port: {{code}}",
+      "subtitle": "Update translations or delete this port.",
+      "translations_title": "Translations",
+      "btn_add_lang": "+ Add Language",
+      "btn_save": "Save Changes",
+      "btn_saving": "Saving...",
+      "btn_delete": "Delete Port",
+      "confirm_delete": "Delete port {{code}}?",
+      "btn_back": "Back to List"
+    },
+    "labels": {
+      "lang": "Lang",
+      "name": "Name",
+      "city": "City",
+      "country": "Country"
+    }
   }
 }
