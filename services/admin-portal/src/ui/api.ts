@@ -17,6 +17,7 @@ export type Ship = {
   operator?: string | null
   decks: number
   status: 'active' | 'inactive' | 'maintenance'
+  deck_plans?: Record<string, string>
   created_at: string
 }
 

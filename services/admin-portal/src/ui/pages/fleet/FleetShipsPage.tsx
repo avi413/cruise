@@ -13,6 +13,7 @@ type Ship = {
   operator?: string | null
   decks: number
   status: 'active' | 'inactive' | 'maintenance'
+  deck_plans?: Record<string, string>
   created_at: string
 }
 
@@ -70,6 +71,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
   const [editDecks, setEditDecks] = useState(0)
   const [editStatus, setEditStatus] = useState<Ship['status']>('active')
   const [editCode, setEditCode] = useState('') // Code is usually immutable but useful to see
+  const [editDeckPlans, setEditDeckPlans] = useState<Record<string, string>>({})
 
   const fleetEndpoint = useMemo(() => (companyId ? `/v1/companies/${companyId}/ships` : null), [companyId])
 
@@ -134,6 +136,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
     setEditOperator(s.operator || '')
     setEditDecks(s.decks || 0)
     setEditStatus(s.status)
+    setEditDeckPlans(s.deck_plans || {})
     setView('edit')
   }
 
@@ -149,6 +152,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
           operator: editOperator || null,
           decks: editDecks,
           status: editStatus,
+          deck_plans: editDeckPlans,
         },
       })
       await refreshFleet()
@@ -310,6 +314,26 @@ export function FleetShipsPage(props: { apiBase: string }) {
                         <option value="inactive">Inactive</option>
                         <option value="maintenance">Maintenance</option>
                     </Select>
+                </div>
+
+                <div style={{ display: 'grid', gap: 10, border: '1px solid var(--csp-border)', padding: 16, borderRadius: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Deck Plans</div>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)', marginBottom: 8 }}>
+                       Enter image URLs for each deck.
+                    </div>
+                    {Array.from({ length: editDecks }).map((_, i) => {
+                        const d = i + 1
+                        const val = editDeckPlans[String(d)] || ''
+                        return (
+                             <Input 
+                                key={d}
+                                label={`Deck ${d} Image URL`} 
+                                value={val} 
+                                onChange={(e) => setEditDeckPlans(prev => ({ ...prev, [String(d)]: e.target.value }))}
+                                placeholder="https://..."
+                            />
+                        )
+                    })}
                 </div>
 
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>

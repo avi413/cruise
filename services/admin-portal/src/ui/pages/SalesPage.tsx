@@ -94,6 +94,11 @@ type CruisePrice = {
 
 type MePrefs = { user_id: string; updated_at: string; preferences: any }
 
+type Ship = {
+  id: string
+  deck_plans?: Record<string, string>
+}
+
 // --- Helpers ---
 
 function formatMoney(cents: number, currency: string, locale: string): string {
@@ -128,6 +133,7 @@ export function SalesPage(props: { apiBase: string }) {
   const [cabins, setCabins] = useState<Cabin[]>([])
   const [unavailableCabins, setUnavailableCabins] = useState<string[]>([])
   const [prices, setPrices] = useState<CruisePrice[]>([])
+  const [selectedShip, setSelectedShip] = useState<Ship | null>(null)
 
   // -- Search State --
   const [searchDest, setSearchDest] = useState('')
@@ -214,6 +220,8 @@ export function SalesPage(props: { apiBase: string }) {
       setUnavailableCabins(unavail || [])
       const pr = await apiFetch<CruisePrice[]>(props.apiBase, `/v1/cruise-prices?sailing_id=${s.id}`)
       setPrices(pr || [])
+      const ship = await apiFetch<Ship>(props.apiBase, `/v1/ships/${s.ship_id}`)
+      setSelectedShip(ship)
     } catch (e: any) {
       setErr(String(e))
     } finally {
@@ -491,6 +499,12 @@ export function SalesPage(props: { apiBase: string }) {
                       {/* Simulated Deck Plan Visualization */}
                       <div style={styles.deckMapScroll}>
                         <div style={styles.deckMapPaper}>
+                           {selectedDeck && selectedShip?.deck_plans?.[String(selectedDeck)] && (
+                               <img 
+                                src={selectedShip.deck_plans[String(selectedDeck)]} 
+                                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: 0.2, pointerEvents: 'none' }} 
+                               />
+                           )}
                            <div style={styles.shipBow}>BOW</div>
                            {cabinsOnDeck.map((c, idx) => {
                              // --- VISUALIZATION LOGIC ---
