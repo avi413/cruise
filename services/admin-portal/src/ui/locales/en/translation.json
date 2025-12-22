@@ -161,6 +161,8 @@
     "select_deck_msg": "Select deck to view cabins.",
     "cabins_on_deck": "Cabins on deck",
     "view_price_quote": "View price quote",
+    "check_price": "Check price",
+    "add_to_cart": "Add to cart",
     "deck": "Deck",
     "quote_summary": "Quote summary",
     "taxes_fees": "Taxes & fees",
