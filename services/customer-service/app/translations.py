@@ -127,6 +127,26 @@ TRANSLATIONS = {
             "customers.error_preferences": "Preferences must be valid JSON.",
             "customers.error_passenger_name": "Passenger first/last name are required.",
             "customers.error_not_found": "Customer {{id}} not found.",
+
+            # Cruises
+            "cruises.title": "Cruises",
+            "cruises.subtitle": "Browse and manage cruises.",
+            "cruises.refreshing": "Refreshing...",
+            "cruises.refresh": "Refresh",
+            "cruises.search_title": "Search",
+            "cruises.search_subtitle": "Filter by cruise name or code.",
+            "cruises.search_placeholder": "Search cruises...",
+            "cruises.results_title": "Results",
+            "cruises.open_in_sales_hint": "Click to open in Sales view.",
+            "cruises.th_sailing": "Sailing",
+            "cruises.th_dates": "Dates",
+            "cruises.th_ports": "Ports",
+            "cruises.th_itinerary": "Itinerary",
+            "cruises.th_ship": "Ship",
+            "cruises.open_in_sales": "Open in Sales",
+            "cruises.loading": "Loading...",
+            "cruises.no_results": "No cruises found.",
+
             # Sailings
             "sailings.page_title": "Sailings Management",
             "sailings.page_subtitle": "Manage sailings, their schedules, and port stops.",
@@ -413,6 +433,26 @@ TRANSLATIONS = {
             "customers.error_preferences": "ההעדפות חייבות להיות בפורמט JSON תקין.",
             "customers.error_passenger_name": "שם פרטי/משפחה של הנוסע נדרשים.",
             "customers.error_not_found": "לקוח {{id}} לא נמצא.",
+
+            # Cruises
+            "cruises.title": "קרוזים",
+            "cruises.subtitle": "דפדוף וניהול קרוזים.",
+            "cruises.refreshing": "מרענן...",
+            "cruises.refresh": "רענן",
+            "cruises.search_title": "חיפוש",
+            "cruises.search_subtitle": "סנן לפי שם או קוד.",
+            "cruises.search_placeholder": "חפש קרוזים...",
+            "cruises.results_title": "תוצאות",
+            "cruises.open_in_sales_hint": "לחץ לפתיחה בתצוגת מכירות.",
+            "cruises.th_sailing": "הפלגה",
+            "cruises.th_dates": "תאריכים",
+            "cruises.th_ports": "נמלים",
+            "cruises.th_itinerary": "מסלול",
+            "cruises.th_ship": "אנייה",
+            "cruises.open_in_sales": "פתח במכירות",
+            "cruises.loading": "טוען...",
+            "cruises.no_results": "לא נמצאו קרוזים.",
+
             # Sailings
             "sailings.page_title": "ניהול הפלגות",
             "sailings.page_subtitle": "ניהול הפלגות, לוחות זמנים ועצירות.",
