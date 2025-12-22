@@ -99,6 +99,16 @@ type Ship = {
   deck_plans?: Record<string, string>
 }
 
+type CartItem = {
+  tempId: string
+  sailing: Sailing
+  cabin: Cabin
+  cabinCat: CabinCategory | undefined
+  guests: { paxtype: string }[]
+  quote: QuoteOut
+  priceType: string
+}
+
 // --- Helpers ---
 
 function formatMoney(cents: number, currency: string, locale: string): string {
@@ -142,23 +152,28 @@ export function SalesPage(props: { apiBase: string }) {
   const [searchGuests, setSearchGuests] = useState(2)
 
   // -- Flow State --
-  // step: search -> selection -> quote -> booking -> payment -> confirm
-  const [step, setStep] = useState<'search' | 'selection' | 'quote' | 'booking' | 'payment' | 'confirm'>('search')
+  // step: search -> selection (can add to cart) -> checkout (cart review -> customer -> payment -> confirm)
+  const [step, setStep] = useState<'search' | 'selection' | 'checkout' | 'payment' | 'confirm'>('search')
   
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('map')
   const [selectedSailingId, setSelectedSailingId] = useState('')
   const [selectedDeck, setSelectedDeck] = useState<number | null>(null)
-  const [selectedCabinId, setSelectedCabinId] = useState('')
-  const [selectedCabinType, setSelectedCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside') // Fallback if no specific cabin
-  const [selectedCatCode, setSelectedCatCode] = useState('')
-
-  const [quote, setQuote] = useState<QuoteOut | null>(null)
   
+  // Selection State (for adding to cart)
+  const [selectedCabinId, setSelectedCabinId] = useState('')
+  const [selectedCabinType, setSelectedCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
+  const [selectedCatCode, setSelectedCatCode] = useState('')
+  const [currentQuote, setCurrentQuote] = useState<QuoteOut | null>(null)
+  
+  // -- Cart State --
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [isCartOpen, setIsCartOpen] = useState(false)
+
   // -- Booking State --
   const [customerId, setCustomerId] = useState('')
   const [customerQ, setCustomerQ] = useState('')
   const [customerHits, setCustomerHits] = useState<Customer[]>([])
-  const [booking, setBooking] = useState<BookingOut | null>(null)
+  const [confirmedBookings, setConfirmedBookings] = useState<BookingOut[]>([])
   
   // -- Guests Breakdown --
   const [adults, setAdults] = useState(2)
@@ -229,8 +244,8 @@ export function SalesPage(props: { apiBase: string }) {
     }
   }
 
-  async function getQuote() {
-    if (!selectedSailingId) return
+  async function getQuoteForSelection() {
+    if (!selectedSailingId || !selectedCabinId) return
     setBusy(true)
     setErr(null)
     try {
@@ -244,7 +259,7 @@ export function SalesPage(props: { apiBase: string }) {
         method: 'POST',
         body: {
           sailing_id: selectedSailingId,
-          sailing_date: null, // derived from ID
+          sailing_date: null,
           cabin_type: selectedCabinType,
           cabin_category_code: selectedCatCode || null,
           price_type: 'regular',
@@ -254,8 +269,7 @@ export function SalesPage(props: { apiBase: string }) {
         },
         tenant: true
       })
-      setQuote(q)
-      setStep('quote')
+      setCurrentQuote(q)
     } catch (e: any) {
       setErr(String(e?.detail || e))
     } finally {
@@ -263,42 +277,97 @@ export function SalesPage(props: { apiBase: string }) {
     }
   }
 
-  async function createHold() {
+  function addToCart() {
+    if (!currentQuote || !selectedCabinId || !selectedSailingId) return
+    const cabin = cabins.find(c => c.id === selectedCabinId)
+    const sailing = sailings.find(s => s.id === selectedSailingId)
+    const cat = cabinCats.find(c => c.id === cabin?.category_id)
+    
+    if (!cabin || !sailing) return
+
+    const guests = []
+    for(let i=0; i<adults; i++) guests.push({ paxtype: 'adult' })
+    for(let i=0; i<children; i++) guests.push({ paxtype: 'child' })
+    for(let i=0; i<infants; i++) guests.push({ paxtype: 'infant' })
+
+    const item: CartItem = {
+      tempId: Math.random().toString(36).substring(7),
+      sailing,
+      cabin,
+      cabinCat: cat,
+      guests,
+      quote: currentQuote,
+      priceType: 'regular'
+    }
+
+    setCart([...cart, item])
+    // Reset selection
+    setSelectedCabinId('')
+    setCurrentQuote(null)
+    setIsCartOpen(true)
+  }
+
+  function removeFromCart(tempId: string) {
+    setCart(cart.filter(i => i.tempId !== tempId))
+  }
+
+  async function createHoldsAndCheckout() {
+    if (cart.length === 0) return
     setBusy(true)
     setErr(null)
+    const newBookings: BookingOut[] = []
+    
     try {
-       const r = await apiFetch<BookingOut>(props.apiBase, `/v1/holds`, {
-        method: 'POST',
-        body: {
-          customer_id: customerId || null,
-          sailing_id: selectedSailingId,
-          cabin_type: selectedCabinType,
-          cabin_category_code: selectedCatCode || null,
-          cabin_id: selectedCabinId || null,
-          price_type: 'regular',
-          guests: { adult: adults, child: children, infant: infants },
-          hold_minutes: 30,
-        },
-      })
-      setBooking(r)
+      for (const item of cart) {
+        // Group guests
+        const g = { adult: 0, child: 0, infant: 0 }
+        item.guests.forEach(x => {
+            if (x.paxtype === 'adult') g.adult++
+            if (x.paxtype === 'child') g.child++
+            if (x.paxtype === 'infant') g.infant++
+        })
+
+        const r = await apiFetch<BookingOut>(props.apiBase, `/v1/holds`, {
+          method: 'POST',
+          body: {
+            customer_id: customerId || null,
+            sailing_id: item.sailing.id,
+            cabin_type: 'inside', // Should derive from item
+            // Fix: Map cabin class to cabin type more accurately if possible, or store in item
+            cabin_category_code: item.cabinCat?.code || null,
+            cabin_id: item.cabin.id,
+            price_type: item.priceType,
+            guests: g,
+            hold_minutes: 30,
+          },
+        })
+        newBookings.push(r)
+      }
+      setConfirmedBookings(newBookings)
       setStep('payment')
     } catch (e: any) {
-      setErr(String(e?.detail || e))
+      setErr(`Failed to create hold: ${String(e?.detail || e)}`)
+      // If some succeeded, we might want to handle partials, but for now just fail.
     } finally {
       setBusy(false)
     }
   }
 
   async function processPayment() {
-    if (!booking) return
+    if (confirmedBookings.length === 0) return
     setBusy(true)
     try {
-      const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${booking.id}/confirm`, {
-        method: 'POST',
-        body: { payment_token: 'demo-pos-terminal' }
-      })
-      setBooking(r)
+      const confirmed = []
+      for (const b of confirmedBookings) {
+        const r = await apiFetch<BookingOut>(props.apiBase, `/v1/bookings/${b.id}/confirm`, {
+          method: 'POST',
+          body: { payment_token: 'demo-pos-terminal' }
+        })
+        confirmed.push(r)
+      }
+      setConfirmedBookings(confirmed)
       setStep('confirm')
+      setCart([]) // Clear cart
     } catch (e: any) {
       setErr(String(e?.detail || e))
     } finally {
@@ -336,8 +405,51 @@ export function SalesPage(props: { apiBase: string }) {
   }, [cabins, selectedDeck])
 
   const selectedSailing = sailings.find(s => s.id === selectedSailingId)
+  const cartTotal = cart.reduce((sum, i) => sum + i.quote.total, 0)
 
   // -- Views --
+
+  const CartDrawer = () => (
+     <div style={{
+       position: 'fixed', top: 0, right: isCartOpen ? 0 : '-400px', width: 350, height: '100%', 
+       background: 'white', boxShadow: '-5px 0 20px rgba(0,0,0,0.1)', transition: 'right 0.3s', zIndex: 1000,
+       display: 'flex', flexDirection: 'column'
+     }}>
+       <div style={{padding: 20, borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+         <h3 style={{margin:0}}>Shopping Cart ({cart.length})</h3>
+         <button onClick={() => setIsCartOpen(false)} style={{background:'none', border:'none', cursor:'pointer', fontSize: 20}}>×</button>
+       </div>
+       <div style={{flex: 1, overflowY: 'auto', padding: 20}}>
+         {cart.length === 0 && <div style={{textAlign:'center', color:'#999', marginTop: 50}}>Cart is empty</div>}
+         {cart.map(item => (
+           <div key={item.tempId} style={{marginBottom: 15, padding: 15, background: '#f9f9f9', borderRadius: 8, border: '1px solid #eee'}}>
+             <div style={{fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
+               <span>Cabin {item.cabin.cabin_no}</span>
+               <span>{formatMoney(item.quote.total, item.quote.currency, userLocale)}</span>
+             </div>
+             <div style={{fontSize: 12, color: '#666', marginTop: 5}}>{item.sailing.code} • {item.cabinCat?.name}</div>
+             <button onClick={() => removeFromCart(item.tempId)} style={{marginTop: 10, fontSize: 11, color: 'red', background:'none', border:'none', cursor:'pointer', padding:0}}>Remove</button>
+           </div>
+         ))}
+       </div>
+       <div style={{padding: 20, borderTop: '1px solid #eee', background: '#fafafa'}}>
+         <div style={{display:'flex', justifyContent:'space-between', fontWeight:'bold', marginBottom: 15, fontSize: 18}}>
+           <span>Total</span>
+           <span>{formatMoney(cartTotal, 'USD', userLocale)}</span>
+         </div>
+         <button 
+           style={{width: '100%', background: 'var(--csp-primary)', color: 'white', border: 'none', padding: 15, borderRadius: 8, fontWeight: 'bold', cursor: cart.length ? 'pointer' : 'not-allowed', opacity: cart.length ? 1 : 0.5}}
+           disabled={cart.length === 0}
+           onClick={() => {
+             setIsCartOpen(false)
+             setStep('checkout')
+           }}
+         >
+           Proceed to Checkout
+         </button>
+       </div>
+     </div>
+  )
 
   if (step === 'search') {
     return (
@@ -414,6 +526,10 @@ export function SalesPage(props: { apiBase: string }) {
         <span style={styles.mono}>{selectedSailing?.code}</span>
         <span>{selectedSailing?.start_date}</span>
       </div>
+      <div style={{flex:1}}/>
+      <button style={styles.cartBtn} onClick={() => setIsCartOpen(true)}>
+         🛒 Cart ({cart.length})
+      </button>
     </div>
   )
 
@@ -421,6 +537,7 @@ export function SalesPage(props: { apiBase: string }) {
     return (
       <div style={styles.container}>
         {header}
+        <CartDrawer />
         <div style={styles.splitView}>
            {/* Filters / Config */}
            <div style={styles.panel}>
@@ -470,20 +587,24 @@ export function SalesPage(props: { apiBase: string }) {
                      {cabinsOnDeck.map(c => {
                        const isTaken = unavailableCabins.includes(c.id)
                        const isSelected = selectedCabinId === c.id
+                       const inCart = cart.some(i => i.cabin.id === c.id)
                        const cat = cabinCats.find(cat => cat.id === c.category_id)
                        const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
+                       
+                       const isDisabled = isTaken || inCart
+
                        return (
                          <button
                            key={c.id}
-                           disabled={isTaken}
-                           style={isSelected ? styles.cabinBtnSelected : (isTaken ? styles.cabinBtnDisabled : styles.cabinBtn)}
+                           disabled={isDisabled}
+                           style={isSelected ? styles.cabinBtnSelected : (isDisabled ? styles.cabinBtnDisabled : styles.cabinBtn)}
                            onClick={() => {
                              setSelectedCabinId(c.id)
                              if (cat) {
                                setSelectedCatCode(cat.code)
-                               // simplistic mapping, ideal world we map cabin_class to cabin_type enum
                                const typeMap: any = { 'inside': 'inside', 'ocean': 'oceanview', 'balcony': 'balcony', 'suite': 'suite' }
                                setSelectedCabinType(typeMap[cat.cabin_class.toLowerCase()] || 'inside')
+                               setCurrentQuote(null) // Reset quote when selection changes
                              }
                            }}
                          >
@@ -508,9 +629,6 @@ export function SalesPage(props: { apiBase: string }) {
                            <div style={styles.shipBow}>BOW</div>
                            {cabinsOnDeck.map((c, idx) => {
                              // --- VISUALIZATION LOGIC ---
-                             // If we have real coords in meta, use them.
-                             // Otherwise, generate a "fake" layout based on index to simulate the deck plan.
-                             // Logic: Odd on top (Port), Even on bottom (Starboard).
                              let x = c.meta?.x || 0
                              let y = c.meta?.y || 0
                              let w = c.meta?.w || 60
@@ -524,10 +642,12 @@ export function SalesPage(props: { apiBase: string }) {
                              }
 
                              const isTaken = unavailableCabins.includes(c.id)
+                             const inCart = cart.some(i => i.cabin.id === c.id)
                              const isSelected = selectedCabinId === c.id
                              const cat = cabinCats.find(cat => cat.id === c.category_id)
                              const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
-                             
+                             const isDisabled = isTaken || inCart
+
                              return (
                                <div
                                  key={c.id}
@@ -537,7 +657,7 @@ export function SalesPage(props: { apiBase: string }) {
                                    top: y,
                                    width: w,
                                    height: h,
-                                   background: isSelected ? 'var(--csp-primary)' : (isTaken ? '#eee' : 'white'),
+                                   background: isSelected ? 'var(--csp-primary)' : (isDisabled ? '#eee' : 'white'),
                                    border: isSelected ? '2px solid var(--csp-primary-dark)' : '1px solid #ccc',
                                    borderRadius: 4,
                                    display: 'flex',
@@ -545,19 +665,20 @@ export function SalesPage(props: { apiBase: string }) {
                                    alignItems: 'center',
                                    justifyContent: 'center',
                                    fontSize: 10,
-                                   cursor: isTaken ? 'not-allowed' : 'pointer',
-                                   opacity: isTaken ? 0.6 : 1,
+                                   cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                   opacity: isDisabled ? 0.6 : 1,
                                    boxShadow: isSelected ? '0 4px 12px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
                                    zIndex: isSelected ? 10 : 1,
                                    transition: 'transform 0.1s'
                                  }}
                                  onClick={() => {
-                                   if (isTaken) return
+                                   if (isDisabled) return
                                    setSelectedCabinId(c.id)
                                    if (cat) {
                                      setSelectedCatCode(cat.code)
                                      const typeMap: any = { 'inside': 'inside', 'ocean': 'oceanview', 'balcony': 'balcony', 'suite': 'suite' }
                                      setSelectedCabinType(typeMap[cat.cabin_class.toLowerCase()] || 'inside')
+                                     setCurrentQuote(null)
                                    }
                                  }}
                                  title={`${c.cabin_no} - ${cat?.name}`}
@@ -581,60 +702,50 @@ export function SalesPage(props: { apiBase: string }) {
                </>
              )}
              
-             <div style={styles.actions}>
-               <button 
-                 style={styles.primaryBtn} 
-                 disabled={!selectedCabinId}
-                 onClick={() => getQuote()}
-               >
-                 {t('sales.view_price_quote')}
-               </button>
+             {/* Quote / Add to Cart Actions */}
+             <div style={{marginTop: 20, padding: 15, background: '#fafafa', border: '1px solid #eee', borderRadius: 8}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                   <div>
+                     <div style={{fontWeight:'bold', fontSize: 14}}>{selectedCabinId ? `Cabin ${cabins.find(c=>c.id===selectedCabinId)?.cabin_no}` : 'Select a cabin'}</div>
+                     {currentQuote && (
+                       <div style={{color: 'var(--csp-primary)', fontWeight:900, fontSize: 18}}>
+                         {formatMoney(currentQuote.total, currentQuote.currency, userLocale)}
+                       </div>
+                     )}
+                   </div>
+                   <div style={{display:'flex', gap: 10}}>
+                      <button 
+                        style={styles.secondaryBtn} 
+                        disabled={!selectedCabinId || busy}
+                        onClick={() => getQuoteForSelection()}
+                      >
+                        {t('sales.check_price')}
+                      </button>
+                      <button 
+                        style={styles.primaryBtn} 
+                        disabled={!currentQuote || busy}
+                        onClick={() => addToCart()}
+                      >
+                        {t('sales.add_to_cart')}
+                      </button>
+                   </div>
+                </div>
+                {err && <div style={styles.error}>{err}</div>}
              </div>
+
            </div>
         </div>
       </div>
     )
   }
 
-  if (step === 'quote') {
-    return (
-      <div style={styles.container}>
-        {header}
-        <div style={styles.centerCard}>
-          <div style={styles.panelTitle}>{t('sales.quote_summary')}</div>
-          {quote && (
-            <div style={styles.quoteDetails}>
-               <div style={styles.bigPrice}>{formatMoney(quote.total, quote.currency, userLocale)}</div>
-               <div style={styles.breakdown}>
-                 {quote.lines.map(l => (
-                   <div key={l.code} style={styles.lineItem}>
-                     <span>{l.description}</span>
-                     <span>{formatMoney(l.amount, quote.currency, userLocale)}</span>
-                   </div>
-                 ))}
-                 <div style={styles.lineItemBold}>
-                   <span>{t('sales.taxes_fees')}</span>
-                   <span>{formatMoney(quote.taxes_fees, quote.currency, userLocale)}</span>
-                 </div>
-               </div>
-               
-               <div style={styles.actionsRow}>
-                 <button style={styles.secondaryBtn} onClick={() => setStep('selection')}>{t('sales.change_selection')}</button>
-                 <button style={styles.primaryBtn} onClick={() => setStep('booking')}>{t('sales.proceed_to_book')}</button>
-               </div>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (step === 'booking') {
+  if (step === 'checkout') {
     return (
       <div style={styles.container}>
         {header}
         <div style={styles.centerCard}>
            <div style={styles.panelTitle}>{t('sales.customer_details')}</div>
+           <p style={{color:'#666', fontSize: 14}}>Please select a customer for this order.</p>
            
            <div style={styles.form}>
              <label style={styles.label}>{t('sales.search_customer')}</label>
@@ -665,8 +776,8 @@ export function SalesPage(props: { apiBase: string }) {
              
              {customerId && <div style={styles.successMsg}>{t('sales.customer_selected')}</div>}
              
-             <button style={styles.primaryBtn} disabled={!customerId || busy} onClick={() => createHold()}>
-               {busy ? t('sales.working') : t('sales.create_hold')}
+             <button style={styles.primaryBtn} disabled={!customerId || busy} onClick={() => createHoldsAndCheckout()}>
+               {busy ? t('sales.working') : `Create Holds & Proceed`}
              </button>
            </div>
         </div>
@@ -681,8 +792,21 @@ export function SalesPage(props: { apiBase: string }) {
         <div style={styles.centerCard}>
           <div style={styles.panelTitle}>{t('sales.payment')}</div>
           <div style={styles.infoBlock}>
-            {t('sales.booking_held_msg')} <br/>
+            {confirmedBookings.length} {t('sales.booking_held_msg')} <br/>
             <strong>{t('sales.expires_in_15_mins')}</strong>
+          </div>
+          
+          <div style={{marginBottom: 20}}>
+            {confirmedBookings.map(b => (
+                <div key={b.id} style={{display:'flex', justifyContent:'space-between', fontSize: 14, marginBottom: 5}}>
+                   <span>Booking #{b.id.substring(0,8)}</span>
+                   <span>{formatMoney(b.quote.total, b.quote.currency, userLocale)}</span>
+                </div>
+            ))}
+            <div style={{borderTop: '1px solid #eee', marginTop: 10, paddingTop: 10, fontWeight: 'bold', display: 'flex', justifyContent: 'space-between'}}>
+                <span>Total</span>
+                <span>{formatMoney(confirmedBookings.reduce((sum, b) => sum + b.quote.total, 0), confirmedBookings[0]?.quote.currency || 'USD', userLocale)}</span>
+            </div>
           </div>
           
           <div style={styles.paymentForm}>
@@ -695,7 +819,7 @@ export function SalesPage(props: { apiBase: string }) {
              </div>
              
              <button style={styles.payBtn} disabled={busy} onClick={() => processPayment()}>
-               {busy ? t('sales.processing') : `${t('sales.pay')} ${quote ? formatMoney(quote.total, quote.currency, userLocale) : ''}`}
+               {busy ? t('sales.processing') : `${t('sales.pay')} Total`}
              </button>
              
              {err && <div style={styles.error}>{err}</div>}
@@ -711,14 +835,18 @@ export function SalesPage(props: { apiBase: string }) {
         <div style={styles.successCard}>
            <div style={styles.checkIcon}>✓</div>
            <div style={styles.bigTitle}>{t('sales.booking_confirmed')}</div>
-           <div style={styles.refNum}>{t('sales.ref_num')}: {booking?.id}</div>
+           <div style={{marginBottom: 20}}>
+             {confirmedBookings.map(b => (
+                 <div key={b.id} style={styles.refNum}>Ref: {b.id}</div>
+             ))}
+           </div>
            
            <div style={styles.actions}>
              <button style={styles.primaryBtn} onClick={() => {
                // Reset
                setStep('search')
-               setBooking(null)
-               setQuote(null)
+               setConfirmedBookings([])
+               setCart([])
                setSelectedCabinId('')
              }}>{t('sales.new_booking')}</button>
            </div>
@@ -753,6 +881,7 @@ const styles: Record<string, React.CSSProperties> = {
   stepHeader: { display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20, borderBottom: '1px solid var(--csp-border)', paddingBottom: 15 },
   backBtn: { background: 'none', border: 'none', color: 'var(--csp-primary)', cursor: 'pointer', fontSize: 14 },
   stepInfo: { display: 'flex', gap: 15, fontSize: 14, color: 'var(--csp-muted)' },
+  cartBtn: { background: 'var(--csp-surface-2-bg)', border: '1px solid var(--csp-border)', padding: '8px 15px', borderRadius: 20, fontWeight: 'bold', cursor: 'pointer', color: 'var(--csp-primary)' },
   
   splitView: { display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 },
   panel: { background: 'var(--csp-surface-bg)', border: '1px solid var(--csp-border)', padding: 20, borderRadius: 12 },
@@ -776,9 +905,9 @@ const styles: Record<string, React.CSSProperties> = {
   viewBtn: { padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--csp-border)', background: 'transparent', cursor: 'pointer', color: 'var(--csp-text)' },
   viewBtnActive: { padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid var(--csp-primary)', background: 'var(--csp-primary-soft)', color: 'var(--csp-primary)', cursor: 'pointer', fontWeight: 600 },
   
-  deckMapContainer: { position: 'relative', height: 400, border: '1px solid var(--csp-border)', borderRadius: 8, background: '#f5f7fa', overflow: 'hidden' },
+  deckMapContainer: { position: 'relative', height: 500, border: '1px solid var(--csp-border)', borderRadius: 8, background: '#f5f7fa', overflow: 'hidden', maxWidth: '100%' },
   deckMapScroll: { width: '100%', height: '100%', overflow: 'auto', padding: 20 },
-  deckMapPaper: { position: 'relative', minWidth: 2000, height: 350, background: 'white', borderRadius: 40, border: '2px solid #ddd', margin: '0 auto', top: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' },
+  deckMapPaper: { position: 'relative', width: '100%', minHeight: 600, background: 'white', borderRadius: 40, border: '2px solid #ddd', margin: '0 auto', top: 0, boxShadow: '0 4px 20px rgba(0,0,0,0.05)' },
   shipBow: { position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', fontWeight: 900, fontSize: 24, color: '#eee', writingMode: 'vertical-rl' },
   shipStern: { position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)', fontWeight: 900, fontSize: 24, color: '#eee', writingMode: 'vertical-rl' },
   mapLegend: { position: 'absolute', bottom: 10, left: 10, background: 'rgba(255,255,255,0.9)', padding: '5px 10px', borderRadius: 6, display: 'flex', gap: 15, fontSize: 11, border: '1px solid #ddd' },
@@ -788,12 +917,6 @@ const styles: Record<string, React.CSSProperties> = {
   secondaryBtn: { background: 'var(--csp-surface-2-bg)', color: 'var(--csp-text)', border: '1px solid var(--csp-border)', padding: '12px 20px', borderRadius: 6, fontWeight: 700, cursor: 'pointer' },
   
   centerCard: { maxWidth: 600, margin: '40px auto', background: 'var(--csp-surface-bg)', padding: 30, borderRadius: 16, border: '1px solid var(--csp-border)' },
-  quoteDetails: { marginTop: 20 },
-  bigPrice: { fontSize: 36, fontWeight: 900, textAlign: 'center', marginBottom: 20, color: 'var(--csp-primary)' },
-  breakdown: { display: 'flex', flexDirection: 'column', gap: 8, padding: 20, background: 'var(--csp-surface-2-bg)', borderRadius: 8 },
-  lineItem: { display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--csp-muted)' },
-  lineItemBold: { display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 700, marginTop: 10, borderTop: '1px solid var(--csp-border)', paddingTop: 10 },
-  actionsRow: { display: 'flex', gap: 10, marginTop: 20, justifyContent: 'center' },
   
   hitList: { display: 'flex', flexDirection: 'column', gap: 4, marginTop: 10, maxHeight: 150, overflowY: 'auto', background: 'var(--csp-surface-2-bg)', padding: 4, borderRadius: 6, border: '1px solid var(--csp-border)' },
   hitItem: { padding: 8, cursor: 'pointer', borderRadius: 4, fontSize: 13, color: 'var(--csp-text)' },
