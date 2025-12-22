@@ -80,6 +80,9 @@ services:
     environment:
       SERVICE_NAME: pricing-service
       JWT_SECRET: dev-secret-change-me
+      DATA_FILE_PATH: /data/pricing_data.json
+    volumes:
+      - ./pricing-data:/data
     ports:
       - "8004:8000"
 

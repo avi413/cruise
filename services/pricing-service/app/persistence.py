@@ -5,7 +5,8 @@ from typing import Any
 import dataclasses
 from . import domain
 
-DATA_FILE = "pricing_data.json"
+DATA_FILE = os.getenv("DATA_FILE_PATH", "pricing_data.json")
+SEED_FILE = "pricing_data.json"
 
 def _json_default(obj):
     if isinstance(obj, (date, datetime)):
@@ -54,10 +55,15 @@ def save_data(
         json.dump(data, f, default=_json_default, indent=2)
 
 def load_data():
+    path_to_load = DATA_FILE
     if not os.path.exists(DATA_FILE):
-        return {}, {}, {}, {}
+        if os.path.exists(SEED_FILE) and os.path.abspath(DATA_FILE) != os.path.abspath(SEED_FILE):
+             print(f"Initializing data from {SEED_FILE}")
+             path_to_load = SEED_FILE
+        else:
+             return {}, {}, {}, {}
         
-    with open(DATA_FILE, "r") as f:
+    with open(path_to_load, "r") as f:
         try:
             data = json.load(f)
         except json.JSONDecodeError:
