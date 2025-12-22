@@ -29,6 +29,29 @@ type Customer = {
 
 type BookingHistory = { booking_id: string; sailing_id: string; status: string; updated_at: string; meta: any }
 
+type Booking = {
+  id: string
+  booking_ref: string | null
+  status: string
+  created_at: string
+  updated_at: string
+  hold_expires_at: string | null
+  customer_id: string | null
+  sailing_id: string
+  cabin_type: string
+  cabin_category_code: string | null
+  cabin_id: string | null
+  guests: any
+  quote: {
+    currency: string
+    subtotal: number
+    discounts: number
+    taxes_fees: number
+    total: number
+    lines: any[]
+  }
+}
+
 type Passenger = {
   id: string
   customer_id: string
@@ -57,10 +80,22 @@ type Passenger = {
 
 export function CustomersPage(props: { apiBase: string }) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<'details' | 'related'>('details')
+
+  const formatDate = (d: string) => {
+    if (!d) return '—'
+    try {
+      return new Date(d).toLocaleString()
+    } catch {
+      return d
+    }
+  }
+
+  const [activeTab, setActiveTab] = useState<'details' | 'bookings' | 'related'>('details')
   const [customerId, setCustomerId] = useState('')
   const [cust, setCust] = useState<Customer | null>(null)
   const [history, setHistory] = useState<BookingHistory[]>([])
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [bookingBusy, setBookingBusy] = useState(false)
   const [passengers, setPassengers] = useState<Passenger[]>([])
   
   // Passenger editing
@@ -151,6 +186,19 @@ export function CustomersPage(props: { apiBase: string }) {
       setPassengers([])
     } finally {
       setPBusy(false)
+    }
+  }
+
+  async function loadBooking(bid: string) {
+    if (!bid) return
+    setBookingBusy(true)
+    try {
+      const r = await apiFetch<Booking>(props.apiBase, `/v1/bookings/${bid}`)
+      setSelectedBooking(r)
+    } catch (e: any) {
+      alert(String(e?.detail || e?.message || e))
+    } finally {
+      setBookingBusy(false)
     }
   }
 
@@ -410,6 +458,12 @@ export function CustomersPage(props: { apiBase: string }) {
           {t('customers.details')}
         </div>
         <div 
+          style={{...styles.tab, ...(activeTab === 'bookings' ? styles.tabActive : {})}} 
+          onClick={() => setActiveTab('bookings')}
+        >
+          {t('customers.bookings')}
+        </div>
+        <div 
           style={{...styles.tab, ...(activeTab === 'related' ? styles.tabActive : {})}} 
           onClick={() => setActiveTab('related')}
         >
@@ -506,6 +560,113 @@ export function CustomersPage(props: { apiBase: string }) {
     </div>
   )
 
+  const renderBookingModal = () => {
+    if (!selectedBooking) return null
+    const b = selectedBooking
+    return (
+      <div style={styles.modalOverlay} onClick={() => setSelectedBooking(null)}>
+        <div style={{...styles.modal, width: 800, overflowY: 'auto', maxHeight: '90vh'}} onClick={e => e.stopPropagation()}>
+           <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+              <h3 style={{margin: 0}}>{t('customers.booking_details')}</h3>
+              <button style={styles.secondaryBtn} onClick={() => setSelectedBooking(null)}>X</button>
+           </div>
+           
+           <div style={{display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr'}}>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Ref</div>
+                 <div style={styles.fieldValueReadOnly}>{b.booking_ref || '—'}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Status</div>
+                 <div style={styles.fieldValueReadOnly}>{b.status}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Created</div>
+                 <div style={styles.fieldValueReadOnly}>{formatDate(b.created_at)}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Expires</div>
+                 <div style={styles.fieldValueReadOnly}>{formatDate(b.hold_expires_at || '')}</div>
+              </div>
+           </div>
+
+           <div style={{marginTop: 16}}><strong>Sailing</strong></div>
+           <div style={{display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr'}}>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Sailing ID</div>
+                 <div style={styles.fieldValueReadOnly}>{b.sailing_id}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Cabin Type</div>
+                 <div style={styles.fieldValueReadOnly}>{b.cabin_type}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Cabin ID</div>
+                 <div style={styles.fieldValueReadOnly}>{b.cabin_id || '—'}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Category</div>
+                 <div style={styles.fieldValueReadOnly}>{b.cabin_category_code || '—'}</div>
+              </div>
+           </div>
+
+           <div style={{marginTop: 16}}><strong>Quote</strong></div>
+           <div style={{display: 'grid', gap: 16, gridTemplateColumns: '1fr 1fr'}}>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Total</div>
+                 <div style={styles.fieldValueReadOnly}>{b.quote.total} {b.quote.currency}</div>
+              </div>
+              <div style={styles.field}>
+                 <div style={styles.fieldLabel}>Subtotal</div>
+                 <div style={styles.fieldValueReadOnly}>{b.quote.subtotal}</div>
+              </div>
+           </div>
+           
+           <div style={{marginTop: 16}}><strong>Guests</strong></div>
+           <pre style={{background: '#f5f5f5', padding: 10, borderRadius: 4, fontSize: 12}}>{JSON.stringify(b.guests, null, 2)}</pre>
+        </div>
+      </div>
+    )
+  }
+
+  const renderBookings = () => {
+     if (!cust) return null
+     return (
+       <div style={{display: 'grid', gap: 20}}>
+          <Section title={t('customers.booking_history')}>
+             <table style={styles.table}>
+               <thead>
+                 <tr>
+                   <th style={styles.th}>{t('customers.booking_id')}</th>
+                   <th style={styles.th}>{t('customers.sailing')}</th>
+                   <th style={styles.th}>{t('customers.status')}</th>
+                   <th style={styles.th}>{t('customers.amount')}</th>
+                   <th style={styles.th}>{t('customers.updated')}</th>
+                   <th style={styles.th}>{t('customers.actions')}</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {history.map(h => (
+                   <tr key={h.booking_id}>
+                     <td style={styles.tdMono}>{h.booking_id}</td>
+                     <td style={styles.tdMono}>{h.sailing_id}</td>
+                     <td style={styles.td}>{h.status}</td>
+                     <td style={styles.tdMono}>{h.meta?.total ? `${h.meta.total} ${h.meta.currency || ''}` : '—'}</td>
+                     <td style={styles.td}>{formatDate(h.updated_at)}</td>
+                     <td style={styles.td}>
+                        <button style={styles.linkBtn} onClick={() => void loadBooking(h.booking_id)}>{bookingBusy ? '...' : t('customers.view_details')}</button>
+                     </td>
+                   </tr>
+                 ))}
+                 {!history.length && <tr><td colSpan={6} style={styles.tdMuted}>{t('customers.no_bookings')}</td></tr>}
+               </tbody>
+             </table>
+          </Section>
+          {renderBookingModal()}
+       </div>
+     )
+  }
+
   const renderRelated = () => {
     if (!cust) return null
     return (
@@ -582,30 +743,6 @@ export function CustomersPage(props: { apiBase: string }) {
              </div>
            )}
         </Section>
-        
-        <Section title={t('customers.booking_history')}>
-           <table style={styles.table}>
-             <thead>
-               <tr>
-                 <th style={styles.th}>{t('customers.booking_id')}</th>
-                 <th style={styles.th}>{t('customers.sailing')}</th>
-                 <th style={styles.th}>{t('customers.status')}</th>
-                 <th style={styles.th}>{t('customers.updated')}</th>
-               </tr>
-             </thead>
-             <tbody>
-               {history.map(h => (
-                 <tr key={h.booking_id}>
-                   <td style={styles.tdMono}>{h.booking_id}</td>
-                   <td style={styles.tdMono}>{h.sailing_id}</td>
-                   <td style={styles.td}>{h.status}</td>
-                   <td style={styles.tdMono}>{h.updated_at}</td>
-                 </tr>
-               ))}
-               {!history.length && <tr><td colSpan={4} style={styles.tdMuted}>{t('customers.no_bookings')}</td></tr>}
-             </tbody>
-           </table>
-        </Section>
       </div>
     )
   }
@@ -619,7 +756,7 @@ export function CustomersPage(props: { apiBase: string }) {
         {renderHighlights()}
         {renderTabs()}
         <div style={styles.content}>
-           {isCreating ? renderCreateForm() : (activeTab === 'details' ? renderDetailForm() : renderRelated())}
+           {isCreating ? renderCreateForm() : (activeTab === 'details' ? renderDetailForm() : (activeTab === 'bookings' ? renderBookings() : renderRelated()))}
            {!cust && !isCreating && <div style={styles.emptyState}>{t('customers.empty_state')}</div>}
         </div>
       </div>
