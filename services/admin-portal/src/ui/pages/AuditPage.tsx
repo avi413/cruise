@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel } from '../components/ui'
 
@@ -14,6 +15,7 @@ type AuditLog = {
 }
 
 export function AuditPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [limit, setLimit] = useState(200)
   const [actorUserId, setActorUserId] = useState('')
   const [action, setAction] = useState('')
@@ -52,35 +54,43 @@ export function AuditPage(props: { apiBase: string }) {
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      <PageHeader title="Audit log" subtitle="Tenant-scoped audit trail for staff actions (create/patch customers, users, groups, memberships). Admin-only." right={<Button disabled={busy} onClick={() => void refresh()}>{busy ? 'Refreshing…' : 'Refresh'}</Button>} />
+      <PageHeader
+        title={t('audit.title')}
+        subtitle={t('audit.subtitle')}
+        right={
+          <Button disabled={busy} onClick={() => void refresh()}>
+            {busy ? t('audit.btn_refreshing') : t('audit.btn_refresh')}
+          </Button>
+        }
+      />
 
       {err ? <ErrorBanner message={err} /> : null}
 
-      <Panel title="Filters" subtitle="Use filters to narrow down to a specific agent or entity.">
+      <Panel title={t('audit.filters.title')} subtitle={t('audit.filters.subtitle')}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Input label="Actor user id" value={actorUserId} onChange={(e) => setActorUserId(e.target.value)} placeholder="JWT sub / staff_user.id" />
-          <Input label="Action" value={action} onChange={(e) => setAction(e.target.value)} placeholder="customer.patch" />
-          <Input label="Entity type" value={entityType} onChange={(e) => setEntityType(e.target.value)} placeholder="customer" />
-          <Input label="Entity id" value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="UUID" />
-          <Input label="Limit" type="number" min="1" max="500" value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+          <Input label={t('audit.filters.label_actor')} value={actorUserId} onChange={(e) => setActorUserId(e.target.value)} placeholder="JWT sub / staff_user.id" />
+          <Input label={t('audit.filters.label_action')} value={action} onChange={(e) => setAction(e.target.value)} placeholder="customer.patch" />
+          <Input label={t('audit.filters.label_entity_type')} value={entityType} onChange={(e) => setEntityType(e.target.value)} placeholder="customer" />
+          <Input label={t('audit.filters.label_entity_id')} value={entityId} onChange={(e) => setEntityId(e.target.value)} placeholder="UUID" />
+          <Input label={t('audit.filters.label_limit')} type="number" min="1" max="500" value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
           <div style={{ display: 'flex', gap: 10, alignItems: 'end' }}>
             <Button variant="primary" disabled={busy} onClick={() => void refresh()}>
-              Apply
+              {t('audit.filters.btn_apply')}
             </Button>
           </div>
         </div>
       </Panel>
 
-      <Panel title={`Events (${items.length})`} subtitle="Meta includes request + before/after diffs for tracked entities.">
+      <Panel title={t('audit.events.title', { count: items.length })} subtitle={t('audit.events.subtitle')}>
         <div style={{ overflow: 'auto' }}>
           <table style={tableStyles.table}>
             <thead>
               <tr>
-                <th style={tableStyles.th}>Time</th>
-                <th style={tableStyles.th}>Actor</th>
-                <th style={tableStyles.th}>Action</th>
-                <th style={tableStyles.th}>Entity</th>
-                <th style={tableStyles.th}>Meta (truncated)</th>
+                <th style={tableStyles.th}>{t('audit.events.th_time')}</th>
+                <th style={tableStyles.th}>{t('audit.events.th_actor')}</th>
+                <th style={tableStyles.th}>{t('audit.events.th_action')}</th>
+                <th style={tableStyles.th}>{t('audit.events.th_entity')}</th>
+                <th style={tableStyles.th}>{t('audit.events.th_meta')}</th>
               </tr>
             </thead>
             <tbody>
@@ -91,13 +101,13 @@ export function AuditPage(props: { apiBase: string }) {
                     <div>
                       <Mono>{a.actor_user_id || '—'}</Mono>
                     </div>
-                    <div style={tableStyles.sub}>role {a.actor_role || '—'}</div>
+                    <div style={tableStyles.sub}>{t('audit.events.role')} {a.actor_role || '—'}</div>
                   </td>
                   <td style={tableStyles.tdMono}>{a.action}</td>
                   <td style={tableStyles.td}>
                     <div style={{ fontWeight: 800 }}>{a.entity_type}</div>
                     <div style={tableStyles.sub}>
-                      id <Mono>{a.entity_id || '—'}</Mono>
+                      {t('audit.events.id')} <Mono>{a.entity_id || '—'}</Mono>
                     </div>
                   </td>
                   <td style={tableStyles.tdMono}>{truncate(JSON.stringify(a.meta || {}), 420)}</td>
@@ -106,7 +116,7 @@ export function AuditPage(props: { apiBase: string }) {
               {items.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={tableStyles.empty}>
-                    No audit events yet.
+                    {t('audit.events.empty')}
                   </td>
                 </tr>
               ) : null}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 
 type StaffUser = { id: string; email: string; role: string; disabled: boolean; created_at: string; updated_at: string }
@@ -22,6 +23,7 @@ const ALL_PERMS = [
 ] as const
 
 export function UsersPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [items, setItems] = useState<StaffUser[]>([])
   const [groups, setGroups] = useState<StaffGroup[]>([])
   const [members, setMembers] = useState<Record<string, Set<string>>>({})
@@ -143,7 +145,7 @@ export function UsersPage(props: { apiBase: string }) {
   }
 
   async function del(u: StaffUser) {
-    const ok = window.confirm(`Delete user "${u.email}"?\n\nThis cannot be undone.`)
+    const ok = window.confirm(t('users.users_list.confirm_delete', { email: u.email }))
     if (!ok) return
     setBusy(true)
     setErr(null)
@@ -190,28 +192,28 @@ export function UsersPage(props: { apiBase: string }) {
 
   return (
     <div style={styles.wrap}>
-      <div style={styles.hTitle}>Users & Permissions</div>
+      <div style={styles.hTitle}>{t('users.title')}</div>
       <div style={styles.hSub}>
-        Admin-only. Manage users, groups, and permissions. Tip: tenant admins now automatically get full access even without group membership (avoids setup lockouts).
+        {t('users.subtitle')}
       </div>
 
       {err ? <div style={styles.error}>{err}</div> : null}
 
       <div style={styles.grid}>
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Create user</div>
+          <div style={styles.panelTitle}>{t('users.create_user.title')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Email
+              {t('users.create_user.label_email')}
               <input style={styles.input} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="agent@company.com" />
             </label>
             <label style={styles.label}>
-              Password
+              {t('users.create_user.label_password')}
               <input style={styles.input} value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="min 6 chars" />
             </label>
             <div style={styles.row2}>
               <label style={styles.label}>
-                Role
+                {t('users.create_user.label_role')}
                 <select style={styles.input} value={role} onChange={(e) => setRole(e.target.value)}>
                   <option value="agent">agent</option>
                   <option value="staff">staff</option>
@@ -219,7 +221,7 @@ export function UsersPage(props: { apiBase: string }) {
                 </select>
               </label>
               <label style={styles.label}>
-                Disabled
+                {t('users.create_user.label_disabled')}
                 <select style={styles.input} value={disabled ? 'yes' : 'no'} onChange={(e) => setDisabled(e.target.value === 'yes')}>
                   <option value="no">no</option>
                   <option value="yes">yes</option>
@@ -227,9 +229,9 @@ export function UsersPage(props: { apiBase: string }) {
               </label>
             </div>
             <button style={styles.primaryBtn} disabled={busy || !email.trim() || !password.trim()} onClick={() => void create()}>
-              {busy ? 'Saving…' : 'Create user'}
+              {busy ? t('users.create_user.btn_saving') : t('users.create_user.btn_create')}
             </button>
-            <div style={styles.muted}>Optional: assign groups now (recommended for agents/staff).</div>
+            <div style={styles.muted}>{t('users.create_user.note_groups')}</div>
             <div style={{ display: 'grid', gap: 6 }}>
               {groups.map((g) => (
                 <label key={g.id} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' }}>
@@ -244,20 +246,20 @@ export function UsersPage(props: { apiBase: string }) {
                   </span>
                 </label>
               ))}
-              {groups.length === 0 ? <div style={styles.muted}>No groups yet — create one below.</div> : null}
+              {groups.length === 0 ? <div style={styles.muted}>{t('users.create_user.no_groups')}</div> : null}
             </div>
           </div>
         </section>
 
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Users</div>
+          <div style={styles.panelTitle}>{t('users.users_list.title')}</div>
           <div style={styles.tableWrap}>
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th}>Email</th>
-                  <th style={styles.th}>Role</th>
-                  <th style={styles.th}>Disabled</th>
+                  <th style={styles.th}>{t('users.users_list.th_email')}</th>
+                  <th style={styles.th}>{t('users.users_list.th_role')}</th>
+                  <th style={styles.th}>{t('users.users_list.th_disabled')}</th>
                   <th style={styles.th}></th>
                 </tr>
               </thead>
@@ -274,22 +276,22 @@ export function UsersPage(props: { apiBase: string }) {
                           {!isEditing ? (
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                               <button style={styles.secondaryBtn} disabled={busy} onClick={() => beginEdit(u)}>
-                                Edit
+                                {t('users.users_list.btn_edit')}
                               </button>
                               <button style={styles.secondaryBtn} disabled={busy} onClick={() => void toggle(u)}>
-                                {u.disabled ? 'Enable' : 'Disable'}
+                                {u.disabled ? t('users.users_list.btn_enable') : t('users.users_list.btn_disable')}
                               </button>
                               <button style={styles.dangerBtnSmall} disabled={busy} onClick={() => void del(u)}>
-                                Delete
+                                {t('users.users_list.btn_delete')}
                               </button>
                             </div>
                           ) : (
                             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                               <button style={styles.secondaryBtn} disabled={busy} onClick={cancelEdit}>
-                                Cancel
+                                {t('users.users_list.btn_cancel')}
                               </button>
                               <button style={styles.primaryBtnCompact} disabled={busy} onClick={() => void saveEdit(u)}>
-                                Save
+                                {t('users.users_list.btn_save')}
                               </button>
                             </div>
                           )}
@@ -299,10 +301,10 @@ export function UsersPage(props: { apiBase: string }) {
                         <tr>
                           <td style={styles.td} colSpan={4}>
                             <div style={styles.editBox}>
-                              <div style={styles.editTitle}>Edit user</div>
+                              <div style={styles.editTitle}>{t('users.users_list.edit_title')}</div>
                               <div style={styles.editGrid}>
                                 <label style={styles.label}>
-                                  Role
+                                  {t('users.create_user.label_role')}
                                   <select style={styles.input} value={editRole} onChange={(e) => setEditRole(e.target.value)}>
                                     <option value="agent">agent</option>
                                     <option value="staff">staff</option>
@@ -310,14 +312,14 @@ export function UsersPage(props: { apiBase: string }) {
                                   </select>
                                 </label>
                                 <label style={styles.label}>
-                                  Disabled
+                                  {t('users.create_user.label_disabled')}
                                   <select style={styles.input} value={editDisabled ? 'yes' : 'no'} onChange={(e) => setEditDisabled(e.target.value === 'yes')}>
                                     <option value="no">no</option>
                                     <option value="yes">yes</option>
                                   </select>
                                 </label>
                                 <label style={styles.label}>
-                                  Reset password (optional)
+                                  {t('users.users_list.label_reset_pw')}
                                   <input
                                     style={styles.input}
                                     value={editPassword}
@@ -327,7 +329,7 @@ export function UsersPage(props: { apiBase: string }) {
                                   />
                                 </label>
                               </div>
-                              <div style={styles.muted}>Notes: email changes are not supported yet; use Disable for reversible lock, Delete for permanent removal.</div>
+                              <div style={styles.muted}>{t('users.users_list.note_edit')}</div>
                             </div>
                           </td>
                         </tr>
@@ -338,7 +340,7 @@ export function UsersPage(props: { apiBase: string }) {
                 {items.length === 0 ? (
                   <tr>
                     <td style={styles.tdMuted} colSpan={4}>
-                      No users yet.
+                      {t('users.users_list.empty')}
                     </td>
                   </tr>
                 ) : null}
@@ -350,21 +352,21 @@ export function UsersPage(props: { apiBase: string }) {
 
       <div style={styles.grid}>
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Create group</div>
+          <div style={styles.panelTitle}>{t('users.create_group.title')}</div>
           <div style={styles.form}>
             <label style={styles.label}>
-              Code
+              {t('users.create_group.label_code')}
               <input style={styles.input} value={gCode} onChange={(e) => setGCode(e.target.value)} placeholder="sales_agents" />
             </label>
             <label style={styles.label}>
-              Name
+              {t('users.create_group.label_name')}
               <input style={styles.input} value={gName} onChange={(e) => setGName(e.target.value)} placeholder="Sales Agents" />
             </label>
             <label style={styles.label}>
-              Description
+              {t('users.create_group.label_desc')}
               <input style={styles.input} value={gDesc} onChange={(e) => setGDesc(e.target.value)} placeholder="Call center sales agents" />
             </label>
-            <div style={styles.muted}>Permissions</div>
+            <div style={styles.muted}>{t('users.create_group.label_perms')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {ALL_PERMS.map((p) => (
                 <label key={p} style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: 'color-mix(in srgb, var(--csp-text) 90%, transparent)' }}>
@@ -379,19 +381,19 @@ export function UsersPage(props: { apiBase: string }) {
               ))}
             </div>
             <button style={styles.primaryBtn} disabled={busy || !gCode.trim() || !gName.trim()} onClick={() => void createGroup()}>
-              {busy ? 'Saving…' : 'Create group'}
+              {busy ? t('users.create_group.btn_saving') : t('users.create_group.btn_create')}
             </button>
           </div>
         </section>
 
         <section style={styles.panel}>
-          <div style={styles.panelTitle}>Group assignments</div>
-          <div style={styles.muted}>Tick users into groups. Changes apply on next login.</div>
+          <div style={styles.panelTitle}>{t('users.group_assignments.title')}</div>
+          <div style={styles.muted}>{t('users.group_assignments.subtitle')}</div>
           <div style={styles.tableWrap}>
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th}>User</th>
+                  <th style={styles.th}>{t('users.group_assignments.th_user')}</th>
                   {groups.map((g) => (
                     <th key={g.id} style={styles.th}>
                       {g.name}
@@ -418,7 +420,7 @@ export function UsersPage(props: { apiBase: string }) {
                 {items.length === 0 ? (
                   <tr>
                     <td style={styles.tdMuted} colSpan={Math.max(1, groups.length + 1)}>
-                      No users yet.
+                      {t('users.group_assignments.empty')}
                     </td>
                   </tr>
                 ) : null}
