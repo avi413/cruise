@@ -85,7 +85,7 @@ export function NotificationsPage(props: { apiBase: string }) {
   }
 
   function setTaskStatus(id: string, status: Task['status']) {
-    setTasks(tasks.map((t) => (t.id === id ? { ...t, status } : t)))
+    setTasks(tasks.map((task) => (task.id === id ? { ...task, status } : task)))
   }
 
   const expiring = useMemo(() => {
@@ -201,14 +201,14 @@ export function NotificationsPage(props: { apiBase: string }) {
             </Select>
 
             <div style={{ display: 'grid', gap: 8 }}>
-              {tasks.map((t) => (
-                <div key={t.id} style={{ padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(0,0,0,0.22)' }}>
+              {tasks.map((task) => (
+                <div key={task.id} style={{ padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(0,0,0,0.22)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
-                    <div style={{ fontWeight: 900, textDecoration: t.status === 'done' ? 'line-through' : undefined }}>{t.title}</div>
+                    <div style={{ fontWeight: 900, textDecoration: task.status === 'done' ? 'line-through' : undefined }}>{task.title}</div>
                     <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12 }}>
-                      {t.due_at ? (
+                      {task.due_at ? (
                         <>
-                          {t('notifications.tasks.due')} <Mono>{t.due_at.slice(0, 10)}</Mono>
+                          {t('notifications.tasks.due')} <Mono>{task.due_at.slice(0, 10)}</Mono>
                         </>
                       ) : (
                         <span style={{ color: 'rgba(230,237,243,0.50)' }}>{t('notifications.tasks.no_due')}</span>
@@ -216,12 +216,12 @@ export function NotificationsPage(props: { apiBase: string }) {
                     </div>
                   </div>
                   <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {t.status !== 'done' ? (
-                      <Button onClick={() => setTaskStatus(t.id, 'done')} variant="primary">
+                    {task.status !== 'done' ? (
+                      <Button onClick={() => setTaskStatus(task.id, 'done')} variant="primary">
                         {t('notifications.tasks.btn_done')}
                       </Button>
                     ) : (
-                      <Button onClick={() => setTaskStatus(t.id, 'open')}>{t('notifications.tasks.btn_reopen')}</Button>
+                      <Button onClick={() => setTaskStatus(task.id, 'open')}>{t('notifications.tasks.btn_reopen')}</Button>
                     )}
                   </div>
                 </div>
