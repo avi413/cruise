@@ -267,6 +267,13 @@ export function SalesPage(props: { apiBase: string }) {
       for(let i=0; i<children; i++) guests.push({ paxtype: 'child' })
       for(let i=0; i<infants; i++) guests.push({ paxtype: 'infant' })
 
+      // Determine currency from selected price rule
+      const price = prices.find(p => 
+        p.cabin_category_code === selectedCatCode && 
+        p.price_category_code === (selectedPriceType || 'regular').toLowerCase()
+      )
+      const currency = price?.currency || null
+
       const q = await apiFetch<QuoteOut>(props.apiBase, `/v1/quotes`, {
         method: 'POST',
         body: {
@@ -277,7 +284,8 @@ export function SalesPage(props: { apiBase: string }) {
           price_type: selectedPriceType || 'regular',
           guests,
           coupon_code: null,
-          loyalty_tier: null
+          loyalty_tier: null,
+          currency
         },
         tenant: true
       })
@@ -447,7 +455,7 @@ export function SalesPage(props: { apiBase: string }) {
        <div style={{padding: 20, borderTop: '1px solid #eee', background: '#fafafa'}}>
          <div style={{display:'flex', justifyContent:'space-between', fontWeight:'bold', marginBottom: 15, fontSize: 18}}>
            <span>Total</span>
-           <span>{formatMoney(cartTotal, 'USD', userLocale)}</span>
+           <span>{formatMoney(cartTotal, cart[0]?.quote.currency || 'USD', userLocale)}</span>
          </div>
          <button 
            style={{width: '100%', background: 'var(--csp-primary)', color: 'white', border: 'none', padding: 15, borderRadius: 8, fontWeight: 'bold', cursor: cart.length ? 'pointer' : 'not-allowed', opacity: cart.length ? 1 : 0.5}}
