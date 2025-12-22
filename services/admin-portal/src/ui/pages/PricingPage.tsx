@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
 import { fetchCompanySettings } from '../components/theme'
@@ -79,6 +80,7 @@ function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: (
 }
 
 export function PricingPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const company = getCompany()
   const companyId = company?.id || null
 
@@ -224,7 +226,7 @@ export function PricingPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      if (!companyId) throw new Error('Select a company first.')
+      if (!companyId) throw new Error(t('pricing_page.categories.select_company'))
       await apiFetch(props.apiBase, `/v1/pricing/price-categories`, {
         method: 'POST',
         body: {
@@ -278,7 +280,7 @@ export function PricingPage(props: { apiBase: string }) {
 
   async function deleteCategory() {
     if (!editingCode) return
-    if (!confirm(`Delete category ${editingCode}?`)) return
+    if (!confirm(t('pricing_page.categories.confirm_delete', { code: editingCode }))) return
     setBusy(true)
     setErr(null)
     try {
@@ -299,13 +301,13 @@ export function PricingPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      if (!companyId) throw new Error('Select a company first.')
+      if (!companyId) throw new Error(t('pricing_page.categories.select_company'))
       const sid = (gridSailingId || selectedSailingId || '').trim()
-      if (!sid) throw new Error('Select a sailing first.')
+      if (!sid) throw new Error(t('pricing_page.cruise.select_sailing'))
       setGridSailingId(sid)
 
       const sailing = sailings.find((s) => String(s.id) === String(sid))
-      if (!sailing?.ship_id) throw new Error('Selected sailing is missing ship_id.')
+      if (!sailing?.ship_id) throw new Error(t('pricing_page.cruise.missing_ship_id'))
 
       const cabinCats = await apiFetch<CabinCategory[]>(
         props.apiBase,
@@ -332,12 +334,12 @@ export function PricingPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      if (!companyId) throw new Error('Select a company first.')
+      if (!companyId) throw new Error(t('pricing_page.categories.select_company'))
       const sid = (gridSailingId || '').trim()
-      if (!sid) throw new Error('Select a sailing first.')
+      if (!sid) throw new Error(t('pricing_page.cruise.select_sailing'))
 
       const activeCats = (priceCats || []).filter((c) => c.active).slice().sort((a, b) => a.order - b.order)
-      if (!activeCats.length) throw new Error('Create at least one active price category.')
+      if (!activeCats.length) throw new Error(t('pricing_page.cruise.no_active_cats'))
 
       const payload: any[] = []
       for (const cabin of gridCabinCats) {
@@ -371,7 +373,7 @@ export function PricingPage(props: { apiBase: string }) {
     setErr(null)
     try {
       const sid = (gridSailingId || '').trim()
-      if (!sid) throw new Error('Select a sailing first.')
+      if (!sid) throw new Error(t('pricing_page.cruise.select_sailing'))
 
       if (fmt === 'json') {
         const rows = await apiFetch<CruisePriceCell[]>(props.apiBase, `/v1/pricing/cruise-prices?sailing_id=${encodeURIComponent(sid)}`)
@@ -405,9 +407,9 @@ export function PricingPage(props: { apiBase: string }) {
     setErr(null)
     try {
       const sid = (gridSailingId || '').trim()
-      if (!sid) throw new Error('Select a sailing first.')
+      if (!sid) throw new Error(t('pricing_page.cruise.select_sailing'))
       const activeCats = (priceCats || []).filter((c) => c.active).slice().sort((a, b) => a.order - b.order)
-      if (!gridCabinCats.length || !activeCats.length) throw new Error('Load the table first (and ensure at least one active price category).')
+      if (!gridCabinCats.length || !activeCats.length) throw new Error(t('pricing_page.cruise.load_first'))
 
       const aoa: any[][] = []
       aoa.push(['Cabin category', ...activeCats.map((c) => c.code)])
@@ -437,9 +439,9 @@ export function PricingPage(props: { apiBase: string }) {
     setBusy(true)
     setErr(null)
     try {
-      if (!companyId) throw new Error('Select a company first.')
+      if (!companyId) throw new Error(t('pricing_page.categories.select_company'))
       const sid = (gridSailingId || '').trim()
-      if (!sid) throw new Error('Select a sailing first.')
+      if (!sid) throw new Error(t('pricing_page.cruise.select_sailing'))
 
       const raw = await file.text()
       const parsed = JSON.parse(raw)
@@ -483,7 +485,7 @@ export function PricingPage(props: { apiBase: string }) {
   async function clearCompanyOverrides() {
      const key = company?.id
      if (!key?.trim()) {
-       setErr('Select a company first.')
+       setErr(t('pricing_page.categories.select_company'))
        return
      }
      setBusy(true)
@@ -532,23 +534,23 @@ export function PricingPage(props: { apiBase: string }) {
                     <Input 
                         value={catQ} 
                         onChange={(e) => setCatQ(e.target.value)} 
-                        placeholder="Search categories..." 
+                        placeholder={t('pricing_page.categories.search_placeholder')} 
                         style={{ width: '100%', maxWidth: 400 }}
                     />
                 </div>
-                <Button variant="primary" onClick={startCreateCat}>New Category</Button>
-                <Button variant="secondary" onClick={() => void exportCategoriesJson()}>Export JSON</Button>
+                <Button variant="primary" onClick={startCreateCat}>{t('pricing_page.categories.btn_new')}</Button>
+                <Button variant="secondary" onClick={() => void exportCategoriesJson()}>{t('pricing_page.categories.btn_export')}</Button>
             </div>
 
             <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                         <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
-                            <th style={styles.th}>Code</th>
-                            <th style={styles.th}>Name</th>
-                            <th style={styles.th}>Parent</th>
-                            <th style={styles.th}>Channels</th>
-                            <th style={styles.th}>Active</th>
+                            <th style={styles.th}>{t('pricing_page.categories.th_code')}</th>
+                            <th style={styles.th}>{t('pricing_page.categories.th_name')}</th>
+                            <th style={styles.th}>{t('pricing_page.categories.th_parent')}</th>
+                            <th style={styles.th}>{t('pricing_page.categories.th_channels')}</th>
+                            <th style={styles.th}>{t('pricing_page.categories.th_active')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -556,7 +558,7 @@ export function PricingPage(props: { apiBase: string }) {
                             <HoverRow key={c.code} onClick={() => startEditCat(c)}>
                                 <td style={styles.td}><Mono>{c.code}</Mono></td>
                                 <td style={styles.td}>{c.name_i18n?.en || '—'}</td>
-                                <td style={styles.td}>{c.parent_code ? <Mono>{c.parent_code}</Mono> : <span style={{color:'var(--csp-muted)'}}>(none)</span>}</td>
+                                <td style={styles.td}>{c.parent_code ? <Mono>{c.parent_code}</Mono> : <span style={{color:'var(--csp-muted)'}}>{t('pricing_page.categories.none')}</span>}</td>
                                 <td style={styles.td}>{(c.enabled_channels || []).join(', ')}</td>
                                 <td style={styles.td}>
                                     {c.active ? (
@@ -570,7 +572,7 @@ export function PricingPage(props: { apiBase: string }) {
                          {sorted.length === 0 && (
                             <tr>
                                 <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
-                                    No categories found.
+                                    {t('pricing_page.categories.empty')}
                                 </td>
                             </tr>
                         )}
@@ -584,20 +586,20 @@ export function PricingPage(props: { apiBase: string }) {
   function renderCatForm(mode: 'create' | 'edit') {
     return (
         <Panel 
-            title={mode === 'create' ? "Create Price Category" : `Edit Category: ${editingCode}`}
-            subtitle="Manage pricing category details."
-            right={<Button variant="secondary" onClick={() => setCatView('list')}>Cancel</Button>}
+            title={mode === 'create' ? t('pricing_page.categories.create_title') : t('pricing_page.categories.edit_title', { code: editingCode })}
+            subtitle={t('pricing_page.categories.subtitle')}
+            right={<Button variant="secondary" onClick={() => setCatView('list')}>{t('pricing_page.categories.btn_cancel')}</Button>}
         >
             <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
                 <TwoCol 
-                    left={<Input label="Code" value={catCode} onChange={(e) => setCatCode(e.target.value.replace(/\s+/g, '').toUpperCase())} placeholder="INTERNET" disabled={mode==='edit'} />}
-                    right={<Input label="Name (EN)" value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="Internet Package" />}
+                    left={<Input label={t('pricing_page.categories.label_code')} value={catCode} onChange={(e) => setCatCode(e.target.value.replace(/\s+/g, '').toUpperCase())} placeholder="INTERNET" disabled={mode==='edit'} />}
+                    right={<Input label={t('pricing_page.categories.label_name')} value={catName} onChange={(e) => setCatName(e.target.value)} placeholder="Internet Package" />}
                 />
                 
                 <TwoCol 
                     left={
-                        <Select label="Parent Category" value={catParentCode} onChange={(e) => setCatParentCode(e.target.value)}>
-                            <option value="">(none)</option>
+                        <Select label={t('pricing_page.categories.label_parent')} value={catParentCode} onChange={(e) => setCatParentCode(e.target.value)}>
+                            <option value="">{t('pricing_page.categories.none')}</option>
                             {priceCats
                                 .filter(x => x.code !== catCode) // can't be parent of self
                                 .sort((a, b) => (a.order || 0) - (b.order || 0))
@@ -606,11 +608,11 @@ export function PricingPage(props: { apiBase: string }) {
                             ))}
                         </Select>
                     }
-                    right={<Input label="Channels (comma-separated)" value={catChannels} onChange={(e) => setCatChannels(e.target.value)} />}
+                    right={<Input label={t('pricing_page.categories.label_channels')} value={catChannels} onChange={(e) => setCatChannels(e.target.value)} />}
                 />
 
                 <TextArea 
-                    label="Description (EN)" 
+                    label={t('pricing_page.categories.label_desc')} 
                     value={catDesc} 
                     onChange={(e) => setCatDesc(e.target.value)} 
                     rows={3} 
@@ -619,7 +621,7 @@ export function PricingPage(props: { apiBase: string }) {
                 <div style={{ display: 'grid', gap: 12 }}>
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                         <input type="checkbox" checked={catActive} onChange={(e) => setCatActive(e.target.checked)} /> 
-                        <span style={{fontWeight: 500}}>Active</span>
+                        <span style={{fontWeight: 500}}>{t('pricing_page.categories.label_active')}</span>
                     </label>
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                         <input
@@ -630,7 +632,7 @@ export function PricingPage(props: { apiBase: string }) {
                             if (e.target.checked) setCatRoomCatOnly(false)
                         }}
                         />
-                        Room Selection Included
+                        {t('pricing_page.categories.label_room_included')}
                     </label>
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, cursor: 'pointer', color: 'var(--csp-text)' }}>
                         <input
@@ -641,17 +643,17 @@ export function PricingPage(props: { apiBase: string }) {
                             if (e.target.checked) setCatRoomSelIncluded(false)
                         }}
                         />
-                        Room Category Only
+                        {t('pricing_page.categories.label_room_only')}
                     </label>
                 </div>
 
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', gap: 12, justifyContent: 'space-between' }}>
                     {mode === 'edit' ? (
-                        <Button variant="danger" disabled={busy} onClick={() => void deleteCategory()}>Delete</Button>
+                        <Button variant="danger" disabled={busy} onClick={() => void deleteCategory()}>{t('pricing_page.categories.btn_delete')}</Button>
                     ) : <div />}
                     
                     <Button variant="primary" disabled={busy || !catCode} onClick={() => void (mode === 'create' ? createCategory() : saveCategoryEdit())}>
-                        {busy ? 'Saving...' : (mode === 'create' ? 'Create Category' : 'Save Changes')}
+                        {busy ? t('pricing_page.categories.btn_saving') : (mode === 'create' ? t('pricing_page.categories.btn_create') : t('pricing_page.categories.btn_save'))}
                     </Button>
                 </div>
             </div>
@@ -662,15 +664,15 @@ export function PricingPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
-        title="Pricing & Offers"
-        subtitle="Manage pricing categories and cruise price tables."
+        title={t('pricing_page.title')}
+        subtitle={t('pricing_page.subtitle')}
         right={
           <>
             <Button disabled={busy} onClick={() => void refresh()}>
-              {busy ? 'Refreshing…' : 'Refresh'}
+              {busy ? t('pricing_page.btn_refreshing') : t('pricing_page.btn_refresh')}
             </Button>
             <Button variant="danger" disabled={busy} onClick={() => void clearCompanyOverrides()}>
-              Clear company overrides
+              {t('pricing_page.btn_clear_overrides')}
             </Button>
           </>
         }
@@ -679,9 +681,9 @@ export function PricingPage(props: { apiBase: string }) {
       {err ? <ErrorBanner message={err} /> : null}
 
       <div style={{ display: 'grid', gap: 6, padding: '12px 16px', background: 'var(--csp-surface-bg)', border: '1px solid var(--csp-border)', borderRadius: 8 }}>
-         <div style={{ fontSize: 13, color: 'var(--csp-muted)' }}>Effective Company</div>
+         <div style={{ fontSize: 13, color: 'var(--csp-muted)' }}>{t('pricing_page.effective_company')}</div>
          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Mono>{company?.id || '(no company selected)'}</Mono>
+            <Mono>{company?.id || t('pricing_page.no_company')}</Mono>
             {company?.name ? <span style={{ color: 'var(--csp-text)' }}>{company.name}</span> : null}
          </div>
       </div>
@@ -694,8 +696,8 @@ export function PricingPage(props: { apiBase: string }) {
             // Reset view when switching tabs if needed, but keeping list is fine
         }}
         tabs={[
-          { key: 'categories', label: 'Price Categories', badge: (priceCats || []).filter((c) => c.active).length },
-          { key: 'cruise', label: 'Cruise Price Tables' },
+          { key: 'categories', label: t('pricing_page.tabs.categories'), badge: (priceCats || []).filter((c) => c.active).length },
+          { key: 'cruise', label: t('pricing_page.tabs.cruise') },
         ]}
       />
 
@@ -709,24 +711,24 @@ export function PricingPage(props: { apiBase: string }) {
 
       {tab === 'cruise' && (
         <Panel
-          title="Cruise pricing table"
-          subtitle="Pick a sailing (cruise). Rows are cabin categories; columns are active price categories. Enter per-person price in cents. Export JSON/CSV/Excel uses authenticated downloads."
+          title={t('pricing_page.cruise.title')}
+          subtitle={t('pricing_page.cruise.subtitle')}
           right={
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <Button disabled={busy} onClick={() => void loadGrid()}>
-                Load table
+                {t('pricing_page.cruise.btn_load')}
               </Button>
               <Button variant="primary" disabled={busy} onClick={() => void saveGrid()}>
-                Save table
+                {t('pricing_page.cruise.btn_save')}
               </Button>
               <Button disabled={busy} onClick={() => void exportGrid('json')}>
-                Export JSON
+                {t('pricing_page.cruise.btn_export_json')}
               </Button>
               <Button disabled={busy} onClick={() => void exportGrid('csv')}>
-                Export CSV
+                {t('pricing_page.cruise.btn_export_csv')}
               </Button>
               <Button disabled={busy} onClick={() => void exportGridExcel()}>
-                Export Excel
+                {t('pricing_page.cruise.btn_export_excel')}
               </Button>
               <input
                 ref={fileRef}
@@ -744,7 +746,7 @@ export function PricingPage(props: { apiBase: string }) {
             <div style={{ display: 'grid', gap: 16 }}>
               <TwoCol
                 left={
-                  <Select label="Sailing" value={gridSailingId || selectedSailingId || ''} onChange={(e) => setGridSailingId(e.target.value)} disabled={busy}>
+                  <Select label={t('pricing_page.cruise.label_sailing')} value={gridSailingId || selectedSailingId || ''} onChange={(e) => setGridSailingId(e.target.value)} disabled={busy}>
                     <option value="">(select)</option>
                     {sailings.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -755,10 +757,10 @@ export function PricingPage(props: { apiBase: string }) {
                 }
                 right={
                   <TwoCol
-                    left={<Input label="Currency" value={gridCurrency} onChange={(e) => setGridCurrency(e.target.value)} disabled={busy} />}
+                    left={<Input label={t('pricing_page.cruise.label_currency')} value={gridCurrency} onChange={(e) => setGridCurrency(e.target.value)} disabled={busy} />}
                     right={
                       <Input
-                        label="Min guests"
+                        label={t('pricing_page.cruise.label_min_guests')}
                         value={gridMinGuests}
                         type="number"
                         min={1}
@@ -775,7 +777,7 @@ export function PricingPage(props: { apiBase: string }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
                   <thead>
                     <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
-                      <th style={styles.th}>Cabin category</th>
+                      <th style={styles.th}>{t('pricing_page.cruise.th_cabin_cat')}</th>
                       {priceCats
                         .filter((c) => c.active)
                         .slice()
@@ -824,7 +826,7 @@ export function PricingPage(props: { apiBase: string }) {
                                     onChange={(e) => setGridCells((prev) => ({ ...prev, [k]: Number(e.target.value) }))}
                                     disabled={busy}
                                   />
-                                  <div style={{ fontSize: 11, color: 'var(--csp-muted)', marginTop: 4 }}>cents / pax</div>
+                                  <div style={{ fontSize: 11, color: 'var(--csp-muted)', marginTop: 4 }}>{t('pricing_page.cruise.unit')}</div>
                                 </td>
                               )
                             })}
@@ -834,7 +836,7 @@ export function PricingPage(props: { apiBase: string }) {
                     {gridCabinCats.length === 0 ? (
                       <tr>
                         <td colSpan={1 + (priceCats || []).filter((c) => c.active).length} style={{ padding: 32, textAlign: 'center', color: 'var(--csp-muted)' }}>
-                          Load a sailing to view cabin categories and pricing.
+                          {t('pricing_page.cruise.empty')}
                         </td>
                       </tr>
                     ) : null}

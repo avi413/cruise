@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { decodeJwt } from '../components/jwt'
 import { getToken } from '../components/storage'
@@ -35,6 +36,7 @@ function saveTasks(tasks: Task[]) {
 }
 
 export function NotificationsPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const nav = useNavigate()
   const [customerId, setCustomerId] = useState('')
   const [items, setItems] = useState<NotificationItem[]>([])
@@ -101,12 +103,12 @@ export function NotificationsPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Agenda & Notifications"
-        subtitle="In-app notifications are derived from domain events (holds, confirmations). Tasks are personal and stored locally (demo) — swap this to a real task service when ready."
+        title={t('notifications.title')}
+        subtitle={t('notifications.subtitle')}
         right={
           <>
             <Button disabled={busy} onClick={() => void refresh()}>
-              {busy ? 'Refreshing…' : 'Refresh'}
+              {busy ? t('notifications.btn_refreshing') : t('notifications.btn_refresh')}
             </Button>
           </>
         }
@@ -115,30 +117,30 @@ export function NotificationsPage(props: { apiBase: string }) {
       {err ? <ErrorBanner message={err} /> : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-        <Panel title="Notifications feed" subtitle="Filter by customer_id if you’re working a specific case.">
+        <Panel title={t('notifications.feed.title')} subtitle={t('notifications.feed.subtitle')}>
           <div style={{ display: 'grid', gap: 10 }}>
-            <Input label="Customer id (optional)" value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="UUID" />
+            <Input label={t('notifications.feed.label_customer')} value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="UUID" />
             <Button disabled={busy} onClick={() => void refresh()}>
-              Apply filter
+              {t('notifications.feed.btn_filter')}
             </Button>
           </div>
 
           {expiring.length ? (
             <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(0,0,0,0.22)' }}>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>Expiring holds</div>
-              <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12, marginBottom: 8 }}>These are the most time-sensitive items in your queue.</div>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>{t('notifications.expiring.title')}</div>
+              <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12, marginBottom: 8 }}>{t('notifications.expiring.subtitle')}</div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {expiring.slice(0, 5).map(({ n, exp, ms }) => (
                   <div key={`${n.kind}-${n.time}-${n.message}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                     <div style={{ display: 'grid', gap: 2 }}>
                       <div style={{ fontWeight: 800 }}>{n.message}</div>
                       <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12 }}>
-                        Expires <Mono>{exp}</Mono> · {typeof ms === 'number' ? `${Math.max(0, Math.round(ms / 60000))}m` : '—'}
+                        {t('notifications.expiring.expires')} <Mono>{exp}</Mono> · {typeof ms === 'number' ? `${Math.max(0, Math.round(ms / 60000))}m` : '—'}
                       </div>
                     </div>
                     {n.data?.booking_id ? (
                       <Button variant="primary" onClick={() => nav(`/app/sales?booking_id=${encodeURIComponent(String(n.data.booking_id))}`)}>
-                        Open booking
+                        {t('notifications.expiring.btn_open')}
                       </Button>
                     ) : null}
                   </div>
@@ -151,9 +153,9 @@ export function NotificationsPage(props: { apiBase: string }) {
             <table style={tableStyles.table}>
               <thead>
                 <tr>
-                  <th style={tableStyles.th}>Time</th>
-                  <th style={tableStyles.th}>Kind</th>
-                  <th style={tableStyles.th}>Message</th>
+                  <th style={tableStyles.th}>{t('notifications.feed.th_time')}</th>
+                  <th style={tableStyles.th}>{t('notifications.feed.th_kind')}</th>
+                  <th style={tableStyles.th}>{t('notifications.feed.th_message')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -167,7 +169,7 @@ export function NotificationsPage(props: { apiBase: string }) {
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={3} style={tableStyles.empty}>
-                      {busy ? 'Loading…' : 'No notifications yet.'}
+                      {busy ? t('notifications.feed.loading') : t('notifications.feed.empty')}
                     </td>
                   </tr>
                 ) : null}
@@ -176,26 +178,26 @@ export function NotificationsPage(props: { apiBase: string }) {
           </div>
         </Panel>
 
-        <Panel title="My tasks" subtitle="Fast, call-center style: create follow-ups and mark done.">
+        <Panel title={t('notifications.tasks.title')} subtitle={t('notifications.tasks.subtitle')}>
           <div style={{ display: 'grid', gap: 10 }}>
-            <Input label="Task" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Call back customer about balcony upgrade…" />
-            <Input label="Due date (optional)" type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} />
+            <Input label={t('notifications.tasks.label_task')} value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="Call back customer about balcony upgrade…" />
+            <Input label={t('notifications.tasks.label_due')} type="date" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} />
             <Button variant="primary" disabled={!taskTitle.trim()} onClick={addTask}>
-              Add task
+              {t('notifications.tasks.btn_add')}
             </Button>
           </div>
 
           <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
             <Select
-              label="View"
+              label={t('notifications.tasks.view')}
               value={'all'}
               onChange={() => {
                 /* reserved */
               }}
               disabled
-              hint="(Filtering is easy to add once tasks are server-backed.)"
+              hint={t('notifications.tasks.filter_hint')}
             >
-              <option value="all">All</option>
+              <option value="all">{t('notifications.tasks.all')}</option>
             </Select>
 
             <div style={{ display: 'grid', gap: 8 }}>
@@ -206,25 +208,25 @@ export function NotificationsPage(props: { apiBase: string }) {
                     <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12 }}>
                       {t.due_at ? (
                         <>
-                          due <Mono>{t.due_at.slice(0, 10)}</Mono>
+                          {t('notifications.tasks.due')} <Mono>{t.due_at.slice(0, 10)}</Mono>
                         </>
                       ) : (
-                        <span style={{ color: 'rgba(230,237,243,0.50)' }}>no due date</span>
+                        <span style={{ color: 'rgba(230,237,243,0.50)' }}>{t('notifications.tasks.no_due')}</span>
                       )}
                     </div>
                   </div>
                   <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {t.status !== 'done' ? (
                       <Button onClick={() => setTaskStatus(t.id, 'done')} variant="primary">
-                        Mark done
+                        {t('notifications.tasks.btn_done')}
                       </Button>
                     ) : (
-                      <Button onClick={() => setTaskStatus(t.id, 'open')}>Reopen</Button>
+                      <Button onClick={() => setTaskStatus(t.id, 'open')}>{t('notifications.tasks.btn_reopen')}</Button>
                     )}
                   </div>
                 </div>
               ))}
-              {tasks.length === 0 ? <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>No tasks yet.</div> : null}
+              {tasks.length === 0 ? <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 13 }}>{t('notifications.tasks.empty')}</div> : null}
             </div>
           </div>
         </Panel>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../../api/client'
 import { getCompany } from '../../components/storage'
 import { Button, ErrorBanner, Input, Mono, PageHeader, Panel, Select } from '../../components/ui'
@@ -43,6 +44,7 @@ function HoverRow({ children, onClick }: { children: React.ReactNode; onClick: (
 }
 
 export function FleetShipsPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const nav = useNavigate()
   const company = getCompany()
   const companyId = company?.id || ''
@@ -161,7 +163,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
 
   async function deleteShip() {
     if (!editingId) return
-    if (!confirm(`Delete ship?`)) return
+    if (!confirm(t('fleet.ships.confirm_delete'))) return
     setBusy(true)
     setErr(null)
     try {
@@ -185,7 +187,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
   if (!companyId) {
     return (
         <div style={{ padding: 24 }}>
-            <ErrorBanner message="No company selected. Please select a company and sign in again." />
+            <ErrorBanner message={t('fleet.ships.no_company')} />
         </div>
     )
   }
@@ -198,23 +200,23 @@ export function FleetShipsPage(props: { apiBase: string }) {
                 <Input 
                     value={q} 
                     onChange={(e) => setQ(e.target.value)} 
-                    placeholder="Search ships by name, code, operator..." 
+                    placeholder={t('fleet.ships.search_placeholder')} 
                     style={{ width: '100%', maxWidth: 400 }}
                 />
             </div>
-            <Button variant="primary" onClick={() => setView('create')}>New Ship</Button>
-            <Button variant="secondary" onClick={() => void refreshFleet()}>Refresh</Button>
+            <Button variant="primary" onClick={() => setView('create')}>{t('fleet.ships.btn_new')}</Button>
+            <Button variant="secondary" onClick={() => void refreshFleet()}>{t('fleet.ships.btn_refresh')}</Button>
         </div>
 
         <div style={{ border: '1px solid var(--csp-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--csp-surface-bg)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                     <tr style={{ background: 'var(--csp-border-strong)', color: 'var(--csp-text)', textAlign: 'left' }}>
-                        <th style={styles.th}>Name</th>
-                        <th style={styles.th}>Code</th>
-                        <th style={styles.th}>Operator</th>
-                        <th style={styles.th}>Decks</th>
-                        <th style={styles.th}>Status</th>
+                        <th style={styles.th}>{t('fleet.ships.th_name')}</th>
+                        <th style={styles.th}>{t('fleet.ships.th_code')}</th>
+                        <th style={styles.th}>{t('fleet.ships.th_operator')}</th>
+                        <th style={styles.th}>{t('fleet.ships.th_decks')}</th>
+                        <th style={styles.th}>{t('fleet.ships.th_status')}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -233,7 +235,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
                     {filteredFleet.length === 0 && (
                         <tr>
                             <td colSpan={5} style={{ ...styles.td, textAlign: 'center', color: 'var(--csp-muted)', padding: 32 }}>
-                                No ships found.
+                                {t('fleet.ships.empty')}
                             </td>
                         </tr>
                     )}
@@ -247,16 +249,16 @@ export function FleetShipsPage(props: { apiBase: string }) {
   function renderCreate() {
     return (
         <Panel 
-            title="Create New Ship" 
-            subtitle={`Add a new ship to ${company?.name || 'fleet'}.`}
-            right={<Button variant="secondary" onClick={() => setView('list')}>Cancel</Button>}
+            title={t('fleet.ships.create_title')} 
+            subtitle={t('fleet.ships.create_subtitle', { company: company?.name || 'fleet' })}
+            right={<Button variant="secondary" onClick={() => setView('list')}>{t('fleet.ships.btn_cancel')}</Button>}
         >
             <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
-                <Input label="Ship Name" value={shipName} onChange={(e) => setShipName(e.target.value)} placeholder="e.g. MV Horizon" />
-                <Input label="Ship Code (Unique)" value={shipCode} onChange={(e) => setShipCode(e.target.value)} placeholder="e.g. HORIZON" />
-                <Input label="Operator (Optional)" value={shipOperator} onChange={(e) => setShipOperator(e.target.value)} placeholder="e.g. Oceanic" />
+                <Input label={t('fleet.ships.label_name')} value={shipName} onChange={(e) => setShipName(e.target.value)} placeholder="e.g. MV Horizon" />
+                <Input label={t('fleet.ships.label_code')} value={shipCode} onChange={(e) => setShipCode(e.target.value)} placeholder="e.g. HORIZON" />
+                <Input label={t('fleet.ships.label_operator')} value={shipOperator} onChange={(e) => setShipOperator(e.target.value)} placeholder="e.g. Oceanic" />
                 <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>Decks</div>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>{t('fleet.ships.label_decks')}</div>
                     <Input 
                         value={shipDecks} 
                         onChange={(e) => setShipDecks(Number(e.target.value))} 
@@ -268,7 +270,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
 
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)' }}>
                     <Button variant="primary" disabled={busy || !shipName.trim() || !shipCode.trim()} onClick={() => void createShip()}>
-                        {busy ? 'Creating...' : 'Create Ship'}
+                        {busy ? t('fleet.ships.btn_creating') : t('fleet.ships.btn_create')}
                     </Button>
                 </div>
             </div>
@@ -279,19 +281,19 @@ export function FleetShipsPage(props: { apiBase: string }) {
   function renderEdit() {
     return (
         <Panel 
-            title={`Edit Ship: ${editName}`} 
-            subtitle="Update ship details or manage cabins."
-            right={<Button variant="secondary" onClick={() => setView('list')}>Back to List</Button>}
+            title={t('fleet.ships.edit_title', { name: editName })} 
+            subtitle={t('fleet.ships.edit_subtitle')}
+            right={<Button variant="secondary" onClick={() => setView('list')}>{t('fleet.ships.back_to_list')}</Button>}
         >
              <div style={{ maxWidth: 600, display: 'grid', gap: 20 }}>
-                <Input label="Ship Name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                <Input label={t('fleet.ships.label_name')} value={editName} onChange={(e) => setEditName(e.target.value)} />
                 <div style={{ opacity: 0.7 }}>
-                     <Input label="Ship Code" value={editCode} disabled />
+                     <Input label={t('fleet.ships.label_code')} value={editCode} disabled />
                 </div>
-                <Input label="Operator" value={editOperator} onChange={(e) => setEditOperator(e.target.value)} />
+                <Input label={t('fleet.ships.label_operator')} value={editOperator} onChange={(e) => setEditOperator(e.target.value)} />
                 
                 <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>Decks</div>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>{t('fleet.ships.label_decks')}</div>
                     <Input 
                         value={editDecks} 
                         onChange={(e) => setEditDecks(Number(e.target.value))} 
@@ -302,7 +304,7 @@ export function FleetShipsPage(props: { apiBase: string }) {
                 </div>
 
                 <div style={{ display: 'grid', gap: 6 }}>
-                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>Status</div>
+                    <div style={{ fontSize: 13, color: 'var(--csp-text-muted)' }}>{t('fleet.ships.label_status')}</div>
                     <Select value={editStatus} onChange={(e) => setEditStatus(e.target.value as Ship['status'])}>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
@@ -313,15 +315,15 @@ export function FleetShipsPage(props: { apiBase: string }) {
                 <div style={{ paddingTop: 20, borderTop: '1px solid var(--csp-border)', display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', gap: 12 }}>
                          <Button variant="danger" disabled={busy} onClick={() => void deleteShip()}>
-                            Delete Ship
+                            {t('fleet.ships.btn_delete')}
                         </Button>
                         <Button variant="secondary" onClick={goManageCabins}>
-                            Manage Cabins
+                            {t('fleet.ships.btn_manage_cabins')}
                         </Button>
                     </div>
                    
                     <Button variant="primary" disabled={busy} onClick={() => void saveEdit()}>
-                        {busy ? 'Saving...' : 'Save Changes'}
+                        {busy ? t('fleet.ships.btn_saving') : t('fleet.ships.btn_save')}
                     </Button>
                 </div>
             </div>
@@ -332,8 +334,8 @@ export function FleetShipsPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 24, paddingBottom: 48 }}>
       <PageHeader
-        title="Fleet Management"
-        subtitle={`Manage ships for ${company?.name || 'company'}.`}
+        title={t('fleet.ships.title')}
+        subtitle={t('fleet.ships.subtitle', { company: company?.name || 'company' })}
       />
 
       {err ? <ErrorBanner message={err} /> : null}

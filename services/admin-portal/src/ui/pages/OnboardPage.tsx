@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { getCompany } from '../components/storage'
 import { fetchCompanySettings } from '../components/theme'
@@ -71,6 +72,7 @@ function parseCodes(raw: string): string[] {
 }
 
 export function OnboardPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const company = getCompany()
   const companyId = company?.id || ''
 
@@ -241,7 +243,7 @@ export function OnboardPage(props: { apiBase: string }) {
   }
 
   async function deleteCapability(id: string) {
-    if (!confirm('Delete this capability?')) return
+    if (!confirm(t('onboard.capabilities.confirm_delete'))) return
     setBusy(true)
     setErr(null)
     try {
@@ -289,7 +291,7 @@ export function OnboardPage(props: { apiBase: string }) {
   }
 
   async function deleteRestaurant(id: string) {
-    if (!confirm('Delete this restaurant?')) return
+    if (!confirm(t('onboard.restaurants.confirm_delete'))) return
     setBusy(true)
     setErr(null)
     try {
@@ -353,7 +355,7 @@ export function OnboardPage(props: { apiBase: string }) {
   }
 
   async function deleteShorex(id: string) {
-    if (!confirm('Delete this shore excursion (and its prices)?')) return
+    if (!confirm(t('onboard.shorex.confirm_delete'))) return
     setBusy(true)
     setErr(null)
     try {
@@ -386,7 +388,7 @@ export function OnboardPage(props: { apiBase: string }) {
   }
 
   async function deletePrice(id: string) {
-    if (!confirm('Delete this price row?')) return
+    if (!confirm(t('onboard.pricing.confirm_delete'))) return
     setBusy(true)
     setErr(null)
     try {
@@ -403,8 +405,8 @@ export function OnboardPage(props: { apiBase: string }) {
   if (!companyId) {
     return (
       <div style={{ display: 'grid', gap: 12 }}>
-        <PageHeader title="Onboard & ShoreX" subtitle="Manage ship restaurants, onboard capabilities, and shore excursions." />
-        <ErrorBanner message="No company selected. Please select a company and sign in again." />
+        <PageHeader title={t('onboard.title')} subtitle={t('onboard.subtitle')} />
+        <ErrorBanner message={t('onboard.no_company')} />
       </div>
     )
   }
@@ -412,18 +414,18 @@ export function OnboardPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Onboard & ShoreX"
-        subtitle="Manage ship restaurants, onboard capabilities, and shore excursions (port + duration + pricing)."
+        title={t('onboard.title')}
+        subtitle={t('onboard.subtitle')}
         right={
           <Button variant="secondary" disabled={busy} onClick={() => void refreshAll().then(refreshShipData)}>
-            Refresh
+            {t('cruises.refresh')}
           </Button>
         }
       />
 
       {err ? <ErrorBanner message={err} /> : null}
 
-      <Panel title="Select ship" subtitle={company ? `${company.name} (${company.code})` : companyId}>
+      <Panel title={t('onboard.select_ship_title')} subtitle={company ? `${company.name} (${company.code})` : companyId}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
           <Select value={shipId} onChange={(e) => setShipId(e.target.value)}>
             {fleet.map((s) => (
@@ -434,7 +436,7 @@ export function OnboardPage(props: { apiBase: string }) {
             {fleet.length === 0 ? <option value="">(no ships yet)</option> : null}
           </Select>
           <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12 }}>
-            Ship id: <Mono>{shipId || '—'}</Mono>
+            {t('onboard.ship_id')}: <Mono>{shipId || '—'}</Mono>
           </div>
         </div>
       </Panel>
@@ -444,36 +446,36 @@ export function OnboardPage(props: { apiBase: string }) {
         value={tab}
         onChange={(k) => setTab(k as TabKey)}
         tabs={[
-          { key: 'capabilities', label: 'Capabilities', badge: capabilities.length },
-          { key: 'restaurants', label: 'Restaurants', badge: restaurants.length },
-          { key: 'shorex', label: 'ShoreX', badge: shorex.length },
-          { key: 'pricing', label: 'Pricing' },
+          { key: 'capabilities', label: t('onboard.tabs.capabilities'), badge: capabilities.length },
+          { key: 'restaurants', label: t('onboard.tabs.restaurants'), badge: restaurants.length },
+          { key: 'shorex', label: t('onboard.tabs.shorex'), badge: shorex.length },
+          { key: 'pricing', label: t('onboard.tabs.pricing') },
         ]}
       />
 
       {tab === 'capabilities' ? (
         <div id="onboard-panel-capabilities" role="tabpanel" aria-labelledby="onboard-tab-capabilities">
-          <Panel title="Onboard capabilities" subtitle="Examples: wheelchair_accessible, halal_options, kids_friendly, vegan_options.">
+          <Panel title={t('onboard.capabilities.title')} subtitle={t('onboard.capabilities.subtitle')}>
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Input label="Code" value={capCode} onChange={(e) => setCapCode(e.target.value)} placeholder="wheelchair_accessible" />
-                <Input label="Name" value={capName} onChange={(e) => setCapName(e.target.value)} placeholder="Wheelchair accessible" />
+                <Input label={t('onboard.capabilities.label_code')} value={capCode} onChange={(e) => setCapCode(e.target.value)} placeholder="wheelchair_accessible" />
+                <Input label={t('onboard.capabilities.label_name')} value={capName} onChange={(e) => setCapName(e.target.value)} placeholder="Wheelchair accessible" />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Input label="Category (optional)" value={capCategory} onChange={(e) => setCapCategory(e.target.value)} placeholder="accessibility" />
-                <Input label="Description (optional)" value={capDesc} onChange={(e) => setCapDesc(e.target.value)} placeholder="Step-free access, ramps…" />
+                <Input label={t('onboard.capabilities.label_category')} value={capCategory} onChange={(e) => setCapCategory(e.target.value)} placeholder="accessibility" />
+                <Input label={t('onboard.capabilities.label_desc')} value={capDesc} onChange={(e) => setCapDesc(e.target.value)} placeholder="Step-free access, ramps…" />
               </div>
               <Button variant="primary" disabled={busy || !shipId || !capCode.trim() || !capName.trim()} onClick={() => void createCapability()}>
-                {busy ? 'Saving…' : 'Add capability'}
+                {busy ? t('onboard.capabilities.btn_saving') : t('onboard.capabilities.btn_add')}
               </Button>
               <div style={{ overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th style={th}>Code</th>
-                      <th style={th}>Name</th>
-                      <th style={th}>Category</th>
-                      <th style={th}>Actions</th>
+                      <th style={th}>{t('onboard.capabilities.th_code')}</th>
+                      <th style={th}>{t('onboard.capabilities.th_name')}</th>
+                      <th style={th}>{t('onboard.capabilities.th_category')}</th>
+                      <th style={th}>{t('onboard.capabilities.th_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -484,7 +486,7 @@ export function OnboardPage(props: { apiBase: string }) {
                         <td style={td}>{c.category || '—'}</td>
                         <td style={td}>
                           <Button variant="danger" disabled={busy} onClick={() => void deleteCapability(c.id)}>
-                            Delete
+                            {t('onboard.capabilities.btn_delete')}
                           </Button>
                         </td>
                       </tr>
@@ -492,7 +494,7 @@ export function OnboardPage(props: { apiBase: string }) {
                     {capabilities.length === 0 ? (
                       <tr>
                         <td style={tdMuted} colSpan={4}>
-                          No capabilities yet.
+                          {t('onboard.capabilities.empty')}
                         </td>
                       </tr>
                     ) : null}
@@ -506,17 +508,17 @@ export function OnboardPage(props: { apiBase: string }) {
 
       {tab === 'restaurants' ? (
         <div id="onboard-panel-restaurants" role="tabpanel" aria-labelledby="onboard-tab-restaurants">
-          <Panel title="Restaurants" subtitle="Create dining venues and optionally tag them with capability codes.">
+          <Panel title={t('onboard.restaurants.title')} subtitle={t('onboard.restaurants.subtitle')}>
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Input label="Code" value={resCode} onChange={(e) => setResCode(e.target.value)} placeholder="main_dining" />
-                <Input label="Name" value={resName} onChange={(e) => setResName(e.target.value)} placeholder="Main Dining Room" />
+                <Input label={t('onboard.restaurants.label_code')} value={resCode} onChange={(e) => setResCode(e.target.value)} placeholder="main_dining" />
+                <Input label={t('onboard.restaurants.label_name')} value={resName} onChange={(e) => setResName(e.target.value)} placeholder="Main Dining Room" />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                <Input label="Cuisine (optional)" value={resCuisine} onChange={(e) => setResCuisine(e.target.value)} placeholder="International" />
-                <Input label="Deck" value={resDeck} onChange={(e) => setResDeck(Number(e.target.value))} type="number" min={0} step={1} />
+                <Input label={t('onboard.restaurants.label_cuisine')} value={resCuisine} onChange={(e) => setResCuisine(e.target.value)} placeholder="International" />
+                <Input label={t('onboard.restaurants.label_deck')} value={resDeck} onChange={(e) => setResDeck(Number(e.target.value))} type="number" min={0} step={1} />
                 <Input
-                  label="Capability codes (comma-separated)"
+                  label={t('onboard.restaurants.label_caps')}
                   value={resCaps}
                   onChange={(e) => setResCaps(e.target.value)}
                   placeholder="vegan_options, halal_options"
@@ -524,29 +526,29 @@ export function OnboardPage(props: { apiBase: string }) {
                 />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Select label="Included?" value={resIncluded ? 'yes' : 'no'} onChange={(e) => setResIncluded(e.target.value === 'yes')}>
-                  <option value="yes">Included</option>
-                  <option value="no">Extra charge</option>
+                <Select label={t('onboard.restaurants.label_included')} value={resIncluded ? 'yes' : 'no'} onChange={(e) => setResIncluded(e.target.value === 'yes')}>
+                  <option value="yes">{t('onboard.restaurants.option_included')}</option>
+                  <option value="no">{t('onboard.restaurants.option_extra')}</option>
                 </Select>
-                <Select label="Reservation required?" value={resReservation ? 'yes' : 'no'} onChange={(e) => setResReservation(e.target.value === 'yes')}>
-                  <option value="no">No</option>
-                  <option value="yes">Yes</option>
+                <Select label={t('onboard.restaurants.label_reservation')} value={resReservation ? 'yes' : 'no'} onChange={(e) => setResReservation(e.target.value === 'yes')}>
+                  <option value="no">{t('onboard.restaurants.option_no')}</option>
+                  <option value="yes">{t('onboard.restaurants.option_yes')}</option>
                 </Select>
               </div>
               <Button variant="primary" disabled={busy || !shipId || !resCode.trim() || !resName.trim()} onClick={() => void createRestaurant()}>
-                {busy ? 'Saving…' : 'Add restaurant'}
+                {busy ? t('onboard.restaurants.btn_saving') : t('onboard.restaurants.btn_add')}
               </Button>
 
               <div style={{ overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th style={th}>Code</th>
-                      <th style={th}>Name</th>
-                      <th style={th}>Deck</th>
-                      <th style={th}>Included</th>
-                      <th style={th}>Caps</th>
-                      <th style={th}>Actions</th>
+                      <th style={th}>{t('onboard.restaurants.th_code')}</th>
+                      <th style={th}>{t('onboard.restaurants.th_name')}</th>
+                      <th style={th}>{t('onboard.restaurants.th_deck')}</th>
+                      <th style={th}>{t('onboard.restaurants.th_included')}</th>
+                      <th style={th}>{t('onboard.restaurants.th_caps')}</th>
+                      <th style={th}>{t('onboard.restaurants.th_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -559,7 +561,7 @@ export function OnboardPage(props: { apiBase: string }) {
                         <td style={td}>{(r.capability_codes || []).join(', ') || '—'}</td>
                         <td style={td}>
                           <Button variant="danger" disabled={busy} onClick={() => void deleteRestaurant(r.id)}>
-                            Delete
+                            {t('onboard.restaurants.btn_delete')}
                           </Button>
                         </td>
                       </tr>
@@ -567,7 +569,7 @@ export function OnboardPage(props: { apiBase: string }) {
                     {restaurants.length === 0 ? (
                       <tr>
                         <td style={tdMuted} colSpan={6}>
-                          No restaurants yet.
+                          {t('onboard.restaurants.empty')}
                         </td>
                       </tr>
                     ) : null}
@@ -581,14 +583,14 @@ export function OnboardPage(props: { apiBase: string }) {
 
       {tab === 'shorex' ? (
         <div id="onboard-panel-shorex" role="tabpanel" aria-labelledby="onboard-tab-shorex">
-          <Panel title="Shore excursions (ShoreX)" subtitle="Port + duration + capability tags. Add a starting price on create (optional).">
+          <Panel title={t('onboard.shorex.title')} subtitle={t('onboard.shorex.subtitle')}>
             <div style={{ display: 'grid', gap: 10 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <Input label="Code" value={sxCode} onChange={(e) => setSxCode(e.target.value)} placeholder="snorkel_half_day" />
-                <Input label="Title" value={sxTitle} onChange={(e) => setSxTitle(e.target.value)} placeholder="Half-day snorkeling" />
+                <Input label={t('onboard.shorex.label_code')} value={sxCode} onChange={(e) => setSxCode(e.target.value)} placeholder="snorkel_half_day" />
+                <Input label={t('onboard.shorex.label_title')} value={sxTitle} onChange={(e) => setSxTitle(e.target.value)} placeholder="Half-day snorkeling" />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-                <Select label="Port" value={sxPort} onChange={(e) => setSxPort(e.target.value)}>
+                <Select label={t('onboard.shorex.label_port')} value={sxPort} onChange={(e) => setSxPort(e.target.value)}>
                   {ports.map((p) => (
                     <option key={p.code} value={p.code}>
                       {displayPort(p)}
@@ -596,24 +598,24 @@ export function OnboardPage(props: { apiBase: string }) {
                   ))}
                   {ports.length === 0 ? <option value="">(no ports yet)</option> : null}
                 </Select>
-                <Input label="Duration (minutes)" value={sxDuration} onChange={(e) => setSxDuration(Number(e.target.value))} type="number" min={0} step={15} />
-                <Input label="Capability codes" value={sxCaps} onChange={(e) => setSxCaps(e.target.value)} placeholder="kids_friendly, wheelchair_accessible" />
+                <Input label={t('onboard.shorex.label_duration')} value={sxDuration} onChange={(e) => setSxDuration(Number(e.target.value))} type="number" min={0} step={15} />
+                <Input label={t('onboard.shorex.label_caps')} value={sxCaps} onChange={(e) => setSxCaps(e.target.value)} placeholder="kids_friendly, wheelchair_accessible" />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr', gap: 10 }}>
-                <Select label="Price currency" value={sxPriceCurrency} onChange={(e) => setSxPriceCurrency(e.target.value)}>
+                <Select label={t('onboard.shorex.label_currency')} value={sxPriceCurrency} onChange={(e) => setSxPriceCurrency(e.target.value)}>
                   {supportedCurrencies.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
                 </Select>
-                <Select label="Paxtype" value={sxPricePax} onChange={(e) => setSxPricePax(e.target.value)}>
-                  <option value="adult">adult</option>
-                  <option value="child">child</option>
-                  <option value="infant">infant</option>
+                <Select label={t('onboard.shorex.label_paxtype')} value={sxPricePax} onChange={(e) => setSxPricePax(e.target.value)}>
+                  <option value="adult">{t('onboard.shorex.option_adult')}</option>
+                  <option value="child">{t('onboard.shorex.option_child')}</option>
+                  <option value="infant">{t('onboard.shorex.option_infant')}</option>
                 </Select>
                 <Input
-                  label="Starting price (cents, optional)"
+                  label={t('onboard.shorex.label_starting_price')}
                   value={sxPriceCents}
                   onChange={(e) => setSxPriceCents(Number(e.target.value))}
                   type="number"
@@ -622,19 +624,19 @@ export function OnboardPage(props: { apiBase: string }) {
                 />
               </div>
               <Button variant="primary" disabled={busy || !shipId || !sxCode.trim() || !sxTitle.trim() || !sxPort.trim()} onClick={() => void createShorex()}>
-                {busy ? 'Saving…' : 'Add shore excursion'}
+                {busy ? t('onboard.shorex.btn_saving') : t('onboard.shorex.btn_add')}
               </Button>
 
               <div style={{ overflow: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th style={th}>Port</th>
-                      <th style={th}>Code</th>
-                      <th style={th}>Title</th>
-                      <th style={th}>Dur</th>
-                      <th style={th}>Active</th>
-                      <th style={th}>Actions</th>
+                      <th style={th}>{t('onboard.shorex.th_port')}</th>
+                      <th style={th}>{t('onboard.shorex.th_code')}</th>
+                      <th style={th}>{t('onboard.shorex.th_title')}</th>
+                      <th style={th}>{t('onboard.shorex.th_dur')}</th>
+                      <th style={th}>{t('onboard.shorex.th_active')}</th>
+                      <th style={th}>{t('onboard.shorex.th_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -648,10 +650,10 @@ export function OnboardPage(props: { apiBase: string }) {
                         <td style={td}>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             <Button variant="secondary" disabled={busy} onClick={() => void toggleShorexActive(x)}>
-                              Toggle
+                              {t('onboard.shorex.btn_toggle')}
                             </Button>
                             <Button variant="danger" disabled={busy} onClick={() => void deleteShorex(x.id)}>
-                              Delete
+                              {t('onboard.shorex.btn_delete')}
                             </Button>
                           </div>
                         </td>
@@ -660,7 +662,7 @@ export function OnboardPage(props: { apiBase: string }) {
                     {shorex.length === 0 ? (
                       <tr>
                         <td style={tdMuted} colSpan={6}>
-                          No shore excursions yet.
+                          {t('onboard.shorex.empty')}
                         </td>
                       </tr>
                     ) : null}
@@ -674,9 +676,9 @@ export function OnboardPage(props: { apiBase: string }) {
 
       {tab === 'pricing' ? (
         <div id="onboard-panel-pricing" role="tabpanel" aria-labelledby="onboard-tab-pricing">
-          <Panel title="ShoreX pricing" subtitle="Upsert per (currency, paxtype). This is where duration↔port pricing lives, since each ShoreX is tied to a port + duration.">
+          <Panel title={t('onboard.pricing.title')} subtitle={t('onboard.pricing.subtitle')}>
             <div style={{ display: 'grid', gap: 10 }}>
-              <Select label="Excursion" value={priceShorexId} onChange={(e) => setPriceShorexId(e.target.value)}>
+              <Select label={t('onboard.pricing.label_excursion')} value={priceShorexId} onChange={(e) => setPriceShorexId(e.target.value)}>
                 <option value="">(select)</option>
                 {shorex.map((x) => (
                   <option key={x.id} value={x.id}>
@@ -685,20 +687,20 @@ export function OnboardPage(props: { apiBase: string }) {
                 ))}
               </Select>
               <div style={{ display: 'grid', gridTemplateColumns: '140px 140px 1fr auto', gap: 10, alignItems: 'end' }}>
-                <Select label="Currency" value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)} disabled={!priceShorexId}>
+                <Select label={t('onboard.pricing.label_currency')} value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)} disabled={!priceShorexId}>
                   {supportedCurrencies.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
                 </Select>
-                <Select label="Paxtype" value={pricePax} onChange={(e) => setPricePax(e.target.value)} disabled={!priceShorexId}>
-                  <option value="adult">adult</option>
-                  <option value="child">child</option>
-                  <option value="infant">infant</option>
+                <Select label={t('onboard.pricing.label_paxtype')} value={pricePax} onChange={(e) => setPricePax(e.target.value)} disabled={!priceShorexId}>
+                  <option value="adult">{t('onboard.shorex.option_adult')}</option>
+                  <option value="child">{t('onboard.shorex.option_child')}</option>
+                  <option value="infant">{t('onboard.shorex.option_infant')}</option>
                 </Select>
                 <Input
-                  label="Price (cents)"
+                  label={t('onboard.pricing.label_price')}
                   value={priceCents}
                   onChange={(e) => setPriceCents(Number(e.target.value))}
                   type="number"
@@ -707,7 +709,7 @@ export function OnboardPage(props: { apiBase: string }) {
                   disabled={!priceShorexId}
                 />
                 <Button variant="primary" disabled={busy || !priceShorexId} onClick={() => void upsertPrice()}>
-                  {busy ? 'Saving…' : 'Upsert'}
+                  {busy ? t('onboard.pricing.btn_saving') : t('onboard.pricing.btn_upsert')}
                 </Button>
               </div>
 
@@ -716,10 +718,10 @@ export function OnboardPage(props: { apiBase: string }) {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr>
-                        <th style={th}>Currency</th>
-                        <th style={th}>Paxtype</th>
-                        <th style={th}>Price (cents)</th>
-                        <th style={th}>Actions</th>
+                        <th style={th}>{t('onboard.pricing.th_currency')}</th>
+                        <th style={th}>{t('onboard.pricing.th_paxtype')}</th>
+                        <th style={th}>{t('onboard.pricing.th_price')}</th>
+                        <th style={th}>{t('onboard.pricing.th_actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -730,7 +732,7 @@ export function OnboardPage(props: { apiBase: string }) {
                           <td style={tdMono}>{p.price_cents}</td>
                           <td style={td}>
                             <Button variant="danger" disabled={busy} onClick={() => void deletePrice(p.id)}>
-                              Delete
+                              {t('onboard.pricing.btn_delete')}
                             </Button>
                           </td>
                         </tr>
@@ -738,7 +740,7 @@ export function OnboardPage(props: { apiBase: string }) {
                       {prices.length === 0 ? (
                         <tr>
                           <td style={tdMuted} colSpan={4}>
-                            No prices yet.
+                            {t('onboard.pricing.empty')}
                           </td>
                         </tr>
                       ) : null}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { decodeJwt } from '../components/jwt'
 import { getCompany, getToken } from '../components/storage'
@@ -151,6 +152,7 @@ function ThemeColorField(props: { label: string; value: string; onChange: (v: st
 }
 
 export function CompanySettingsPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const company = getCompany()
   const claims = useMemo(() => decodeJwt(getToken()), [])
   const canEdit = Boolean(claims?.platform) || claims?.role === 'admin' || claims?.role === 'staff'
@@ -329,11 +331,11 @@ export function CompanySettingsPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Branding & localization"
-        subtitle="White-label settings for this company: logo, theme colors, background image, and supported locales/currencies (no code changes required)."
+        title={t('company_settings.title')}
+        subtitle={t('company_settings.subtitle')}
         right={
           <Button variant="primary" disabled={busy || !canEdit || !company?.id} onClick={() => void save()}>
-            {busy ? 'Saving…' : 'Save'}
+            {busy ? t('company_settings.btn_saving') : t('company_settings.btn_save')}
           </Button>
         }
       />
@@ -342,47 +344,47 @@ export function CompanySettingsPage(props: { apiBase: string }) {
 
       <TwoCol
         left={
-          <Panel title="Branding" subtitle="These values are used by the portal UI and (next) email templates.">
+          <Panel title={t('company_settings.branding.title')} subtitle={t('company_settings.branding.subtitle')}>
             <div style={{ display: 'grid', gap: 10 }}>
-              <Input label="Display name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Oceanic Cruises" />
-              <Input label="Logo URL" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…/logo.png" />
-              <Input label="Background image URL" value={backgroundUrl} onChange={(e) => setBackgroundUrl(e.target.value)} placeholder="https://…/bg.jpg" />
+              <Input label={t('company_settings.branding.label_name')} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Oceanic Cruises" />
+              <Input label={t('company_settings.branding.label_logo')} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…/logo.png" />
+              <Input label={t('company_settings.branding.label_bg')} value={backgroundUrl} onChange={(e) => setBackgroundUrl(e.target.value)} placeholder="https://…/bg.jpg" />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
-                <ThemeColorField label="Primary color" value={primaryColor} onChange={setPrimaryColor} hint="Used for primary buttons and active nav states." />
-                <ThemeColorField label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} hint="Used for accents and links (where applicable)." />
+                <ThemeColorField label={t('company_settings.branding.label_primary')} value={primaryColor} onChange={setPrimaryColor} hint={t('company_settings.branding.hint_primary')} />
+                <ThemeColorField label={t('company_settings.branding.label_secondary')} value={secondaryColor} onChange={setSecondaryColor} hint={t('company_settings.branding.hint_secondary')} />
               </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <div style={{ width: 18, height: 18, borderRadius: 6, background: primaryColor, border: '1px solid rgba(255,255,255,0.18)' }} />
                 <div style={{ width: 18, height: 18, borderRadius: 6, background: secondaryColor, border: '1px solid rgba(255,255,255,0.18)' }} />
-                <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12 }}>Preview swatches</div>
+                <div style={{ color: 'rgba(230,237,243,0.65)', fontSize: 12 }}>{t('company_settings.branding.preview')}</div>
               </div>
-              <Input label="Email from name" value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} placeholder="Oceanic Cruises" />
-              <Input label="Email from address" value={emailFromAddress} onChange={(e) => setEmailFromAddress(e.target.value)} placeholder="reservations@oceanic.example" />
+              <Input label={t('company_settings.branding.label_email_name')} value={emailFromName} onChange={(e) => setEmailFromName(e.target.value)} placeholder="Oceanic Cruises" />
+              <Input label={t('company_settings.branding.label_email_addr')} value={emailFromAddress} onChange={(e) => setEmailFromAddress(e.target.value)} placeholder="reservations@oceanic.example" />
             </div>
           </Panel>
         }
         right={
-          <Panel title="Localization" subtitle="Supported languages & currencies for multi-market operations.">
+          <Panel title={t('company_settings.localization.title')} subtitle={t('company_settings.localization.subtitle')}>
             <div style={{ display: 'grid', gap: 10 }}>
               <Input
-                label="Supported locales (comma-separated)"
+                label={t('company_settings.localization.label_locales')}
                 value={supportedLocales}
                 onChange={(e) => setSupportedLocales(e.target.value)}
                 placeholder="en, es, fr, ar"
-                hint="This enables multi-language content editing and UI language switching."
+                hint={t('company_settings.localization.hint_locales')}
               />
-              <Input label="Default locale" value={defaultLocale} onChange={(e) => setDefaultLocale(e.target.value)} placeholder="en" />
+              <Input label={t('company_settings.localization.label_def_locale')} value={defaultLocale} onChange={(e) => setDefaultLocale(e.target.value)} placeholder="en" />
               <Input
-                label="Supported currencies (comma-separated)"
+                label={t('company_settings.localization.label_currencies')}
                 value={supportedCurrencies}
                 onChange={(e) => setSupportedCurrencies(e.target.value)}
                 placeholder="USD, EUR, GBP"
-                hint="Used for quotes/booking and for formatting."
+                hint={t('company_settings.localization.hint_currencies')}
               />
-              <Input label="Default currency" value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value)} placeholder="USD" />
+              <Input label={t('company_settings.localization.label_def_currency')} value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value)} placeholder="USD" />
 
               <Select
-                label="Quick switch: preview primary color"
+                label={t('company_settings.localization.label_quick_switch')}
                 value={primaryColor}
                 onChange={(e) => setPrimaryColor(e.target.value)}
                 disabled={!settings}
@@ -395,8 +397,7 @@ export function CompanySettingsPage(props: { apiBase: string }) {
               </Select>
 
               <div style={{ color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.45 }}>
-                Saved settings are stored per company and are applied instantly in the UI. Next step is to use these values for localized master data (ports/cabins/tours/etc.)
-                and outbound email templates.
+                {t('company_settings.localization.note')}
               </div>
             </div>
           </Panel>
@@ -404,19 +405,19 @@ export function CompanySettingsPage(props: { apiBase: string }) {
       />
 
       <Panel
-        title="Portal theme (UI)"
-        subtitle="Create named themes (Light/Dark + custom) and control portal colors. Background image (above) will override the shell background color when set."
+        title={t('company_settings.theme.title')}
+        subtitle={t('company_settings.theme.subtitle')}
         right={
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button variant="secondary" disabled={!selectedCustom || busy || !canEdit} onClick={() => deleteSelectedTheme()} title="Delete custom theme">
-              Delete theme
+              {t('company_settings.theme.btn_delete')}
             </Button>
           </div>
         }
       >
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-            <Select label="Active theme" value={uiThemeActiveId} onChange={(e) => setSelectedTheme(e.target.value)} disabled={!canEdit}>
+            <Select label={t('company_settings.theme.label_active')} value={uiThemeActiveId} onChange={(e) => setSelectedTheme(e.target.value)} disabled={!canEdit}>
               {allThemes.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -426,7 +427,7 @@ export function CompanySettingsPage(props: { apiBase: string }) {
             </Select>
 
             <label style={{ display: 'grid', gap: 6, fontSize: 13, color: 'var(--csp-text, rgba(230,237,243,0.85))' }}>
-              Create a new theme (copy current)
+              {t('company_settings.theme.label_create')}
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input
                   value={newThemeNameText}
@@ -442,14 +443,14 @@ export function CompanySettingsPage(props: { apiBase: string }) {
                   }}
                 />
                 <Button variant="primary" disabled={!canEdit || busy || !newThemeNameText.trim()} onClick={() => createThemeFromSelected()}>
-                  Copy
+                  {t('company_settings.theme.btn_copy')}
                 </Button>
                 <Button variant="secondary" disabled={!canEdit || busy} onClick={() => createThemeFromPrimary()} title="Generate a light theme based on the primary brand color">
-                  Generate from Primary
+                  {t('company_settings.theme.btn_generate')}
                 </Button>
               </div>
               <div style={{ color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 11, lineHeight: 1.35 }}>
-                Built-in themes are read-only; create a copy to customize.
+                {t('company_settings.theme.note_builtin')}
               </div>
             </label>
           </div>
@@ -457,32 +458,32 @@ export function CompanySettingsPage(props: { apiBase: string }) {
           {selectedCustom ? (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-                <Input label="Theme name" value={selectedCustom.name} onChange={(e) => updateSelectedCustom({ name: e.target.value })} />
+                <Input label={t('company_settings.theme.label_name')} value={selectedCustom.name} onChange={(e) => updateSelectedCustom({ name: e.target.value })} />
                 <div style={{ color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.45, paddingTop: 28 }}>
-                  Tip: use “Save” in the page header to persist this theme for the company.
+                  {t('company_settings.theme.note_save')}
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-                <ThemeColorField label="Shell background" value={selectedCustom.tokens.shell_bg_base} onChange={(v) => updateSelectedCustom({ tokens: { shell_bg_base: v } })} />
-                <ThemeColorField label="Text" value={selectedCustom.tokens.text} onChange={(v) => updateSelectedCustom({ tokens: { text: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_shell_bg')} value={selectedCustom.tokens.shell_bg_base} onChange={(v) => updateSelectedCustom({ tokens: { shell_bg_base: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_text')} value={selectedCustom.tokens.text} onChange={(v) => updateSelectedCustom({ tokens: { text: v } })} />
 
-                <ThemeColorField label="Muted text" value={selectedCustom.tokens.muted} onChange={(v) => updateSelectedCustom({ tokens: { muted: v } })} hint="Used for subtitles and hints." />
-                <ThemeColorField label="Border (subtle)" value={selectedCustom.tokens.border} onChange={(v) => updateSelectedCustom({ tokens: { border: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_muted')} value={selectedCustom.tokens.muted} onChange={(v) => updateSelectedCustom({ tokens: { muted: v } })} hint={t('company_settings.theme.hint_muted')} />
+                <ThemeColorField label={t('company_settings.theme.label_border')} value={selectedCustom.tokens.border} onChange={(v) => updateSelectedCustom({ tokens: { border: v } })} />
 
-                <ThemeColorField label="Border (strong)" value={selectedCustom.tokens.border_strong} onChange={(v) => updateSelectedCustom({ tokens: { border_strong: v } })} />
-                <ThemeColorField label="Surface" value={selectedCustom.tokens.surface_bg} onChange={(v) => updateSelectedCustom({ tokens: { surface_bg: v } })} hint="Panels/cards background." />
+                <ThemeColorField label={t('company_settings.theme.label_border_strong')} value={selectedCustom.tokens.border_strong} onChange={(v) => updateSelectedCustom({ tokens: { border_strong: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_surface')} value={selectedCustom.tokens.surface_bg} onChange={(v) => updateSelectedCustom({ tokens: { surface_bg: v } })} hint={t('company_settings.theme.hint_surface')} />
 
-                <ThemeColorField label="Surface 2" value={selectedCustom.tokens.surface_2_bg} onChange={(v) => updateSelectedCustom({ tokens: { surface_2_bg: v } })} hint="Chips/inner cards background." />
-                <ThemeColorField label="Input background" value={selectedCustom.tokens.input_bg} onChange={(v) => updateSelectedCustom({ tokens: { input_bg: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_surface_2')} value={selectedCustom.tokens.surface_2_bg} onChange={(v) => updateSelectedCustom({ tokens: { surface_2_bg: v } })} hint={t('company_settings.theme.hint_surface_2')} />
+                <ThemeColorField label={t('company_settings.theme.label_input_bg')} value={selectedCustom.tokens.input_bg} onChange={(v) => updateSelectedCustom({ tokens: { input_bg: v } })} />
 
-                <ThemeColorField label="Input border" value={selectedCustom.tokens.input_border} onChange={(v) => updateSelectedCustom({ tokens: { input_border: v } })} />
-                <ThemeColorField label="Chip background" value={selectedCustom.tokens.chip_bg} onChange={(v) => updateSelectedCustom({ tokens: { chip_bg: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_input_border')} value={selectedCustom.tokens.input_border} onChange={(v) => updateSelectedCustom({ tokens: { input_border: v } })} />
+                <ThemeColorField label={t('company_settings.theme.label_chip_bg')} value={selectedCustom.tokens.chip_bg} onChange={(v) => updateSelectedCustom({ tokens: { chip_bg: v } })} />
               </div>
             </>
           ) : (
             <div style={{ color: 'var(--csp-muted, rgba(230,237,243,0.65))', fontSize: 12, lineHeight: 1.45 }}>
-              Built-in themes can’t be edited directly. Create a new theme above to customize all portal colors.
+              {t('company_settings.theme.msg_builtin_readonly')}
             </div>
           )}
         </div>

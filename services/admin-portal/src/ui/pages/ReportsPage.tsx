@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { apiFetch } from '../api/client'
 import { Button, ErrorBanner, Mono, PageHeader, Panel, Select } from '../components/ui'
 
@@ -7,6 +8,7 @@ type Sailing = { id: string; code: string; start_date: string; end_date: string;
 type InventoryRow = { sailing_id: string; cabin_type: string; capacity: number; held: number; confirmed: number; available: number }
 
 export function ReportsPage(props: { apiBase: string }) {
+  const { t } = useTranslation()
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
   const [sailings, setSailings] = useState<Sailing[]>([])
   const [sailingId, setSailingId] = useState('')
@@ -78,12 +80,12 @@ export function ReportsPage(props: { apiBase: string }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       <PageHeader
-        title="Reporting & Analytics (Snapshot)"
-        subtitle="This starter repo doesn’t include a dedicated analytics service yet; this page provides a high-signal operational snapshot using existing Edge endpoints (notifications + inventory + sailings)."
+        title={t('reports.title')}
+        subtitle={t('reports.subtitle')}
         right={
           <>
             <Button disabled={busy} onClick={() => void refreshAll()}>
-              {busy ? 'Refreshing…' : 'Refresh'}
+              {busy ? t('reports.btn_refreshing') : t('reports.btn_refresh')}
             </Button>
           </>
         }
@@ -92,26 +94,26 @@ export function ReportsPage(props: { apiBase: string }) {
       {err ? <ErrorBanner message={err} /> : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-        <Panel title="Sales activity (from events)" subtitle="Counts derived from booking.held / booking.confirmed events (in-app notifications).">
+        <Panel title={t('reports.panel_sales.title')} subtitle={t('reports.panel_sales.subtitle')}>
           <div style={{ display: 'grid', gap: 8, fontSize: 13, color: 'rgba(230,237,243,0.85)' }}>
             <div>
-              Last 24h events: <Mono>{counts.recentCount}</Mono>
+              {t('reports.panel_sales.last_24h')} <Mono>{counts.recentCount}</Mono>
             </div>
             <div>
-              Holds (24h): <Mono>{counts.recentByKind.booking_held || 0}</Mono>
+              {t('reports.panel_sales.holds_24h')} <Mono>{counts.recentByKind.booking_held || 0}</Mono>
             </div>
             <div>
-              Confirmations (24h): <Mono>{counts.recentByKind.booking_confirmed || 0}</Mono>
+              {t('reports.panel_sales.confirms_24h')} <Mono>{counts.recentByKind.booking_confirmed || 0}</Mono>
             </div>
             <div style={{ marginTop: 8, color: 'rgba(230,237,243,0.65)', fontSize: 12, lineHeight: 1.4 }}>
-              For agent/team performance and booking trend charts, add an analytics projection service (or data warehouse) and extend Edge with aggregated endpoints.
+              {t('reports.panel_sales.note')}
             </div>
           </div>
         </Panel>
 
-        <Panel title="Inventory snapshot" subtitle="Select a sailing to see capacity vs held/confirmed by cabin type.">
+        <Panel title={t('reports.panel_inventory.title')} subtitle={t('reports.panel_inventory.subtitle')}>
           <div style={{ display: 'grid', gap: 10 }}>
-            <Select label="Sailing" value={sailingId} onChange={(e) => setSailingId(e.target.value)}>
+            <Select label={t('reports.panel_inventory.label_sailing')} value={sailingId} onChange={(e) => setSailingId(e.target.value)}>
               {sailings.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.code} · {s.start_date}→{s.end_date} · {s.status}
@@ -119,7 +121,7 @@ export function ReportsPage(props: { apiBase: string }) {
               ))}
             </Select>
             <Button disabled={busy || !sailingId} onClick={() => void refreshInventory()}>
-              Refresh inventory
+              {t('reports.panel_inventory.btn_refresh')}
             </Button>
           </div>
 
@@ -128,11 +130,11 @@ export function ReportsPage(props: { apiBase: string }) {
               <table style={tableStyles.table}>
                 <thead>
                   <tr>
-                    <th style={tableStyles.th}>Cabin type</th>
-                    <th style={tableStyles.th}>Capacity</th>
-                    <th style={tableStyles.th}>Held</th>
-                    <th style={tableStyles.th}>Confirmed</th>
-                    <th style={tableStyles.th}>Available</th>
+                    <th style={tableStyles.th}>{t('reports.panel_inventory.th_cabin_type')}</th>
+                    <th style={tableStyles.th}>{t('reports.panel_inventory.th_capacity')}</th>
+                    <th style={tableStyles.th}>{t('reports.panel_inventory.th_held')}</th>
+                    <th style={tableStyles.th}>{t('reports.panel_inventory.th_confirmed')}</th>
+                    <th style={tableStyles.th}>{t('reports.panel_inventory.th_available')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -148,7 +150,7 @@ export function ReportsPage(props: { apiBase: string }) {
                   {inventory.length === 0 ? (
                     <tr>
                       <td colSpan={5} style={tableStyles.empty}>
-                        No inventory rows yet.
+                        {t('reports.panel_inventory.empty')}
                       </td>
                     </tr>
                   ) : null}
@@ -159,14 +161,14 @@ export function ReportsPage(props: { apiBase: string }) {
         </Panel>
       </div>
 
-      <Panel title="Recent notifications" subtitle="A quick feed of operational events (hold/confirm).">
+      <Panel title={t('reports.panel_notifications.title')} subtitle={t('reports.panel_notifications.subtitle')}>
         <div style={{ overflow: 'auto' }}>
           <table style={tableStyles.table}>
             <thead>
               <tr>
-                <th style={tableStyles.th}>Time</th>
-                <th style={tableStyles.th}>Kind</th>
-                <th style={tableStyles.th}>Message</th>
+                <th style={tableStyles.th}>{t('reports.panel_notifications.th_time')}</th>
+                <th style={tableStyles.th}>{t('reports.panel_notifications.th_kind')}</th>
+                <th style={tableStyles.th}>{t('reports.panel_notifications.th_message')}</th>
               </tr>
             </thead>
             <tbody>
@@ -180,7 +182,7 @@ export function ReportsPage(props: { apiBase: string }) {
               {notifications.length === 0 ? (
                 <tr>
                   <td colSpan={3} style={tableStyles.empty}>
-                    No notifications yet.
+                    {t('reports.panel_notifications.empty')}
                   </td>
                 </tr>
               ) : null}
