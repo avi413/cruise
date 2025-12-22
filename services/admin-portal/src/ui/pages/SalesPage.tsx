@@ -155,7 +155,7 @@ export function SalesPage(props: { apiBase: string }) {
   // step: search -> selection (can add to cart) -> checkout (cart review -> customer -> payment -> confirm)
   const [step, setStep] = useState<'search' | 'selection' | 'checkout' | 'payment' | 'confirm'>('search')
   
-  const [viewMode, setViewMode] = useState<'grid' | 'map'>('map')
+  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid')
   const [selectedSailingId, setSelectedSailingId] = useState('')
   const [selectedDeck, setSelectedDeck] = useState<number | null>(null)
   
@@ -888,7 +888,7 @@ const styles: Record<string, React.CSSProperties> = {
   mainPanel: { background: 'var(--csp-surface-bg)', border: '1px solid var(--csp-border)', padding: 20, borderRadius: 12, minHeight: 500 },
   panelTitle: { fontSize: 16, fontWeight: 700, marginBottom: 15 },
   form: { display: 'flex', flexDirection: 'column', gap: 15 },
-  row3: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 },
+  row3: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 },
   divider: { height: 1, background: 'var(--csp-border)', margin: '10px 0' },
   
   deckList: { display: 'flex', flexDirection: 'column', gap: 6 },
