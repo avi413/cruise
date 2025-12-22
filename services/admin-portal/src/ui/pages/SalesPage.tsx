@@ -99,6 +99,11 @@ type Ship = {
   deck_plans?: Record<string, string>
 }
 
+type PriceCategory = {
+  code: string
+  name_i18n: Record<string, string>
+}
+
 type CartItem = {
   tempId: string
   sailing: Sailing
@@ -143,6 +148,7 @@ export function SalesPage(props: { apiBase: string }) {
   const [cabins, setCabins] = useState<Cabin[]>([])
   const [unavailableCabins, setUnavailableCabins] = useState<string[]>([])
   const [prices, setPrices] = useState<CruisePrice[]>([])
+  const [priceCategories, setPriceCategories] = useState<PriceCategory[]>([])
   const [selectedShip, setSelectedShip] = useState<Ship | null>(null)
 
   // -- Search State --
@@ -163,6 +169,7 @@ export function SalesPage(props: { apiBase: string }) {
   const [selectedCabinId, setSelectedCabinId] = useState('')
   const [selectedCabinType, setSelectedCabinType] = useState<'inside' | 'oceanview' | 'balcony' | 'suite'>('inside')
   const [selectedCatCode, setSelectedCatCode] = useState('')
+  const [selectedPriceType, setSelectedPriceType] = useState('')
   const [currentQuote, setCurrentQuote] = useState<QuoteOut | null>(null)
   
   // -- Cart State --
@@ -191,10 +198,14 @@ export function SalesPage(props: { apiBase: string }) {
     // Load Sailings & Ports
     Promise.all([
       apiFetch<Sailing[]>(props.apiBase, `/v1/sailings`, { auth: false, tenant: false }),
-      apiFetch<Port[]>(props.apiBase, `/v1/ports`)
-    ]).then(([s, p]) => {
+      apiFetch<Port[]>(props.apiBase, `/v1/ports`),
+      apiFetch<PriceCategory[]>(props.apiBase, `/v1/pricing/price-categories`)
+    ]).then(([s, p, pc]) => {
       setSailings(s || [])
       setPorts(p || [])
+      const cats = pc || []
+      setPriceCategories(cats)
+      if (cats.length > 0) setSelectedPriceType(cats[0].code)
     }).catch(e => setErr(String(e)))
   }, [props.apiBase])
 
@@ -262,7 +273,7 @@ export function SalesPage(props: { apiBase: string }) {
           sailing_date: null,
           cabin_type: selectedCabinType,
           cabin_category_code: selectedCatCode || null,
-          price_type: 'regular',
+          price_type: selectedPriceType || 'regular',
           guests,
           coupon_code: null,
           loyalty_tier: null
@@ -297,7 +308,7 @@ export function SalesPage(props: { apiBase: string }) {
       cabinCat: cat,
       guests,
       quote: currentQuote,
-      priceType: 'regular'
+      priceType: selectedPriceType || 'regular'
     }
 
     setCart([...cart, item])
@@ -563,6 +574,25 @@ export function SalesPage(props: { apiBase: string }) {
                    </button>
                  ))}
                </div>
+
+               <div style={styles.divider} />
+               
+               <label style={styles.label}>{t('sales.price_type_label')}</label>
+               <select 
+                 style={styles.input} 
+                 value={selectedPriceType} 
+                 onChange={e => {
+                   setSelectedPriceType(e.target.value)
+                   setCurrentQuote(null)
+                 }}
+               >
+                 {priceCategories.map(pc => (
+                   <option key={pc.code} value={pc.code}>
+                     {getProp(pc.name_i18n, userLocale) || pc.code}
+                   </option>
+                 ))}
+                 {priceCategories.length === 0 && <option value="regular">Regular</option>}
+               </select>
              </div>
            </div>
 
@@ -589,7 +619,7 @@ export function SalesPage(props: { apiBase: string }) {
                        const isSelected = selectedCabinId === c.id
                        const inCart = cart.some(i => i.cabin.id === c.id)
                        const cat = cabinCats.find(cat => cat.id === c.category_id)
-                       const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
+                       const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === (selectedPriceType || 'regular').toLowerCase())
                        
                        const isDisabled = isTaken || inCart
 
@@ -645,7 +675,7 @@ export function SalesPage(props: { apiBase: string }) {
                              const inCart = cart.some(i => i.cabin.id === c.id)
                              const isSelected = selectedCabinId === c.id
                              const cat = cabinCats.find(cat => cat.id === c.category_id)
-                             const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
+                             const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === (selectedPriceType || 'regular').toLowerCase())
                              const isDisabled = isTaken || inCart
 
                              return (
