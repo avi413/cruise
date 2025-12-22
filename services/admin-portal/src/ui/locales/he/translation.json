@@ -247,6 +247,15 @@
     "no_results": "אין תוצאות."
   },
   "fleet": {
+    "layout": {
+      "title": "צי",
+      "subtitle": "ניהול אוניות, קטגוריות חדרים וחדרים.",
+      "tabs": {
+        "ships": "אוניות",
+        "categories": "קטגוריות חדרים",
+        "cabins": "חדרים"
+      }
+    },
     "ships": {
       "title": "ניהול צי",
       "subtitle": "ניהול אוניות עבור {{company}}.",

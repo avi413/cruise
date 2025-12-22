@@ -247,6 +247,15 @@
     "no_results": "No results."
   },
   "fleet": {
+    "layout": {
+      "title": "Fleet",
+      "subtitle": "Manage ships, cabin categories, and cabins.",
+      "tabs": {
+        "ships": "Ships",
+        "categories": "Cabin categories",
+        "cabins": "Cabins"
+      }
+    },
     "ships": {
       "title": "Fleet Management",
       "subtitle": "Manage ships for {{company}}.",

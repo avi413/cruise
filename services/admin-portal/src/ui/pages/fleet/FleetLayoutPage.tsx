@@ -1,23 +1,26 @@
 import React from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 export function FleetLayoutPage() {
+  const { t } = useTranslation()
+
   return (
     <div style={styles.wrap}>
       <div>
-        <div style={styles.hTitle}>Fleet</div>
-        <div style={styles.hSub}>Manage ships, cabin categories, and cabins.</div>
+        <div style={styles.hTitle}>{t('fleet.layout.title')}</div>
+        <div style={styles.hSub}>{t('fleet.layout.subtitle')}</div>
       </div>
 
       <nav style={styles.tabs}>
         <NavLink to="ships" end style={({ isActive }) => (isActive ? styles.tabActive : styles.tab)}>
-          Ships
+          {t('fleet.layout.tabs.ships')}
         </NavLink>
         <NavLink to="categories" style={({ isActive }) => (isActive ? styles.tabActive : styles.tab)}>
-          Cabin categories
+          {t('fleet.layout.tabs.categories')}
         </NavLink>
         <NavLink to="cabins" style={({ isActive }) => (isActive ? styles.tabActive : styles.tab)}>
-          Cabins
+          {t('fleet.layout.tabs.cabins')}
         </NavLink>
       </nav>
 
@@ -59,4 +62,3 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 900,
   },
 }
-
