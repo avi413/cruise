@@ -74,6 +74,17 @@ type Cabin = {
   status: string
 }
 
+type CruisePrice = {
+  company_id: string
+  sailing_id: string
+  cabin_category_code: string
+  price_category_code: string
+  currency: string
+  min_guests: number
+  price_per_person: number
+  updated_at: string
+}
+
 type MePrefs = { user_id: string; updated_at: string; preferences: any }
 
 // --- Helpers ---
@@ -109,6 +120,7 @@ export function SalesPage(props: { apiBase: string }) {
   const [cabinCats, setCabinCats] = useState<CabinCategory[]>([])
   const [cabins, setCabins] = useState<Cabin[]>([])
   const [unavailableCabins, setUnavailableCabins] = useState<string[]>([])
+  const [prices, setPrices] = useState<CruisePrice[]>([])
 
   // -- Search State --
   const [searchDest, setSearchDest] = useState('')
@@ -192,6 +204,8 @@ export function SalesPage(props: { apiBase: string }) {
       setCabins(cabs || [])
       const unavail = await apiFetch<string[]>(props.apiBase, `/v1/inventory/sailings/${s.id}/unavailable-cabins`)
       setUnavailableCabins(unavail || [])
+      const pr = await apiFetch<CruisePrice[]>(props.apiBase, `/v1/cruise-prices?sailing_id=${s.id}`)
+      setPrices(pr || [])
     } catch (e: any) {
       setErr(String(e))
     } finally {
@@ -431,6 +445,7 @@ export function SalesPage(props: { apiBase: string }) {
                    const isTaken = unavailableCabins.includes(c.id)
                    const isSelected = selectedCabinId === c.id
                    const cat = cabinCats.find(cat => cat.id === c.category_id)
+                   const price = prices.find(p => p.cabin_category_code === cat?.code && p.price_category_code === 'regular')
                    return (
                      <button
                        key={c.id}
@@ -450,6 +465,7 @@ export function SalesPage(props: { apiBase: string }) {
                      >
                        <div style={styles.cabinNo}>{c.cabin_no}</div>
                        <div style={styles.cabinCat}>{cat?.code || '-'}</div>
+                       {price && <div style={{ fontSize: 9, opacity: 0.8 }}>{formatMoney(price.price_per_person, price.currency, userLocale)}</div>}
                      </button>
                    )
                  })}
