@@ -350,6 +350,26 @@ async def get_customer(customer_id: str, request: Request):
 async def patch_customer(customer_id: str, request: Request):
     return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}", request, "customer-service")
 
+@app.get("/v1/customers/{customer_id}/bookings")
+async def list_customer_bookings(customer_id: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/bookings", request, "customer-service")
+
+@app.get("/v1/customers/{customer_id}/passengers")
+async def list_customer_passengers(customer_id: str, request: Request):
+    return await _proxy("GET", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/passengers", request, "customer-service")
+
+@app.post("/v1/customers/{customer_id}/passengers")
+async def create_passenger(customer_id: str, request: Request):
+    return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/customers/{customer_id}/passengers", request, "customer-service")
+
+@app.patch("/v1/passengers/{passenger_id}")
+async def patch_passenger(passenger_id: str, request: Request):
+    return await _proxy("PATCH", f"{CUSTOMER_SERVICE_URL}/passengers/{passenger_id}", request, "customer-service")
+
+@app.delete("/v1/passengers/{passenger_id}")
+async def delete_passenger(passenger_id: str, request: Request):
+    return await _proxy("DELETE", f"{CUSTOMER_SERVICE_URL}/passengers/{passenger_id}", request, "customer-service")
+
 @app.get("/v1/staff/me/preferences")
 async def get_my_preferences(request: Request):
     # In a real app, we'd extract user_id from JWT.
