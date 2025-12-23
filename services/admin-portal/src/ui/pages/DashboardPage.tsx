@@ -33,6 +33,7 @@ type Sailing = {
 const ALL_WIDGETS: { key: string; title: string; description: string }[] = [
   { key: 'quick_actions', title: 'Quick actions', description: 'Fast navigation for agents (few clicks).' },
   { key: 'kpis', title: 'KPIs', description: 'At-a-glance counters (starter).' },
+  { key: 'sales_report', title: 'Sales report', description: 'Last 24h holds / confirmations from events.' },
   { key: 'notifications', title: 'Agenda & notifications', description: 'Newest in-app notifications.' },
   { key: 'notes', title: 'My notes', description: 'Scratchpad saved per user.' },
   { key: 'manager_notes', title: 'Team Announcements', description: 'Important updates from management.' },
@@ -52,7 +53,7 @@ function normalizeLayout(input: any): string[] {
 }
 
 function defaultLayout(): string[] {
-  return ['quick_actions', 'kpis', 'notifications', 'notes', 'manager_notes', 'sales_tracking', 'featured_cruises']
+  return ['quick_actions', 'kpis', 'sales_report', 'notifications', 'notes', 'manager_notes', 'sales_tracking', 'featured_cruises']
 }
 
 function moveInArray<T>(xs: T[], fromIdx: number, toIdx: number): T[] {
@@ -119,7 +120,7 @@ export function DashboardPage(props: { apiBase: string }) {
     let cancelled = false
     apiFetch<NotificationsOut>(props.apiBase, `/v1/notifications`)
       .then((r) => {
-        if (!cancelled) setNotifs((r?.items || []).slice(0, 8))
+        if (!cancelled) setNotifs(r?.items || [])
       })
       .catch(() => {
         if (!cancelled) setNotifs([])
@@ -128,6 +129,30 @@ export function DashboardPage(props: { apiBase: string }) {
       cancelled = true
     }
   }, [props.apiBase])
+
+  const salesSnapshot = useMemo(() => {
+    const now = Date.now()
+    const last24h = now - 24 * 60 * 60 * 1000
+    const recent = notifs.filter((n) => {
+      const ts = Date.parse(String(n.created_at || ''))
+      return !isNaN(ts) && ts >= last24h
+    })
+    const recentByKind: Record<string, number> = {}
+    for (const n of recent) {
+      const k = String(n.kind || '').trim()
+      if (!k) continue
+      recentByKind[k] = (recentByKind[k] || 0) + 1
+    }
+    const recentSalesEvents = recent
+      .filter((n) => n?.kind === 'booking_held' || n?.kind === 'booking_confirmed')
+      .slice(0, 6)
+    return {
+      recentCount: recent.length,
+      holds24h: recentByKind.booking_held || 0,
+      confirms24h: recentByKind.booking_confirmed || 0,
+      recentSalesEvents,
+    }
+  }, [notifs])
 
   // Fetch new widgets data
   useEffect(() => {
@@ -172,6 +197,8 @@ export function DashboardPage(props: { apiBase: string }) {
           ? t('dashboard.quick_actions')
           : w.key === 'kpis'
           ? t('dashboard.kpis')
+          : w.key === 'sales_report'
+          ? t('dashboard.sales_report')
           : w.key === 'notifications'
           ? t('dashboard.agenda')
           : w.key === 'notes'
@@ -293,6 +320,7 @@ export function DashboardPage(props: { apiBase: string }) {
           let title = def?.title || k
           if (k === 'quick_actions') title = t('dashboard.quick_actions')
           if (k === 'kpis') title = t('dashboard.kpis')
+          if (k === 'sales_report') title = t('dashboard.sales_report')
           if (k === 'notifications') title = t('dashboard.agenda')
           if (k === 'notes') title = t('dashboard.my_notes')
 
@@ -357,6 +385,49 @@ export function DashboardPage(props: { apiBase: string }) {
                       <div style={styles.kpiLabel}>{t('dashboard.widgets')}</div>
                       <div style={styles.kpiValue}>{layout.length}</div>
                     </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {k === 'sales_report' ? (
+                <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+                  <div style={styles.muted}>{t('dashboard.sales_report_desc')}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                    <div style={styles.kpi}>
+                      <div style={styles.kpiLabel}>{t('dashboard.sales_report.last_24h_events')}</div>
+                      <div style={styles.kpiValue}>{salesSnapshot.recentCount}</div>
+                    </div>
+                    <div style={styles.kpi}>
+                      <div style={styles.kpiLabel}>{t('dashboard.sales_report.holds_24h')}</div>
+                      <div style={styles.kpiValue}>{salesSnapshot.holds24h}</div>
+                    </div>
+                    <div style={styles.kpi}>
+                      <div style={styles.kpiLabel}>{t('dashboard.sales_report.confirms_24h')}</div>
+                      <div style={styles.kpiValue}>{salesSnapshot.confirms24h}</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                    <div style={{ fontWeight: 900 }}>{t('dashboard.sales_report.recent_sales_events')}</div>
+                    <Link to="/app/reports" style={{ ...styles.pill, padding: '6px 10px' }}>
+                      {t('dashboard.sales_report.open_reports')}
+                    </Link>
+                  </div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {salesSnapshot.recentSalesEvents.map((n, i) => (
+                      <div key={String(n.id || i)} style={styles.notifRow}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                          <div style={{ fontWeight: 900 }}>{String(n.kind || 'event')}</div>
+                          <div style={styles.mutedSmall}>
+                            <Mono>{String(n.created_at || '')}</Mono>
+                          </div>
+                        </div>
+                        {n.message ? <div style={{ fontSize: 13, marginTop: 4 }}>{String(n.message)}</div> : null}
+                      </div>
+                    ))}
+                    {!salesSnapshot.recentSalesEvents.length ? (
+                      <div style={styles.muted}>{t('dashboard.sales_report.empty')}</div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
