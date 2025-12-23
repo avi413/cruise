@@ -109,6 +109,14 @@ async def _proxy(method: str, url: str, request: Request, service_name: str | No
 def health():
     return {"status": "ok"}
 
+#
+# Notification Service Routes
+#
+
+@app.get("/v1/notifications")
+async def list_notifications(request: Request):
+    return await _proxy("GET", f"{NOTIFICATION_SERVICE_URL}/notifications", request, "notification-service")
+
 @app.get("/v1/cruises")
 async def list_cruises(request: Request):
     headers = dict(request.headers)
