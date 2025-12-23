@@ -1,8 +1,10 @@
 import os
 import httpx
 import asyncio
-from fastapi import FastAPI, Request, Response
+from typing import Annotated
+from fastapi import FastAPI, Request, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 #
 # Configuration
@@ -30,6 +32,11 @@ _DEV_DOCKER_DNS_FALLBACK: dict[str, list[str]] = {
     "pricing-service": ["http://localhost:8004", "http://localhost:8000"],
     "notification-service": ["http://localhost:8006", "http://localhost:8000"],
 }
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 
 app = FastAPI(title="Edge API", description="Gateway for the Cruise Management System")
 
@@ -364,11 +371,15 @@ async def get_sailing_itinerary(sailing_id: str, request: Request):
 #
 
 @app.post("/v1/platform/login")
-async def platform_login(request: Request):
+async def platform_login(payload: LoginRequest, request: Request):
     return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/platform/login", request, "customer-service")
 
 @app.post("/v1/staff/login")
-async def staff_login(request: Request):
+async def staff_login(
+    payload: LoginRequest,
+    request: Request,
+    x_company_id: Annotated[str | None, Header()] = None
+):
     return await _proxy("POST", f"{CUSTOMER_SERVICE_URL}/staff/login", request, "customer-service")
 
 @app.get("/v1/customers")
